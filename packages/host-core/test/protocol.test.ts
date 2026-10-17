@@ -151,6 +151,7 @@ describe("protocol errors", () => {
 
   test("reach the SDK as errors carrying their code", async () => {
     const module = await connect({ transport: mountFrame(newHost(), { module: WEATHER, surface: "view" }).transport });
+    // @ts-expect-error: the SDK's types already refuse null, the Host refuses it too.
     await assert.rejects(module.storage.set("cities", null), (error: unknown) => {
       assert.ok(error instanceof TesselloError);
       assert.equal(error.code, "invalid_payload");

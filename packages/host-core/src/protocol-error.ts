@@ -4,6 +4,7 @@ export class ProtocolError extends Error {
 
   constructor(code: string, message: string) {
     super(message);
+    this.name = "ProtocolError";
     this.code = code;
   }
 }

@@ -62,7 +62,7 @@ export function createStorage(persistence: Persistence) {
       }
       const entries = await persistence.readStorage(moduleId);
       entries.set(key, serialized);
-      const total = [...entries].reduce((sum, [k, v]) => sum + entryBytes(k, v), 0);
+      const total = [...entries].reduce((sum, [entryKey, entryValue]) => sum + entryBytes(entryKey, entryValue), 0);
       if (total > LIMITS.storageTotalBytes) {
         throw new ProtocolError("quota_exceeded", `the storage of a Module must stay under ${LIMITS.storageTotalBytes} bytes`);
       }

@@ -4,7 +4,10 @@
 /** How the Module exchanges messages with the Host. */
 export interface Transport {
   send(message: unknown): void;
-  /** Calls `listener` with every message coming from the Host; returns a function that stops listening. */
+  /**
+   * Calls `listener` with every message coming from the Host; returns a function that stops listening.
+   * Must only pass on messages from the Host itself (`event.source === window.parent`, CONVENTION.md §5.3).
+   */
   subscribe(listener: (data: unknown) => void): () => void;
 }
 
@@ -41,8 +44,8 @@ export type Json = string | number | boolean | null | Json[] | { [key: string]: 
 export interface Storage {
   /** Resolves with `null` when the key does not exist. */
   get(key: string): Promise<Json>;
-  /** `value` must not be `null`: use `delete` to remove a key. */
-  set(key: string, value: Json): Promise<void>;
+  /** Use `delete` to remove a key: `null` cannot be stored. */
+  set(key: string, value: Exclude<Json, null>): Promise<void>;
   /** Succeeds even when the key does not exist. */
   delete(key: string): Promise<void>;
   keys(): Promise<string[]>;
