@@ -1,0 +1,12 @@
+{
+  "name": "@tessello/host",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Tessello Host: the static web app where the User installs and opens Modules.",
+  "type": "module",
+  "dependencies": {
+    "@tessello/convention": "0.1.0",
+    "@tessello/host-core": "0.1.0",
+    "es-module-lexer": "^3.0.4"
+  }
+}

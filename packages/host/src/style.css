@@ -1,0 +1,219 @@
+:root {
+  --background: #ffffff;
+  --surface: #f4f5f7;
+  --text: #16181d;
+  --text-muted: #5f6670;
+  --accent: #2f6fec;
+  --border: #d9dce1;
+  --danger: #c62f2f;
+  font-family: system-ui, sans-serif;
+  color: var(--text);
+  background: var(--background);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  height: 100dvh;
+  display: grid;
+  grid-template-columns: 14rem 1fr;
+}
+
+body.dragging main {
+  outline: 3px dashed var(--accent);
+  outline-offset: -12px;
+}
+
+.launcher {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  border-right: 1px solid var(--border);
+  background: var(--surface);
+  overflow-y: auto;
+}
+
+.launcher ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.25rem;
+}
+
+.launcher button,
+.launcher-install {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 0.5rem;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.launcher button:hover,
+.launcher button[aria-current="page"] {
+  background: var(--background);
+}
+
+.launcher-home {
+  font-weight: 700;
+}
+
+.launcher img {
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 6px;
+}
+
+.launcher-install {
+  margin-top: auto;
+  color: var(--accent);
+}
+
+main {
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.home {
+  max-width: 40rem;
+  margin: 0 auto;
+  padding: 3rem 1.5rem;
+}
+
+.home p {
+  color: var(--text-muted);
+}
+
+.view-frame {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+.surface-error {
+  max-width: 40rem;
+  margin: 3rem auto;
+  padding: 1.5rem;
+  border: 1px solid var(--danger);
+  border-radius: 12px;
+}
+
+dialog {
+  width: min(32rem, calc(100vw - 2rem));
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.5rem;
+  color: var(--text);
+  background: var(--background);
+}
+
+dialog::backdrop {
+  background: rgb(0 0 0 / 0.35);
+}
+
+.module-summary {
+  display: grid;
+  grid-template-columns: 4rem 1fr;
+  gap: 1rem;
+  align-items: start;
+}
+
+.module-summary img {
+  width: 4rem;
+  height: 4rem;
+  border-radius: 12px;
+}
+
+.module-summary dl {
+  margin: 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.25rem 0.75rem;
+}
+
+.module-summary dt {
+  color: var(--text-muted);
+}
+
+.module-summary dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.issues {
+  padding-left: 1.25rem;
+}
+
+.issues .error {
+  color: var(--danger);
+}
+
+.issues code {
+  color: var(--text-muted);
+}
+
+.actions {
+  display: flex;
+  justify-content: end;
+  gap: 0.5rem;
+  margin-top: 1.5rem;
+}
+
+.actions button {
+  font: inherit;
+  padding: 0.45rem 1rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--background);
+  color: inherit;
+  cursor: pointer;
+}
+
+.actions button.primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #ffffff;
+}
+
+@media (max-width: 40rem) {
+  body {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+  }
+
+  .launcher {
+    flex-direction: row;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+    overflow-x: auto;
+  }
+
+  .launcher ul {
+    display: flex;
+  }
+
+  .launcher button,
+  .launcher-install {
+    width: auto;
+    white-space: nowrap;
+  }
+
+  .launcher-install {
+    margin-top: 0;
+    margin-left: auto;
+  }
+}

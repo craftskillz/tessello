@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { describe, test } from "node:test";
+import { describe, mock, test } from "node:test";
 import { LIMITS } from "@tessello/convention";
 import { type ConnectedModule, connect, TesselloError } from "@tessello/sdk";
 import { createHost, createMemoryPersistence, type HostOptions, type Persistence, type Theme } from "../src/index.ts";
@@ -27,6 +27,7 @@ function slowPersistence(): Persistence {
   const memory = createMemoryPersistence();
   const later = <T>(value: Promise<T>) => new Promise<T>((resolve) => setTimeout(() => resolve(value), 5));
   return {
+    ...memory,
     readStorage: (moduleId) => later(memory.readStorage(moduleId)),
     writeStorage: (moduleId, key, serialized) => later(memory.writeStorage(moduleId, key, serialized)),
     deleteStorageKey: (moduleId, key) => later(memory.deleteStorageKey(moduleId, key)),
@@ -72,6 +73,42 @@ describe("handshake", () => {
     host.setTheme(THEME);
     await settle();
     assert.deepEqual(frame.received.map((message: any) => message.type), ["response", "theme.changed"]);
+  });
+});
+
+describe("handshake timeout", () => {
+  test("the Host is told when ready has not arrived within the timeout after the iframe has loaded", (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const onHandshakeTimeout = mock.fn();
+    const frame = mountFrame(newHost(), { module: WEATHER, surface: "view", onHandshakeTimeout });
+    t.mock.timers.tick(LIMITS.handshakeTimeoutMs);
+    assert.equal(onHandshakeTimeout.mock.callCount(), 0, "the delay starts when the iframe has loaded");
+
+    frame.surface.loaded();
+    t.mock.timers.tick(LIMITS.handshakeTimeoutMs - 1);
+    assert.equal(onHandshakeTimeout.mock.callCount(), 0);
+    t.mock.timers.tick(1);
+    assert.equal(onHandshakeTimeout.mock.callCount(), 1);
+  });
+
+  test("a Module that sends ready in time is not reported", (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const onHandshakeTimeout = mock.fn();
+    const frame = mountFrame(newHost(), { module: WEATHER, surface: "view", onHandshakeTimeout });
+    frame.surface.loaded();
+    frame.post({ tessello: 1, type: "ready", id: "1" });
+    t.mock.timers.tick(LIMITS.handshakeTimeoutMs);
+    assert.equal(onHandshakeTimeout.mock.callCount(), 0);
+  });
+
+  test("an unmounted surface is not reported", (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const onHandshakeTimeout = mock.fn();
+    const frame = mountFrame(newHost(), { module: WEATHER, surface: "view", onHandshakeTimeout });
+    frame.surface.loaded();
+    frame.surface.unmount();
+    t.mock.timers.tick(LIMITS.handshakeTimeoutMs);
+    assert.equal(onHandshakeTimeout.mock.callCount(), 0);
   });
 });
 

@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tessello</title>
+    <link rel="stylesheet" href="style.css" />
+    <script type="module" src="main.js"></script>
+  </head>
+  <body>
+    <nav class="launcher" aria-label="Launcher">
+      <button type="button" class="launcher-home" id="home-button">Tessello</button>
+      <ul id="launcher-modules"></ul>
+      <label class="launcher-install">
+        Install a Module…
+        <input type="file" id="install-file" accept=".zip,application/zip" hidden />
+      </label>
+    </nav>
+    <main id="stage">
+      <section id="home" class="home">
+        <h1>Your space is ready</h1>
+        <p>Drop a Module's <code>.zip</code> file anywhere on this page to install it.</p>
+      </section>
+    </main>
+    <dialog id="install-dialog" aria-labelledby="install-title"></dialog>
+  </body>
+</html>

@@ -1,9 +1,11 @@
 // The Host side of the message protocol (CONVENTION.md §5, §6), one surface (View or Widget) at a time.
 
+import { LIMITS } from "@tessello/convention";
 import { paramsOf } from "./navigation.ts";
 import { payloadObject } from "./payload.ts";
 import type { Persistence } from "./persistence.ts";
 import { ProtocolError } from "./protocol-error.ts";
+import { createRegistry, type Inspection, type InstalledModule } from "./registry.ts";
 import { createStorage } from "./storage.ts";
 
 export interface Theme {
@@ -27,6 +29,8 @@ export interface SurfaceOptions {
   surface: "view" | "widget";
   /** View only: the params it was opened with. */
   params?: Record<string, string>;
+  /** Called if `ready` has not arrived within the handshake timeout after `loaded()` (CONVENTION.md §6.4). */
+  onHandshakeTimeout?(): void;
 }
 
 export interface HostOptions {
@@ -43,6 +47,8 @@ export interface HostOptions {
 
 /** What the Host's interface keeps to drive one mounted View or Widget. */
 export interface MountedSurface {
+  /** Starts the handshake timeout: call it when the iframe has loaded (its "load" event). */
+  loaded(): void;
   /** Tells the Module it is shown or hidden; a Module starts visible after its handshake (CONVENTION.md §6.4). */
   setVisible(visible: boolean): void;
   /** Stops answering this iframe and sending it events: call it when the interface removes the iframe. */
@@ -50,6 +56,10 @@ export interface MountedSurface {
 }
 
 export interface Host {
+  /** Checks a `.zip` package with the Validator; nothing is installed until `install()` is called on a valid one. */
+  inspect(zip: Uint8Array): Inspection;
+  /** Every installed Module. */
+  modules(): Promise<InstalledModule[]>;
   /** Starts answering the messages of an iframe the Host has just created. */
   mountSurface(options: SurfaceOptions): MountedSurface;
   /** Handles a message received by the Host's window (wire it to the "message" event). */
@@ -68,11 +78,13 @@ interface Surface extends SurfaceOptions {
   /** True once the Host has answered `ready`: until then, no event and `not_ready` for every other request. */
   ready: boolean;
   visible: boolean;
+  handshakeTimer?: ReturnType<typeof setTimeout>;
 }
 
 export function createHost(options: HostOptions): Host {
   const surfaces = new Map<unknown, Surface>();
   const storage = createStorage(options.persistence);
+  const registry = createRegistry(options.persistence);
   let theme = options.theme;
 
   const contextOf = (surface: Surface) => ({
@@ -111,16 +123,23 @@ export function createHost(options: HostOptions): Host {
     send(surface, { type: "response", id: request.id, ok: false, error: { code, message } });
 
   return {
+    inspect: registry.inspect,
+    modules: registry.modules,
     mountSurface(surfaceOptions) {
       const surface: Surface = { ...surfaceOptions, ready: false, visible: true };
       surfaces.set(surface.frame, surface);
       return {
+        loaded() {
+          if (surface.ready || surface.handshakeTimer !== undefined) return;
+          surface.handshakeTimer = setTimeout(() => surface.onHandshakeTimeout?.(), LIMITS.handshakeTimeoutMs);
+        },
         setVisible(visible) {
           if (visible === surface.visible) return;
           surface.visible = visible;
           if (surface.ready) sendVisibility(surface);
         },
         unmount() {
+          clearTimeout(surface.handshakeTimer);
           surfaces.delete(surface.frame);
         },
       };
@@ -139,6 +158,7 @@ export function createHost(options: HostOptions): Host {
         }
         succeed(surface, request, contextOf(surface));
         surface.ready = true;
+        clearTimeout(surface.handshakeTimer);
         // The Module believes it is visible: correct it if it was hidden before its handshake.
         if (!surface.visible) sendVisibility(surface);
         return;

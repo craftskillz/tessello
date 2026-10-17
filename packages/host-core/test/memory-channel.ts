@@ -38,10 +38,11 @@ export function mountFrame(host: Host, options: Omit<SurfaceOptions, "frame">): 
   const frame = {
     postMessage(message: unknown) {
       const data = structuredClone(message);
+      // An explicit delay: node's mocked setTimeout loses a timer that has none.
       setTimeout(() => {
         received.push(data);
         for (const listener of listeners) listener(data);
-      });
+      }, 0);
     },
   };
   const surface = host.mountSurface({ ...options, frame });
@@ -63,7 +64,7 @@ function fromWindow(
 ): StrangerFrame {
   const post = (message: unknown) => {
     const data = structuredClone(message);
-    setTimeout(() => host.receive({ source, data }));
+    setTimeout(() => host.receive({ source, data }), 0);
   };
   return {
     received,

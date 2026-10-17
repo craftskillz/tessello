@@ -70,6 +70,11 @@ const SANDBOX_APIS: { name: string; pattern: RegExp; hint: string }[] = [
 
 /** Validates a .zip package (CONVENTION.md §9). Never throws. */
 export function validateZip(bytes: Uint8Array): ValidationReport {
+  return readZip(bytes).report;
+}
+
+/** Validates a .zip package and, when it is readable, also returns its files, which the Host installs. Never throws. */
+export function readZip(bytes: Uint8Array): { report: ValidationReport; files: PackageFiles | null } {
   let files: Map<string, Uint8Array>;
   let declaredBytes = 0;
   try {
@@ -83,12 +88,12 @@ export function validateZip(bytes: Uint8Array): ValidationReport {
     });
     files = new Map(Object.entries(entries));
   } catch {
-    return report([error("package/invalid-zip", "The file is not a readable .zip archive.")], null);
+    return { report: report([error("package/invalid-zip", "The file is not a readable .zip archive.")], null), files: null };
   }
   if (declaredBytes > LIMITS.packageBytes) {
-    return report([tooLarge(declaredBytes)], null);
+    return { report: report([tooLarge(declaredBytes)], null), files: null };
   }
-  return validatePackage(files);
+  return { report: validatePackage(files), files };
 }
 
 /** Validates a package given as in-memory files (CONVENTION.md §9). Never throws. */

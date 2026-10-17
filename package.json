@@ -7,10 +7,16 @@
   ],
   "scripts": {
     "test": "node --test \"packages/*/test/*.test.ts\"",
-    "typecheck": "tsc -p ."
+    "typecheck": "tsc -p .",
+    "build:sdk": "node packages/sdk/scripts/build-local-copy.ts",
+    "build:host": "node packages/host/scripts/build.ts",
+    "start:host": "npm run build:host && node packages/host/scripts/serve.ts",
+    "test:browser": "npm run build:host && node --test --test-concurrency=1 \"packages/*/e2e/*.test.ts\""
   },
   "devDependencies": {
     "@types/node": "^24.10.0",
+    "esbuild": "^0.28.2",
+    "playwright": "^1.64.1",
     "typescript": "~5.9.3"
   }
 }
