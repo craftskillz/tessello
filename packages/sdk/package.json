@@ -1,0 +1,7 @@
+{
+  "name": "@tessello/sdk",
+  "version": "0.1.0",
+  "description": "Tessello SDK: talk to the Host from a Module, without dependencies.",
+  "type": "module",
+  "exports": "./src/index.ts"
+}
