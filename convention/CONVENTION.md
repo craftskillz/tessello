@@ -41,7 +41,7 @@ weather/
 - To be installed from a file or a URL, the package MUST be distributed as a single `.zip` archive whose root contains `manifest.json` (not a nested folder).
 - The uncompressed package MUST NOT exceed **10 MB**.
 - All paths in the package MUST be relative, use `/` as separator, and MUST NOT contain `..` or start with `/`.
-- Entry pages MUST reference their resources (scripts, styles, images) with **relative URLs**. A Module MAY also load resources from absolute `https://` URLs.
+- Entry pages MUST reference their resources (scripts, styles, images) with **relative URLs**. A Module MAY also load resources from absolute `https://` URLs, provided their origin is declared in its network Permissions (§3.1).
 
 ## 3. Manifest
 
@@ -61,6 +61,9 @@ weather/
   "widget": {
     "entry": "widget/index.html",
     "size": "M"
+  },
+  "permissions": {
+    "network": ["https://api.open-meteo.com"]
   }
 }
 ```
@@ -77,12 +80,37 @@ weather/
 | `widget` | no | Present only if the Module provides a Widget. |
 | `widget.entry` | if `widget` | Path to the Widget's HTML entry page. |
 | `widget.size` | if `widget` | One of `"S"`, `"M"`, `"L"` (see §7.1). |
+| `permissions` | no | The Module's Permissions (§3.1). Absent means no Permission at all. |
 
 Rules:
 
 - Every path in the Manifest MUST point to a file that exists in the package.
 - The `id` MUST stay the same across all versions of a Module. **Changing the `id` creates a different Module**: the Host will not treat it as an update, and the data stored by the old Module is not carried over.
 - A Host MUST ignore unknown top-level fields (they may be added by future minor revisions of this Convention). The Validator reports them as warnings.
+
+### 3.1 Permissions
+
+A **Permission** is an access a Module needs beyond its own package and the Host API. Every Permission MUST be declared in `permissions`; the Host shows them to the User **before** activating the Module and **blocks everything that is not declared**. A Module without `permissions` cannot reach the network at all.
+
+```json
+"permissions": {
+  "network": ["https://api.datadoghq.com", "https://*.grafana.net", "wss://stream.example.com"],
+  "localNetwork": ["http://localhost:9090", "http://192.168.1.20:3000"]
+}
+```
+
+| Permission | Grants | Entries |
+|---|---|---|
+| `network` | Requests (`fetch`, `XMLHttpRequest`, `WebSocket`, `EventSource`) **and** remote resources (scripts, styles, images, fonts, media) from these public origins. | `https://` or `wss://` origins. The host MAY start with `*.` to match every subdomain (`*.grafana.net` matches `eu.grafana.net`, not `grafana.net`). Loopback and private addresses are not allowed here. |
+| `localNetwork` | The same, towards the User's machine or local network. **Sensitive**: highlighted to the User. | `http://`, `https://`, `ws://` or `wss://` origins whose host is `localhost`, a loopback address (`127.0.0.1`, `[::1]`), a private IPv4 address (`10.x`, `172.16–31.x`, `192.168.x`) or a `.local` name. No wildcard. |
+
+Rules for every entry:
+
+- An entry is an **origin**: scheme, host and optional port, with no path, query or trailing `/`. Without a port, only the scheme's default port is allowed.
+- An `https://` entry also allows `wss://` on the same host and port; an `http://` entry also allows `ws://`.
+- Unknown Permission names are an error: a Host cannot grant what it does not know.
+
+Browsers still apply their own rules on top of the Permissions: an API MUST accept cross-origin requests (CORS) from origin `null`, and a browser MAY ask the User before letting a page reach the local network. A future, optional **Bridge** (a local program run by the User) will lift these limits and add further Permissions, such as running declared commands; it is not part of Convention 1.
 
 ## 4. Runtime environment
 
@@ -93,14 +121,15 @@ A Module CAN rely on:
 - running JavaScript, including ES modules and Web Workers;
 - HTML forms;
 - opening links in a new tab (`<a href="https://…" target="_blank">`);
-- network requests (`fetch`, `WebSocket`) to any `https://` / `wss://` endpoint, subject to that endpoint's CORS policy.
+- network requests and remote resources from the origins declared in its Permissions (§3.1), subject to each endpoint's CORS policy.
 
 A Module MUST NOT rely on:
 
 - `localStorage`, `sessionStorage`, IndexedDB or cookies — they are unavailable in an opaque origin. Use the Host storage (§6.1);
 - accessing or navigating the parent window (`window.top`, `window.parent.document`, …);
 - `alert`, `confirm`, `prompt`;
-- credentials-based requests (cookies sent to third-party APIs): requests come from origin `null`.
+- credentials-based requests (cookies sent to third-party APIs): requests come from origin `null`;
+- any network access to an origin not declared in its Permissions: the Host blocks it.
 
 The Host MAY unload a View or Widget at any time (for instance when the User navigates away). A Module MUST persist anything it wants to keep through the Host storage as soon as it changes, and MUST NOT expect a warning before being unloaded.
 
@@ -278,10 +307,10 @@ A View fills the Host's main area, outside the Launcher. It MUST adapt to its if
 
 These Host behaviors are listed here because Creators must take them into account.
 
-- **Install**: from a `.zip` file, from a URL pointing to a `.zip` file, or with the CLI (`npx tessello install <path-or-url>`). The Host runs the Validator first and refuses a non-compliant Module.
-- **Update**: installing a package whose `id` is already installed replaces the installed Module and **keeps its storage**. A Module MUST therefore read the data written by its previous versions (or migrate it).
+- **Install**: from a `.zip` file, from a URL pointing to a `.zip` file, or with the CLI (`npx tessello install <path-or-url>`). The Host runs the Validator first and refuses a non-compliant Module. It then lists the Module's Permissions in plain language, sensitive ones highlighted, and installs the Module only if the User accepts **all** of them; there is no partial grant.
+- **Update**: installing a package whose `id` is already installed replaces the installed Module and **keeps its storage**. A Module MUST therefore read the data written by its previous versions (or migrate it). If the new version declares Permissions the installed one did not have, the Host shows only the added ones and asks the User again; if the User declines, the update is cancelled and the installed version stays in place.
 - **Same `id`, different Creator**: the Host cannot tell an update from an unrelated Module that reuses an `id`. It always treats a known `id` as an update, and before replacing anything it shows the User the installed and incoming name and version, and asks for confirmation. Creators MUST therefore name their Modules under their own namespace.
-- **Uninstall**: removes the Module **and** its storage, after the User confirms.
+- **Uninstall**: removes the Module **and** its storage, after the User confirms. Uninstalling is the only way to withdraw a Permission.
 
 ## 9. Validation
 
@@ -300,6 +329,8 @@ Errors:
 7. `convention` is not a version supported by the Validator (`manifest/unsupported-convention`).
 8. A path in the Manifest is absolute or contains `..` (`manifest/unsafe-path`), points to a missing file (`manifest/file-not-found`), or an entry is not an `.html` page (`manifest/entry-not-html`).
 9. The icon is not `.svg` or `.png` (`icon/invalid-format`), or a PNG icon is unreadable (`icon/invalid-png`), not square (`icon/not-square`) or smaller than 256×256 px (`icon/too-small`).
+10. `permissions` is not an object, a Permission is not an array of strings, or an entry is not a valid origin for its Permission (`permissions/invalid`).
+11. `permissions` contains an unknown Permission (`permissions/unknown`).
 
 Warnings (the package stays installable):
 
@@ -307,6 +338,7 @@ Warnings (the package stays installable):
 2. An HTML page references a resource with an absolute local path (`/app.js`) instead of a relative one (`source/absolute-path`).
 3. An HTML page or script uses an API unavailable in the sandbox: `localStorage`, `sessionStorage`, `indexedDB`, `document.cookie`, `window.top`, `alert`, `confirm`, `prompt` (`sandbox/unavailable-api`).
 4. No source appears to send the `ready` request (`lifecycle/no-ready`).
+5. A source loads or calls an absolute URL whose origin is not covered by the Permissions; the Host will block it (`permissions/undeclared-origin`).
 
 Warnings come from a static scan of `.html`, `.htm`, `.js` and `.mjs` files and are best effort: they can miss a problem in minified code, or flag a harmless mention.
 
@@ -345,5 +377,5 @@ These limits are deliberately conservative. They MAY be **raised** in a minor re
 
 ## 12. Versioning of this Convention
 
-- Adding optional Manifest fields, request types or event types, or **raising a limit** (§11), is a **minor revision**: it keeps `convention: 1`, and existing Modules keep working (Modules ignore unknown events, Hosts ignore unknown Manifest fields).
+- Adding optional Manifest fields, request types, event types or Permissions, or **raising a limit** (§11), is a **minor revision**: it keeps `convention: 1`, and existing Modules keep working (Modules ignore unknown events, Hosts ignore unknown Manifest fields).
 - Any change that could break an existing Module (removing or renaming a field, a message type or a capability, tightening a limit) requires a new Convention version (`convention: 2`). A Host states which Convention versions it supports and refuses the others with a clear message.

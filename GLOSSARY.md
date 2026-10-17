@@ -34,6 +34,14 @@ _Avoid_: Scope, organisation, compte
 Outil qui vérifie qu'un Module respecte la Convention, utilisé à la création, à l'installation et à la publication.
 _Avoid_: Linter, checker, vérificateur
 
+**Permission** (*Permission*):
+Un accès dont un Module a besoin au-delà de son propre contenu (par exemple joindre une API), déclaré dans son Manifeste et accepté par l'Utilisateur avant l'activation.
+_Avoid_: Droit, autorisation, scope, capacité
+
+**Pont** (*Bridge*):
+Programme local et optionnel, lancé par l'Utilisateur sur sa machine, qui permet à l'Hôte de faire ce qu'un navigateur ne peut pas faire seul, comme exécuter une commande déclarée.
+_Avoid_: Agent, daemon, companion, relais
+
 **Vue** (*View*):
 La présentation principale d'un Module, affichée en plein écran dans l'Hôte.
 _Avoid_: Page, écran, mini-app

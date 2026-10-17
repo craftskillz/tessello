@@ -209,7 +209,7 @@ describe("package size", () => {
 
 describe("warnings (the Module stays installable)", () => {
   test("unknown Manifest field", () => {
-    const report = validatePackage(validModule({ permissions: [] }));
+    const report = validatePackage(validModule({ homepage: "https://example.com" }));
     assert.equal(report.valid, true);
     assert.deepEqual(codes(report, "warning"), ["manifest/unknown-field"]);
   });

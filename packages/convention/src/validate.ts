@@ -1,5 +1,6 @@
 import { unzipSync } from "fflate";
 import { LIMITS, SUPPORTED_CONVENTIONS, WIDGET_SIZES } from "./limits.ts";
+import { invalidEntryReason, isCovered, PERMISSION_NAMES, type Permissions } from "./permissions.ts";
 import { pngSize } from "./png.ts";
 
 /** A Module package in memory: relative path → file content. */
@@ -25,6 +26,7 @@ export interface Manifest {
   icon: string;
   view: { entry: string };
   widget?: { entry: string; size: "S" | "M" | "L" };
+  permissions?: Permissions;
 }
 
 export interface ValidationReport {
@@ -39,9 +41,17 @@ const MANIFEST = "manifest.json";
 const ID_PATTERN = /^@[a-z0-9][a-z0-9-]{0,38}\/[a-z0-9][a-z0-9-]{0,63}$/;
 const SEMVER_PATTERN =
   /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?$/;
-const KNOWN_FIELDS = new Set(["convention", "id", "name", "version", "description", "icon", "view", "widget"]);
+const KNOWN_FIELDS = new Set(["convention", "id", "name", "version", "description", "icon", "view", "widget", "permissions"]);
 const TEXT_EXTENSIONS = [".html", ".htm", ".js", ".mjs"];
 const HTML_EXTENSIONS = [".html", ".htm"];
+
+// Absolute URLs a source loads or calls (best effort): src attributes, <link href>, fetch/WebSocket/EventSource/import, static imports.
+const REMOTE_URL_PATTERNS = [
+  /\bsrc\s*=\s*["']((?:https?|wss?):\/\/[^"']+)/gi,
+  /<link\b[^>]*\bhref\s*=\s*["']((?:https?):\/\/[^"']+)/gi,
+  /\b(?:fetch|WebSocket|EventSource|import)\s*\(\s*["'`]((?:https?|wss?):\/\/[^"'`]+)/g,
+  /\bfrom\s*["']((?:https?):\/\/[^"']+)/g,
+];
 
 // APIs a sandboxed Module cannot use (CONVENTION.md §4).
 const SANDBOX_APIS: { name: string; pattern: RegExp; hint: string }[] = [
@@ -170,9 +180,34 @@ function checkManifest(m: Record<string, unknown>, files: PackageFiles, issues: 
     }
   }
 
+  if (m.permissions !== undefined) checkPermissions(m.permissions, issues);
+
   for (const key of Object.keys(m)) {
     if (!KNOWN_FIELDS.has(key)) {
       issues.push(warning("manifest/unknown-field", `${field(key)} is not defined by the Convention and will be ignored.`, MANIFEST));
+    }
+  }
+}
+
+function checkPermissions(permissions: unknown, issues: Issue[]): void {
+  if (!isObject(permissions)) {
+    issues.push(error("permissions/invalid", `manifest.json: "permissions" must be an object, got ${show(permissions)}.`, MANIFEST));
+    return;
+  }
+  for (const [name, entries] of Object.entries(permissions)) {
+    if (!PERMISSION_NAMES.includes(name)) {
+      issues.push(
+        error("permissions/unknown", `manifest.json: unknown Permission "${name}"; known Permissions: ${PERMISSION_NAMES.join(", ")}.`, MANIFEST),
+      );
+      continue;
+    }
+    if (!Array.isArray(entries) || !entries.every((entry) => typeof entry === "string")) {
+      issues.push(error("permissions/invalid", `manifest.json: "permissions.${name}" must be an array of strings.`, MANIFEST));
+      continue;
+    }
+    for (const entry of entries as string[]) {
+      const reason = invalidEntryReason(name, entry);
+      if (reason) issues.push(error("permissions/invalid", `manifest.json: "permissions.${name}" entry "${entry}" ${reason}.`, MANIFEST));
     }
   }
 }
@@ -249,6 +284,7 @@ function checkReferencedFile(fieldName: string, path: string, files: PackageFile
 function checkSources(m: Record<string, unknown>, files: PackageFiles, issues: Issue[]): void {
   const decoder = new TextDecoder();
   let sendsReady = false;
+  const declared = declaredOrigins(m.permissions);
 
   for (const [path, bytes] of files) {
     if (!hasExtension(path, TEXT_EXTENSIONS)) continue;
@@ -264,6 +300,15 @@ function checkSources(m: Record<string, unknown>, files: PackageFiles, issues: I
         issues.push(warning("sandbox/unavailable-api", `${path} uses ${api.name}, which is unavailable in the sandbox; ${api.hint}.`, path));
       }
     }
+    for (const origin of undeclaredOrigins(source, declared)) {
+      issues.push(
+        warning(
+          "permissions/undeclared-origin",
+          `${path} reaches ${origin}, which is not declared in "permissions"; the Host will block it. Add it to "permissions.network" (or "permissions.localNetwork" for a local address).`,
+          path,
+        ),
+      );
+    }
     if (/["'`]ready["'`]|@tessello\/sdk/.test(source)) sendsReady = true;
   }
 
@@ -275,6 +320,33 @@ function checkSources(m: Record<string, unknown>, files: PackageFiles, issues: I
       ),
     );
   }
+}
+
+/** Every well-formed entry of the known Permissions; invalid ones are reported elsewhere. */
+function declaredOrigins(permissions: unknown): string[] {
+  if (!isObject(permissions)) return [];
+  return PERMISSION_NAMES.flatMap((name) => {
+    const entries = permissions[name];
+    return Array.isArray(entries) ? entries.filter((entry): entry is string => typeof entry === "string") : [];
+  });
+}
+
+/** Origins of the absolute URLs a source loads or calls that no declared entry covers, each reported once. */
+function undeclaredOrigins(source: string, declared: string[]): string[] {
+  const origins = new Set<string>();
+  for (const pattern of REMOTE_URL_PATTERNS) {
+    for (const match of source.matchAll(pattern)) {
+      const url = match[1]!;
+      if (url.includes("${")) continue; // template literal: host unknown statically
+      if (isCovered(url, declared)) continue;
+      try {
+        origins.add(new URL(url).origin);
+      } catch {
+        // Not a parsable URL: nothing reliable to report.
+      }
+    }
+  }
+  return [...origins];
 }
 
 function missingManifestMessage(files: PackageFiles): string {
