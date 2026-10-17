@@ -6,11 +6,45 @@ Spec parente : `.scratch/tessello-v1/spec.md`. Vocabulaire : `GLOSSARY.md`. Cont
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] Un prototype charge dans une iframe sandbox (sans `allow-same-origin`) une page et ses ressources relatives provenant d'un stockage local du navigateur.
-- [ ] Dans ce prototype, une requête et une ressource distante vers une origine déclarée réussissent, et vers une origine non déclarée elles sont bloquées par le navigateur.
-- [ ] Les fuites résiduelles connues (ouverture d'un lien dans un nouvel onglet, WebRTC) sont vérifiées et leur statut est noté.
-- [ ] Le comportement est vérifié au moins sur Chrome et Firefox ; Safari est vérifié ou signalé comme non testé.
-- [ ] La solution retenue, les pistes écartées et leurs raisons sont consignées dans un nouvel ADR, avec les conséquences pour l'hébergement sur Cloudflare Pages (en-têtes, domaines, coût).
-- [ ] Une note indique ce que le ticket 04 doit reprendre du prototype.
+- [x] Un prototype charge dans une iframe sandbox (sans `allow-same-origin`) une page et ses ressources relatives provenant d'un stockage local du navigateur.
+- [x] Dans ce prototype, une requête et une ressource distante vers une origine déclarée réussissent, et vers une origine non déclarée elles sont bloquées par le navigateur.
+- [x] Les fuites résiduelles connues (ouverture d'un lien dans un nouvel onglet, WebRTC) sont vérifiées et leur statut est noté.
+- [x] Le comportement est vérifié au moins sur Chrome et Firefox ; Safari est vérifié ou signalé comme non testé.
+- [x] La solution retenue, les pistes écartées et leurs raisons sont consignées dans un nouvel ADR, avec les conséquences pour l'hébergement sur Cloudflare Pages (en-têtes, domaines, coût).
+- [x] Une note indique ce que le ticket 04 doit reprendre du prototype.
+
+## Comments
+
+### Réponse (2026-10-17)
+
+**Question tranchée :** comment l'Hôte sert-il les fichiers locaux d'un Module à une iframe sandbox d'origine opaque, en bloquant réellement le réseau non déclaré ?
+
+**Verdict :** ni service worker, ni origine dédiée, contrairement à ce que supposait le ticket, qui attendait que l'une des deux pistes l'emporte. Les navigateurs ne font jamais passer par un service worker une iframe sandbox sans `allow-same-origin`, ni les requêtes d'un document opaque. Le constat est le même dans Chromium, Chrome, Firefox et WebKit. L'Hôte construit donc lui-même un document `srcdoc` autonome : CSP en `<meta>` en tête, fichiers locaux en URL `data:`, et un petit runtime pour `fetch`, XHR, Workers, URL posées à l'exécution et imports ES (import map). Décision et conséquences pour Cloudflare Pages : `docs/adr/0005-vues-et-widgets-construits-en-srcdoc-autonome.md`.
+
+**Prototype (source primaire) :** branche `prototype/01-iframe-sandbox`, dossier `prototypes/01-iframe-sandbox/` (`README.md`, `results-*.json`). Lancement : `npm install && node run.mjs`.
+
+**Navigateurs :** Chromium 143, Chrome 155, Firefox 144 (Gecko de Playwright) et WebKit 26 (Playwright) sont vérifiés. **Safari n'est pas testé** : WebKit en est l'approximation, à confirmer sur un vrai Safari.
+
+**Fuites résiduelles :** nouvel onglet et WebRTC fuient. WebRTC n'est pas observable dans le Firefox de Playwright, qui n'émet aucun paquet STUN même hors sandbox. La navigation de l'iframe est bloquée grâce à `frame-src 'none'` sur l'Hôte. Formulaire et prefetch sont bloqués.
+
+### Point à trancher
+
+`frame-src 'none'` sur l'Hôte bloque la navigation de l'iframe vers une origine non déclarée. Mais il empêche aussi un Module d'intégrer une iframe, même vers une origine déclarée, ce qui s'écarte de la Convention §4 (« remote resources from the origins declared in its Permissions »). Deux options : préciser la Convention en révision mineure, ou accepter cette fuite. Voir l'ADR 0005.
+
+### Ce que le ticket 04 doit reprendre du prototype
+
+- `public/inline.js` (`buildSrcdoc`) comme point de départ du montage d'une Vue ou d'un Widget, et `cspFor(…, { inline: true })` dans `public/module.js` pour la CSP. Les deux sont à réécrire avec des tests, pas à copier tels quels.
+- Le sandbox `allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox` (Convention §4), sans `allow-same-origin`.
+- L'en-tête de l'Hôte `Content-Security-Policy: frame-src 'none'`, et aucune restriction des directives de chargement sur l'Hôte, puisque le `srcdoc` hérite de sa CSP. À reporter dans `_headers` (ticket 12).
+- Ce que le prototype ne couvre pas et que le ticket 04 doit traiter :
+  - fichiers binaires (PNG, polices), car le prototype n'encode que du texte ;
+  - réécriture des imports ES avec un vrai lexer (par exemple `es-module-lexer`) au lieu de l'expression régulière actuelle, qui ignore `export … from` et ne distingue pas les commentaires ;
+  - `import.meta.url` et `new URL("x", import.meta.url)`, qui pointent vers une URL `data:` ;
+  - `srcset`, `<source>` et les `url()` posées en JS ;
+  - dans Firefox, une feuille de style intégrée en `data:` s'applique parfois après `load` : envisager de l'intégrer en `<style>` plutôt qu'en `<link href="data:…">` ;
+  - un `import()` dont le chemin relatif est calculé à l'exécution, qui ne passe pas.
+- La taille du document, avec un paquet de 10 Mo encodé en base64 pour chaque Vue ou Widget ouverts : la mesurer. Si besoin, transmettre les gros fichiers par `postMessage` et en faire des URL `blob:` créées dans l'iframe.
+- Le protocole : l'origine du message est `"null"`, l'Hôte doit donc identifier l'iframe par `event.source === iframe.contentWindow` (Convention §5).
+- Pour le test Playwright de blocage effectif (point d'entrée D), le schéma de `serve.mjs` : des serveurs qui consignent ce qui les atteint, pour prouver qu'une requête bloquée n'a jamais touché le réseau.
