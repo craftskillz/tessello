@@ -25,7 +25,7 @@ Spec parente : `.scratch/tessello-v1/spec.md`. Vocabulaire : `GLOSSARY.md`. Cont
 
 **Prototype (source primaire) :** branche `prototype/01-iframe-sandbox`, dossier `prototypes/01-iframe-sandbox/` (`README.md`, `results-*.json`). Lancement : `npm install && node run.mjs`.
 
-**Navigateurs :** Chromium 143, Chrome 155, Firefox 144 (Gecko de Playwright) et WebKit 26 (Playwright) sont vérifiés. **Safari n'est pas testé** : WebKit en est l'approximation, à confirmer sur un vrai Safari.
+**Navigateurs :** Chromium 143, Chrome 155, Firefox 144 (Gecko de Playwright) et WebKit 26 (Playwright) sont vérifiés. **Safari 26.6.2** (macOS 26.6.2) est vérifié à la main pour l'approche retenue (2026-10-18). Tous les contrôles de `probe()` passent, et aucune requête vers l'origine non déclarée n'atteint le serveur. `selfnav`, `form` et `prefetch` sont bloqués, et WebRTC fuit (paquets STUN). Le test du nouvel onglet n'a pas été fait dans Safari, dont le bloqueur arrête une ouverture qui ne vient pas d'un clic.
 
 **Fuites résiduelles :** nouvel onglet et WebRTC fuient. WebRTC n'est pas observable dans le Firefox de Playwright, qui n'émet aucun paquet STUN même hors sandbox. La navigation de l'iframe est bloquée grâce à `frame-src 'none'` sur l'Hôte. Formulaire et prefetch sont bloqués.
 
