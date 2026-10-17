@@ -1,0 +1,12 @@
+{
+  "name": "tessello",
+  "version": "0.1.0",
+  "description": "Tessello command-line tool.",
+  "type": "module",
+  "bin": {
+    "tessello": "./src/cli.ts"
+  },
+  "dependencies": {
+    "@tessello/convention": "0.1.0"
+  }
+}

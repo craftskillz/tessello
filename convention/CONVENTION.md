@@ -287,21 +287,30 @@ These Host behaviors are listed here because Creators must take them into accoun
 
 The Validator checks a package against this Convention. It runs when the Creator calls `npx tessello validate <path>`, when the Host installs a Module, and when the marketplace receives one. A package is installable only if the Validator reports **no error**.
 
+Every issue has a stable code, shown in brackets in the Validator's output.
+
 Errors:
 
-1. `manifest.json` missing at the package root, or not valid JSON.
-2. A required Manifest field is missing, or has the wrong type or format (§3).
-3. `convention` is not a version supported by the Validator.
-4. A path in the Manifest is absolute, contains `..`, or points to a missing file.
-5. The icon is not `.svg` or `.png`, or a PNG icon is not square or smaller than 256×256 px.
-6. The package exceeds 10 MB.
+1. The archive is not a readable `.zip` (`package/invalid-zip`).
+2. The package exceeds 10 MB uncompressed (`package/too-large`).
+3. A file of the package has an absolute path or a path containing `..` (`package/unsafe-path`).
+4. `manifest.json` is missing at the package root (`manifest/missing`), or is not a valid JSON object (`manifest/invalid-json`).
+5. A required Manifest field is missing (`manifest/field-required`) or has the wrong type (`manifest/invalid-type`).
+6. A Manifest field has an invalid value (`manifest/invalid-convention`, `manifest/invalid-id`, `manifest/invalid-name`, `manifest/invalid-version`, `manifest/invalid-description`, `manifest/invalid-widget-size`).
+7. `convention` is not a version supported by the Validator (`manifest/unsupported-convention`).
+8. A path in the Manifest is absolute or contains `..` (`manifest/unsafe-path`), points to a missing file (`manifest/file-not-found`), or an entry is not an `.html` page (`manifest/entry-not-html`).
+9. The icon is not `.svg` or `.png` (`icon/invalid-format`), or a PNG icon is unreadable (`icon/invalid-png`), not square (`icon/not-square`) or smaller than 256×256 px (`icon/too-small`).
 
 Warnings (the package stays installable):
 
-1. Unknown top-level Manifest field.
-2. An entry page references a resource with an absolute local path (`/app.js`) instead of a relative one.
-3. An entry page or script uses an API unavailable in the sandbox (`localStorage`, `sessionStorage`, `indexedDB`, `document.cookie`, `alert`, `confirm`, `prompt`, `window.top`).
-4. An entry page never sends the `ready` request (detected statically, best effort).
+1. Unknown top-level Manifest field (`manifest/unknown-field`).
+2. An HTML page references a resource with an absolute local path (`/app.js`) instead of a relative one (`source/absolute-path`).
+3. An HTML page or script uses an API unavailable in the sandbox: `localStorage`, `sessionStorage`, `indexedDB`, `document.cookie`, `window.top`, `alert`, `confirm`, `prompt` (`sandbox/unavailable-api`).
+4. No source appears to send the `ready` request (`lifecycle/no-ready`).
+
+Warnings come from a static scan of `.html`, `.htm`, `.js` and `.mjs` files and are best effort: they can miss a problem in minified code, or flag a harmless mention.
+
+macOS archive metadata (`__MACOSX/`, `.DS_Store`) is ignored, both in archives and in folders.
 
 ## 10. SDK (non-normative)
 

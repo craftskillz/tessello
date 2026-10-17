@@ -1,0 +1,10 @@
+{
+  "name": "@tessello/convention",
+  "version": "0.1.0",
+  "description": "Tessello Module Convention: limits and Validator.",
+  "type": "module",
+  "exports": "./src/index.ts",
+  "dependencies": {
+    "fflate": "^0.8.2"
+  }
+}
