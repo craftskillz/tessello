@@ -361,6 +361,7 @@ const cities = await host.storage.get("cities");
 host.onThemeChange((theme) => applyTheme(theme));
 host.onVisibilityChange((visible) => (visible ? resume() : pause()));
 await host.openView({ city: "Paris" }); // Widget only
+host.onNavigationParams((params) => show(params)); // View only, when opened again while loaded
 ```
 
 ## 11. Limits

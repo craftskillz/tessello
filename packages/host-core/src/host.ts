@@ -1,5 +1,7 @@
 // The Host side of the message protocol (CONVENTION.md §5, §6), one surface (View or Widget) at a time.
 
+import { paramsOf } from "./navigation.ts";
+import { payloadObject } from "./payload.ts";
 import type { Persistence } from "./persistence.ts";
 import { ProtocolError } from "./protocol-error.ts";
 import { createStorage } from "./storage.ts";
@@ -32,11 +34,24 @@ export interface HostOptions {
   /** BCP 47 tag of the interface language. */
   locale: string;
   theme: Theme;
+  /**
+   * Called when a Widget asks to open its Module's View (CONVENTION.md §6.3). The interface shows that View.
+   * If a View of this Module is already mounted, it has already been given the params; otherwise mount one with them.
+   */
+  openView(request: { module: ModuleRef; params: Record<string, string> }): void;
+}
+
+/** What the Host's interface keeps to drive one mounted View or Widget. */
+export interface MountedSurface {
+  /** Tells the Module it is shown or hidden; a Module starts visible after its handshake (CONVENTION.md §6.4). */
+  setVisible(visible: boolean): void;
+  /** Stops answering this iframe and sending it events: call it when the interface removes the iframe. */
+  unmount(): void;
 }
 
 export interface Host {
   /** Starts answering the messages of an iframe the Host has just created. */
-  mountSurface(options: SurfaceOptions): void;
+  mountSurface(options: SurfaceOptions): MountedSurface;
   /** Handles a message received by the Host's window (wire it to the "message" event). */
   receive(event: { source: unknown; data: unknown }): void;
   /** Changes the theme given to every surface, and sends `theme.changed` to those past their handshake. */
@@ -52,6 +67,7 @@ interface Request {
 interface Surface extends SurfaceOptions {
   /** True once the Host has answered `ready`: until then, no event and `not_ready` for every other request. */
   ready: boolean;
+  visible: boolean;
 }
 
 export function createHost(options: HostOptions): Host {
@@ -67,35 +83,77 @@ export function createHost(options: HostOptions): Host {
     ...(surface.surface === "view" ? { params: surface.params ?? {} } : {}),
   });
 
+  const handlers: Record<string, (surface: Surface, payload: unknown) => Promise<unknown>> = {
+    ...Object.fromEntries(
+      Object.entries(storage.handlers).map(([type, handle]) => [
+        type,
+        (surface: Surface, payload: unknown) => handle(surface.module.id, payload),
+      ]),
+    ),
+    "navigation.openView": async (surface, payload) => {
+      if (surface.surface !== "widget") throw new ProtocolError("not_allowed", "Only a Widget can open its Module's View.");
+      const params = paramsOf(payload);
+      for (const view of surfaces.values()) {
+        if (view.surface !== "view" || view.module.id !== surface.module.id) continue;
+        if (view.ready) send(view, { type: "navigation.params", payload: { params } });
+        else view.params = params;
+      }
+      options.openView({ module: { id: surface.module.id, version: surface.module.version }, params });
+      return {};
+    },
+  };
+
   const send = (surface: Surface, message: object) => surface.frame.postMessage({ tessello: 1, ...message }, "*");
+  const sendVisibility = (surface: Surface) => send(surface, { type: "visibility", payload: { visible: surface.visible } });
   const succeed = (surface: Surface, request: Request, result: unknown) =>
     send(surface, { type: "response", id: request.id, ok: true, result });
   const fail = (surface: Surface, request: Request, code: string, message: string) =>
     send(surface, { type: "response", id: request.id, ok: false, error: { code, message } });
 
   return {
-    mountSurface(surface) {
-      surfaces.set(surface.frame, { ...surface, ready: false });
+    mountSurface(surfaceOptions) {
+      const surface: Surface = { ...surfaceOptions, ready: false, visible: true };
+      surfaces.set(surface.frame, surface);
+      return {
+        setVisible(visible) {
+          if (visible === surface.visible) return;
+          surface.visible = visible;
+          if (surface.ready) sendVisibility(surface);
+        },
+        unmount() {
+          surfaces.delete(surface.frame);
+        },
+      };
     },
     receive({ source, data }) {
       const surface = surfaces.get(source);
       if (!surface || !isRequest(data)) return;
       const request = data;
       if (request.type === "ready") {
+        try {
+          payloadObject(request.payload);
+        } catch (error) {
+          if (!(error instanceof ProtocolError)) throw error;
+          fail(surface, request, error.code, error.message);
+          return;
+        }
         succeed(surface, request, contextOf(surface));
         surface.ready = true;
+        // The Module believes it is visible: correct it if it was hidden before its handshake.
+        if (!surface.visible) sendVisibility(surface);
         return;
       }
       if (!surface.ready) {
         fail(surface, request, "not_ready", `Send "ready" before "${request.type}".`);
         return;
       }
-      const handle = storage.handlers[request.type];
+      // Own keys only: a type such as "toString" must not find a property inherited from Object.prototype.
+      const handle = Object.hasOwn(handlers, request.type) ? handlers[request.type] : undefined;
       if (!handle) {
         fail(surface, request, "unknown_type", `The Host does not know the request type "${request.type}".`);
         return;
       }
-      handle(surface.module.id, request.payload).then(
+      handle(surface, request.payload).then(
         (result) => succeed(surface, request, result),
         (error: unknown) =>
           error instanceof ProtocolError

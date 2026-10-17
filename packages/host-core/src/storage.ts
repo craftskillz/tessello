@@ -1,22 +1,14 @@
 // The storage of each Module (CONVENTION.md §6.1): requests, limits and quotas.
 
 import { LIMITS } from "@tessello/convention";
+import { byteLength, invalid, payloadObject } from "./payload.ts";
 import type { Persistence } from "./persistence.ts";
 import { ProtocolError } from "./protocol-error.ts";
 
 type Handler = (moduleId: string, payload: unknown) => Promise<unknown>;
 
-const byteLength = (text: string) => new TextEncoder().encode(text).byteLength;
 // What an entry costs against the total of its Module.
 const entryBytes = (key: string, serialized: string) => byteLength(key) + byteLength(serialized);
-
-const invalid = (message: string) => new ProtocolError("invalid_payload", message);
-
-function payloadObject(payload: unknown): Record<string, unknown> {
-  if (payload === undefined) return {};
-  if (typeof payload !== "object" || payload === null || Array.isArray(payload)) throw invalid("payload must be an object");
-  return payload as Record<string, unknown>;
-}
 
 function keyOf(payload: unknown): string {
   const { key } = payloadObject(payload);

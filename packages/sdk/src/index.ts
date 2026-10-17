@@ -54,6 +54,20 @@ export interface Storage {
 export interface ConnectedModule {
   context: Context;
   storage: Storage;
+  /** Calls `listener` with the new theme each time the Host's theme changes; returns a function that stops it. */
+  onThemeChange(listener: (theme: Theme) => void): () => void;
+  /**
+   * Calls `listener` each time the Module is hidden (`false`) or shown again (`true`); returns a function that stops it.
+   * A Module starts visible. A hidden Module should stop its timers, animations and polling.
+   */
+  onVisibilityChange(listener: (visible: boolean) => void): () => void;
+  /** Widget only: asks the Host to open this Module's View with `params` (CONVENTION.md §6.3). */
+  openView(params?: Record<string, string>): Promise<void>;
+  /**
+   * View only: calls `listener` with the params each time the View, already loaded, is opened again from the Widget;
+   * returns a function that stops it. A View opened while not loaded gets its params in `context.params` instead.
+   */
+  onNavigationParams(listener: (params: Record<string, string>) => void): () => void;
 }
 
 export interface ConnectOptions {
@@ -65,10 +79,17 @@ export interface ConnectOptions {
 export async function connect(options: ConnectOptions = {}): Promise<ConnectedModule> {
   const transport = options.transport ?? parentWindowTransport();
   const pending = new Map<string, { resolve: (result: any) => void; reject: (error: Error) => void }>();
+  // Event type → its listeners. Events of any other type are ignored (CONVENTION.md §5.3).
+  const listeners = new Map<string, Set<(payload: unknown) => void>>();
   let nextId = 0;
 
   transport.subscribe((data) => {
-    if (!isProtocolMessage(data) || data.type !== "response" || typeof data.id !== "string") return;
+    if (!isProtocolMessage(data)) return;
+    if (data.type !== "response") {
+      for (const listener of listeners.get(data.type) ?? []) listener(data.payload);
+      return;
+    }
+    if (typeof data.id !== "string") return;
     const request = pending.get(data.id);
     if (!request) return;
     pending.delete(data.id);
@@ -87,6 +108,18 @@ export async function connect(options: ConnectOptions = {}): Promise<ConnectedMo
       transport.send({ tessello: 1, type, id, payload });
     });
 
+  // `read` turns the event's payload into what the listener gets, or `undefined` to ignore an event it cannot read.
+  const on = <T>(type: string, read: (payload: unknown) => T | undefined, listener: (value: T) => void) => {
+    const onEvent = (payload: unknown) => {
+      const value = read(payload);
+      if (value !== undefined) listener(value);
+    };
+    let ofType = listeners.get(type);
+    if (!ofType) listeners.set(type, (ofType = new Set()));
+    ofType.add(onEvent);
+    return () => void ofType.delete(onEvent);
+  };
+
   const context: Context = await request("ready");
   return {
     context,
@@ -96,8 +129,28 @@ export async function connect(options: ConnectOptions = {}): Promise<ConnectedMo
       delete: async (key) => void (await request("storage.delete", { key })),
       keys: async () => (await request("storage.keys")).keys,
     },
+    onThemeChange: (listener) => on("theme.changed", readTheme, listener),
+    onVisibilityChange: (listener) => on("visibility", readVisible, listener),
+    openView: async (params = {}) => void (await request("navigation.openView", { params })),
+    onNavigationParams: (listener) => on("navigation.params", readParams, listener),
   };
 }
+
+const isObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const readTheme = (payload: unknown) =>
+  isObject(payload) && (payload.mode === "light" || payload.mode === "dark") && isObject(payload.colors)
+    ? (payload as unknown as Theme)
+    : undefined;
+
+const readVisible = (payload: unknown) =>
+  isObject(payload) && typeof payload.visible === "boolean" ? payload.visible : undefined;
+
+const readParams = (payload: unknown) =>
+  isObject(payload) && isObject(payload.params) && Object.values(payload.params).every((value) => typeof value === "string")
+    ? (payload.params as Record<string, string>)
+    : undefined;
 
 function isProtocolMessage(data: unknown): data is { tessello: 1; type: string; [field: string]: unknown } {
   return typeof data === "object" && data !== null && (data as { tessello?: unknown }).tessello === 1;

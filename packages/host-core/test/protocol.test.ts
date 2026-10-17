@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { LIMITS } from "@tessello/convention";
-import { connect, TesselloError } from "@tessello/sdk";
-import { createHost, createMemoryPersistence, type Persistence, type Theme } from "../src/index.ts";
+import { type ConnectedModule, connect, TesselloError } from "@tessello/sdk";
+import { createHost, createMemoryPersistence, type HostOptions, type Persistence, type Theme } from "../src/index.ts";
 import { mountFrame, settle, strangerFrame } from "./memory-channel.ts";
 
 const THEME: Theme = {
@@ -19,7 +19,8 @@ const THEME: Theme = {
 const WEATHER = { id: "@yassine/weather", version: "1.0.0" };
 const NOTES = { id: "@yassine/notes", version: "2.1.0" };
 
-const newHost = (persistence = createMemoryPersistence()) => createHost({ persistence, locale: "fr-FR", theme: THEME });
+const newHost = (persistence = createMemoryPersistence(), openView: HostOptions["openView"] = () => {}) =>
+  createHost({ persistence, locale: "fr-FR", theme: THEME, openView });
 
 // Answers after a delay, as IndexedDB does, so that concurrent requests can interleave.
 function slowPersistence(): Persistence {
@@ -114,6 +115,234 @@ describe("storage", () => {
   });
 });
 
+describe("theme", () => {
+  test("a Module follows every change of theme", async () => {
+    const host = newHost();
+    const module = await connect({ transport: mountFrame(host, { module: WEATHER, surface: "widget" }).transport });
+    const themes: unknown[] = [];
+    module.onThemeChange((theme) => themes.push(theme));
+    const light: Theme = { ...THEME, mode: "light", colors: { ...THEME.colors, background: "#ffffff", text: "#111111" } };
+    host.setTheme(light);
+    host.setTheme(THEME);
+    await settle();
+    assert.deepEqual(themes, [light, THEME]);
+  });
+
+  test("a Module can stop following the theme", async () => {
+    const host = newHost();
+    const module = await connect({ transport: mountFrame(host, { module: WEATHER, surface: "view" }).transport });
+    const themes: unknown[] = [];
+    const stop = module.onThemeChange((theme) => themes.push(theme));
+    stop();
+    host.setTheme({ ...THEME, mode: "light" });
+    await settle();
+    assert.deepEqual(themes, []);
+  });
+
+  test("a surface mounted after a change starts with the new theme", async () => {
+    const host = newHost();
+    const light: Theme = { ...THEME, mode: "light" };
+    host.setTheme(light);
+    const module = await connect({ transport: mountFrame(host, { module: WEATHER, surface: "view" }).transport });
+    assert.deepEqual(module.context.theme, light);
+  });
+});
+
+describe("visibility", () => {
+  test("a Module learns when it is hidden and shown again", async () => {
+    const host = newHost();
+    const frame = mountFrame(host, { module: WEATHER, surface: "widget" });
+    const module = await connect({ transport: frame.transport });
+    const changes: boolean[] = [];
+    module.onVisibilityChange((visible) => changes.push(visible));
+    frame.surface.setVisible(false);
+    frame.surface.setVisible(true);
+    await settle();
+    assert.deepEqual(changes, [false, true]);
+  });
+
+  test("a Module starts visible: the Host only tells it about a change", async () => {
+    const host = newHost();
+    const frame = mountFrame(host, { module: WEATHER, surface: "view" });
+    const module = await connect({ transport: frame.transport });
+    const changes: boolean[] = [];
+    module.onVisibilityChange((visible) => changes.push(visible));
+    frame.surface.setVisible(true);
+    frame.surface.setVisible(false);
+    frame.surface.setVisible(false);
+    await settle();
+    assert.deepEqual(changes, [false]);
+  });
+
+  test("a surface hidden before its handshake is told so right after it", async () => {
+    const host = newHost();
+    const frame = mountFrame(host, { module: WEATHER, surface: "widget" });
+    frame.surface.setVisible(false);
+    await settle();
+    assert.deepEqual(frame.received, []);
+
+    const module = await connect({ transport: frame.transport });
+    const changes: boolean[] = [];
+    module.onVisibilityChange((visible) => changes.push(visible));
+    await settle();
+    assert.deepEqual(changes, [false]);
+  });
+});
+
+describe("navigation", () => {
+  // A Host whose interface records each View it is asked to open.
+  const recordingHost = () => {
+    const opened: unknown[] = [];
+    const host = newHost(createMemoryPersistence(), (request) => opened.push(request));
+    return { host, opened };
+  };
+
+  test("a Widget asks the Host to open its Module's View with params", async () => {
+    const { host, opened } = recordingHost();
+    const widget = await connect({ transport: mountFrame(host, { module: WEATHER, surface: "widget" }).transport });
+    await widget.openView({ city: "Paris" });
+    await widget.openView();
+    assert.deepEqual(opened, [
+      { module: WEATHER, params: { city: "Paris" } },
+      { module: WEATHER, params: {} },
+    ]);
+  });
+
+  test("a View cannot ask to open a View", async () => {
+    const { host, opened } = recordingHost();
+    const view = await connect({ transport: mountFrame(host, { module: WEATHER, surface: "view" }).transport });
+    await assert.rejects(view.openView({ city: "Paris" }), (error: unknown) => {
+      assert.ok(error instanceof TesselloError);
+      assert.equal(error.code, "not_allowed");
+      return true;
+    });
+    assert.deepEqual(opened, []);
+  });
+
+  test("params larger than the Convention allows, once serialized, fail with invalid_payload", async () => {
+    const { host, opened } = recordingHost();
+    const widget = await connect({ transport: mountFrame(host, { module: WEATHER, surface: "widget" }).transport });
+    // {"q":"…"} takes 8 bytes around the value.
+    const serializedAs = (bytes: number) => ({ q: "x".repeat(bytes - 8) });
+    await widget.openView(serializedAs(LIMITS.openViewParamsBytes));
+    await assert.rejects(
+      widget.openView(serializedAs(LIMITS.openViewParamsBytes + 1)),
+      (error: unknown) => error instanceof TesselloError && error.code === "invalid_payload",
+    );
+    assert.equal(opened.length, 1);
+  });
+
+  const invalidOpenViewPayloads: unknown[] = [
+    "Paris",
+    { params: "city=Paris" },
+    { params: ["Paris"] },
+    { params: null },
+    { params: { city: 42 } },
+    { params: { city: { name: "Paris" } } },
+  ];
+  for (const payload of invalidOpenViewPayloads) {
+    test(`navigation.openView with payload ${JSON.stringify(payload)} fails with invalid_payload`, async () => {
+      const { host, opened } = recordingHost();
+      const frame = mountFrame(host, { module: WEATHER, surface: "widget" });
+      await frame.request("ready");
+      const response = await frame.request("navigation.openView", payload);
+      assert.equal(response.error?.code, "invalid_payload");
+      assert.deepEqual(opened, []);
+    });
+  }
+
+  test("a View that is not loaded receives the params in its context", async () => {
+    // The interface mounts the View it is asked to open, as the real Host does.
+    let host: ReturnType<typeof newHost>;
+    let opening: Promise<ConnectedModule> | undefined;
+    host = newHost(createMemoryPersistence(), ({ module, params }) => {
+      opening = connect({ transport: mountFrame(host, { module, surface: "view", params }).transport });
+    });
+    const widget = await connect({ transport: mountFrame(host, { module: WEATHER, surface: "widget" }).transport });
+    await widget.openView({ city: "Rabat" });
+    assert.deepEqual((await opening)?.context.params, { city: "Rabat" });
+  });
+
+  test("a View already loaded receives the params as an event", async () => {
+    const { host, opened } = recordingHost();
+    const view = await connect({ transport: mountFrame(host, { module: WEATHER, surface: "view", params: { city: "Paris" } }).transport });
+    const otherView = await connect({ transport: mountFrame(host, { module: NOTES, surface: "view" }).transport });
+    const received: unknown[] = [];
+    view.onNavigationParams((params) => received.push(["weather", params]));
+    otherView.onNavigationParams((params) => received.push(["notes", params]));
+
+    const widget = await connect({ transport: mountFrame(host, { module: WEATHER, surface: "widget" }).transport });
+    await widget.openView({ city: "Rabat" });
+    await widget.openView();
+    await settle();
+    assert.deepEqual(received, [["weather", { city: "Rabat" }], ["weather", {}]]);
+    assert.equal(opened.length, 2);
+  });
+
+  test("a View mounted but not past its handshake receives the latest params in its context", async () => {
+    const { host } = recordingHost();
+    const viewFrame = mountFrame(host, { module: WEATHER, surface: "view", params: { city: "Paris" } });
+    const widget = await connect({ transport: mountFrame(host, { module: WEATHER, surface: "widget" }).transport });
+    await widget.openView({ city: "Rabat" });
+
+    const view = await connect({ transport: viewFrame.transport });
+    assert.deepEqual(view.context.params, { city: "Rabat" });
+    await settle();
+    assert.deepEqual(viewFrame.received.map((message: any) => message.type), ["response"]);
+  });
+
+  test("a View that was unmounted receives nothing", async () => {
+    const { host } = recordingHost();
+    const viewFrame = mountFrame(host, { module: WEATHER, surface: "view" });
+    await connect({ transport: viewFrame.transport });
+    viewFrame.surface.unmount();
+
+    const widget = await connect({ transport: mountFrame(host, { module: WEATHER, surface: "widget" }).transport });
+    await widget.openView({ city: "Rabat" });
+    host.setTheme({ ...THEME, mode: "light" });
+    await settle();
+    assert.deepEqual(viewFrame.received.map((message: any) => message.type), ["response"]);
+  });
+
+  test("navigation.openView accepts a request without payload", async () => {
+    const { host, opened } = recordingHost();
+    const frame = mountFrame(host, { module: WEATHER, surface: "widget" });
+    await frame.request("ready");
+    assert.equal((await frame.request("navigation.openView")).ok, true);
+    assert.deepEqual(opened, [{ module: WEATHER, params: {} }]);
+  });
+});
+
+describe("events", () => {
+  test("the SDK ignores events of unknown type and events whose payload it cannot read", async () => {
+    const host = newHost();
+    const frame = mountFrame(host, { module: WEATHER, surface: "view" });
+    const module = await connect({ transport: frame.transport });
+    const seen: unknown[] = [];
+    module.onThemeChange((theme) => seen.push(theme));
+    module.onVisibilityChange((visible) => seen.push(visible));
+    module.onNavigationParams((params) => seen.push(params));
+    for (const message of [
+      { tessello: 1, type: "storage.changed", payload: { key: "cities" } },
+      { tessello: 1, type: "visibility" },
+      { tessello: 1, type: "visibility", payload: { visible: "no" } },
+      { tessello: 1, type: "navigation.params", payload: null },
+      { tessello: 1, type: "navigation.params", payload: { params: [] } },
+      { tessello: 1, type: "theme.changed", payload: "dark" },
+      { tessello: 1, type: "response", id: "unknown", ok: true, result: {} },
+    ]) {
+      frame.fromHost(message);
+    }
+    await settle();
+    assert.deepEqual(seen, []);
+
+    frame.surface.setVisible(false);
+    await settle();
+    assert.deepEqual(seen, [false]);
+    assert.equal(await module.storage.get("cities"), null);
+  });
+});
+
 describe("protocol errors", () => {
   const readyFrame = async () => {
     const frame = mountFrame(newHost(), { module: WEATHER, surface: "view" });
@@ -139,15 +368,24 @@ describe("protocol errors", () => {
     });
   }
 
+  test("ready with a payload that is not an object fails with invalid_payload", async () => {
+    const frame = mountFrame(newHost(), { module: WEATHER, surface: "view" });
+    assert.equal((await frame.request("ready", "now")).error?.code, "invalid_payload");
+    assert.equal((await frame.request("storage.keys")).error?.code, "not_ready");
+    assert.equal((await frame.request("ready")).ok, true);
+  });
+
   test("storage.keys accepts a request without payload", async () => {
     const response = await (await readyFrame()).request("storage.keys");
     assert.deepEqual(response.result, { keys: [] });
   });
 
-  test("an unknown request type fails with unknown_type", async () => {
-    const response = await (await readyFrame()).request("storage.clear", {});
-    assert.equal(response.error?.code, "unknown_type");
-  });
+  for (const type of ["storage.clear", "toString", "constructor", "__proto__"]) {
+    test(`the unknown request type "${type}" fails with unknown_type`, async () => {
+      const response = await (await readyFrame()).request(type, {});
+      assert.equal(response.error?.code, "unknown_type");
+    });
+  }
 
   test("reach the SDK as errors carrying their code", async () => {
     const module = await connect({ transport: mountFrame(newHost(), { module: WEATHER, surface: "view" }).transport });
