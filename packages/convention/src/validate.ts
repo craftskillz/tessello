@@ -60,6 +60,7 @@ const SANDBOX_APIS: { name: string; pattern: RegExp; hint: string }[] = [
   { name: "indexedDB", pattern: /\bindexedDB\b/, hint: "use the Host storage (storage.get / storage.set)" },
   { name: "document.cookie", pattern: /\bdocument\.cookie\b/, hint: "use the Host storage (storage.get / storage.set)" },
   { name: "window.top", pattern: /\bwindow\.top\b/, hint: "talk to the Host with postMessage only" },
+  { name: "an embedded frame", pattern: /<(?:iframe|frame|object|embed)\b/i, hint: "the Host blocks frames, even from a declared origin" },
   {
     name: "alert / confirm / prompt",
     pattern: /(?<![\w$.])(?:alert|confirm|prompt)\s*\(|\bwindow\.(?:alert|confirm|prompt)\s*\(/,

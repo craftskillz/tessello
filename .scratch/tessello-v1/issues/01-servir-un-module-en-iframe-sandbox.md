@@ -29,9 +29,9 @@ Spec parente : `.scratch/tessello-v1/spec.md`. Vocabulaire : `GLOSSARY.md`. Cont
 
 **Fuites résiduelles :** nouvel onglet et WebRTC fuient. WebRTC n'est pas observable dans le Firefox de Playwright, qui n'émet aucun paquet STUN même hors sandbox. La navigation de l'iframe est bloquée grâce à `frame-src 'none'` sur l'Hôte. Formulaire et prefetch sont bloqués.
 
-### Point à trancher
+### Point tranché (2026-10-18)
 
-`frame-src 'none'` sur l'Hôte bloque la navigation de l'iframe vers une origine non déclarée. Mais il empêche aussi un Module d'intégrer une iframe, même vers une origine déclarée, ce qui s'écarte de la Convention §4 (« remote resources from the origins declared in its Permissions »). Deux options : préciser la Convention en révision mineure, ou accepter cette fuite. Voir l'ADR 0005.
+`frame-src 'none'` sur l'Hôte empêchait un Module d'intégrer une iframe, même vers une origine déclarée, ce qui s'écartait de la Convention §4. Décision de l'Utilisateur : **préciser la Convention**. Le §4 énumère désormais les ressources distantes, et interdit d'intégrer une frame et de naviguer l'iframe vers une autre URL, y compris une autre page du paquet : une Vue ou un Widget est une page unique. Le routage se fait par `location.hash`, car `history.pushState` avec une URL lève une `SecurityError` en origine opaque (vérifié dans les trois moteurs). Le Validateur avertit d'une frame intégrée (`sandbox/unavailable-api`). Voir l'ADR 0005.
 
 ### Ce que le ticket 04 doit reprendre du prototype
 

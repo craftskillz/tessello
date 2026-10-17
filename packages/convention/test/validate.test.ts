@@ -227,6 +227,13 @@ describe("warnings (the Module stays installable)", () => {
     assert.equal(codes(report, "warning").filter((code) => code === "sandbox/unavailable-api").length, 3);
   });
 
+  test("embedding a frame, even from a declared origin", () => {
+    const view = `${READY_VIEW}<iframe src="https://maps.example.com/embed"></iframe>`;
+    const report = validatePackage(validModule({ permissions: { network: ["https://maps.example.com"] } }, { "view/index.html": view }));
+    assert.equal(report.valid, true);
+    assert.deepEqual(codes(report, "warning"), ["sandbox/unavailable-api"]);
+  });
+
   test("method calls named like dialogs are not flagged", () => {
     const report = validatePackage(validModule({}, { "view/app.js": `llm.prompt("hi"); ui.alert(); myconfirm();` }));
     assert.deepEqual(codes(report, "warning"), []);

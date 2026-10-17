@@ -121,12 +121,15 @@ A Module CAN rely on:
 - running JavaScript, including ES modules and Web Workers;
 - HTML forms;
 - opening links in a new tab (`<a href="https://…" target="_blank">`);
-- network requests and remote resources from the origins declared in its Permissions (§3.1), subject to each endpoint's CORS policy.
+- network requests (`fetch`, `XMLHttpRequest`, WebSocket, `EventSource`) and remote resources (scripts, styles, images, fonts, media) from the origins declared in its Permissions (§3.1), subject to each endpoint's CORS policy.
 
 A Module MUST NOT rely on:
 
 - `localStorage`, `sessionStorage`, IndexedDB or cookies — they are unavailable in an opaque origin. Use the Host storage (§6.1);
 - accessing or navigating the parent window (`window.top`, `window.parent.document`, …);
+- embedding frames (`<iframe>`, `<frame>`, `<object>`, `<embed>`), even from an origin declared in its Permissions: the Host blocks them;
+- navigating its own iframe to another URL, including another page of its package: each View and each Widget is a single page, so a Module navigates within that page by changing `location.hash` (hash-based routing);
+- changing the page URL with `history.pushState` or `history.replaceState`: passing a URL, even a fragment, throws a `SecurityError` in an opaque origin, so history-based routers do not work;
 - `alert`, `confirm`, `prompt`;
 - credentials-based requests (cookies sent to third-party APIs): requests come from origin `null`;
 - any network access to an origin not declared in its Permissions: the Host blocks it.
@@ -336,7 +339,7 @@ Warnings (the package stays installable):
 
 1. Unknown top-level Manifest field (`manifest/unknown-field`).
 2. An HTML page references a resource with an absolute local path (`/app.js`) instead of a relative one (`source/absolute-path`).
-3. An HTML page or script uses an API unavailable in the sandbox: `localStorage`, `sessionStorage`, `indexedDB`, `document.cookie`, `window.top`, `alert`, `confirm`, `prompt` (`sandbox/unavailable-api`).
+3. An HTML page or script uses an API unavailable in the sandbox: `localStorage`, `sessionStorage`, `indexedDB`, `document.cookie`, `window.top`, `alert`, `confirm`, `prompt`, or embeds a frame (`<iframe>`, `<frame>`, `<object>`, `<embed>`) (`sandbox/unavailable-api`).
 4. No source appears to send the `ready` request (`lifecycle/no-ready`).
 5. A source loads or calls an absolute URL whose origin is not covered by the Permissions; the Host will block it (`permissions/undeclared-origin`).
 
