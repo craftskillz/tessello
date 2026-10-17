@@ -9,5 +9,5 @@ Chaque Module déclare dans son Manifeste un Identifiant de la forme `@espace/no
 
 ## Consequences
 
-- En local, l'Hôte refuse d'installer deux Modules différents portant le même Identifiant.
+- En local, l'Hôte ne peut pas distinguer une mise à jour d'un autre Module réutilisant le même Identifiant : il traite toujours un Identifiant connu comme une mise à jour, après confirmation de l'Utilisateur (nom et version installés vs entrants).
 - La marketplace devra réserver les Espaces de noms à leurs Créateurs.
