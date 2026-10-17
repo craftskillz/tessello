@@ -319,7 +319,22 @@ host.onVisibilityChange((visible) => (visible ? resume() : pause()));
 await host.openView({ city: "Paris" }); // Widget only
 ```
 
-## 11. Versioning of this Convention
+## 11. Limits
 
-- Adding optional Manifest fields, request types or event types is a **minor revision**: it keeps `convention: 1`, and existing Modules keep working (Modules ignore unknown events, Hosts ignore unknown Manifest fields).
+All numeric limits of this Convention, in one place:
+
+| Limit | Value | Section |
+|---|---|---|
+| Uncompressed package size | 10 MB | §2 |
+| Storage value size (serialized) | 1 MB | §6.1 |
+| Total storage per Module | 5 MB | §6.1 |
+| Storage key length | 256 characters | §6.1 |
+| `navigation.openView` params (serialized) | 2 KB | §6.3 |
+| Handshake timeout | 10 s | §6.4 |
+
+These limits are deliberately conservative. They MAY be **raised** in a minor revision; they are never lowered within a Convention version (§12).
+
+## 12. Versioning of this Convention
+
+- Adding optional Manifest fields, request types or event types, or **raising a limit** (§11), is a **minor revision**: it keeps `convention: 1`, and existing Modules keep working (Modules ignore unknown events, Hosts ignore unknown Manifest fields).
 - Any change that could break an existing Module (removing or renaming a field, a message type or a capability, tightening a limit) requires a new Convention version (`convention: 2`). A Host states which Convention versions it supports and refuses the others with a clear message.
