@@ -209,8 +209,8 @@ Each Module has a private key/value space, **shared by its View and its Widget**
 Limits:
 
 - `key`: 1–256 characters.
-- `value`: any JSON value except `null`, at most **1 MB** once serialized. To remove a key, use `storage.delete`.
-- Total size of a Module's storage: at most **5 MB**. A `storage.set` that would exceed it fails with `quota_exceeded` and changes nothing.
+- `value`: any JSON value except `null`, at most **1 MB** once serialized (UTF-8 bytes of its JSON text). To remove a key, use `storage.delete`.
+- Total size of a Module's storage: at most **5 MB**, counted as the sum, over all its keys, of the UTF-8 bytes of the key and of its serialized value. A `storage.set` that would exceed it fails with `quota_exceeded` and changes nothing.
 
 When the View and the Widget are both alive, a change made by one is **not** pushed to the other. A Widget SHOULD re-read the values it displays when it becomes visible (§6.4).
 
