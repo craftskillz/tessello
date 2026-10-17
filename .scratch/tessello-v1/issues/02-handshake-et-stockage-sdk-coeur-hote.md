@@ -6,7 +6,7 @@ Spec parente : `.scratch/tessello-v1/spec.md`. Vocabulaire : `GLOSSARY.md`. Cont
 
 **Blocked by:** None (can start immediately)
 
-**Status:** done
+**Status:** resolved
 
 - [x] Le SDK expose une connexion qui envoie `ready` et renvoie le contexte défini par la Convention (surface, Module, langue, thème, paramètres).
 - [x] Toute requête envoyée avant le handshake reçoit `not_ready`, et aucun événement n'est émis avant celui-ci.
