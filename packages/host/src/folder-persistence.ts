@@ -2,6 +2,7 @@
 // API. Each Module is a top-level folder; `.tessello/` holds the registry, the layout of the Home and the storage of
 // every Module, one indented JSON file per key.
 
+import type { PackageFiles } from "@tessello/convention";
 import type { Persistence, RegisteredModule } from "@tessello/host-core";
 
 const TESSELLO = ".tessello";
@@ -14,6 +15,15 @@ const IGNORED_FILES = new Set([".DS_Store"]);
 
 const isMissing = (error: unknown) =>
   error instanceof DOMException && (error.name === "NotFoundError" || error.name === "TypeMismatchError");
+
+/** Removes an entry of a folder; one that is already gone is not an error. */
+async function removeIfThere(folder: FileSystemDirectoryHandle | null, name: string, options?: FileSystemRemoveOptions) {
+  try {
+    await folder?.removeEntry(name, options);
+  } catch (error) {
+    if (!isMissing(error)) throw error;
+  }
+}
 
 /** The folder at `path` under `root`, created if `create`; null when it does not exist. */
 async function folderAt(root: FileSystemDirectoryHandle, path: string[], create = false): Promise<FileSystemDirectoryHandle | null> {
@@ -92,6 +102,14 @@ export function createFolderPersistence(root: FileSystemDirectoryHandle): Persis
   // A Module ID such as "@tessello/notes" is two folders: "@tessello" and "notes".
   const dataOf = (moduleId: string, create: boolean) => folderAt(root, [TESSELLO, DATA, ...moduleId.split("/")], create);
 
+  async function writeFiles(folder: string, files: PackageFiles) {
+    for (const [path, bytes] of files) {
+      const segments = path.split("/");
+      const parent = (await folderAt(root, [folder, ...segments.slice(0, -1)], true))!;
+      await writeFile(parent, segments.at(-1)!, bytes);
+    }
+  }
+
   return {
     registry: {
       async read() {
@@ -153,11 +171,28 @@ export function createFolderPersistence(root: FileSystemDirectoryHandle): Persis
       },
       async create(folder, files) {
         if (await folderAt(root, [folder])) throw new Error(`The folder "${folder}" already exists.`);
-        for (const [path, bytes] of files) {
-          const segments = path.split("/");
-          const parent = (await folderAt(root, [folder, ...segments.slice(0, -1)], true))!;
-          await writeFile(parent, segments.at(-1)!, bytes);
-        }
+        await writeFiles(folder, files);
+      },
+      async replace(folder, files) {
+        // The new files are written first: an update cut short leaves files of both versions, never a folder emptied.
+        await writeFiles(folder, files);
+        const prune = async (directory: FileSystemDirectoryHandle, prefix: string) => {
+          for await (const [name, handle] of directory.entries()) {
+            const path = prefix + name;
+            if (handle.kind === "directory") {
+              if (IGNORED_FOLDERS.has(name)) continue;
+              await prune(handle as FileSystemDirectoryHandle, `${path}/`);
+              if (!(await (handle as FileSystemDirectoryHandle).keys().next()).done) continue;
+              await directory.removeEntry(name);
+            } else if (!IGNORED_FILES.has(name) && !files.has(path)) {
+              await directory.removeEntry(name);
+            }
+          }
+        };
+        await prune((await folderAt(root, [folder]))!, "");
+      },
+      async remove(folder) {
+        await removeIfThere(root, folder, { recursive: true });
       },
     },
     storage: {
@@ -177,12 +212,11 @@ export function createFolderPersistence(root: FileSystemDirectoryHandle): Persis
         await writeFile((await dataOf(moduleId, true))!, await keyFileName(key), json({ key, value: JSON.parse(serialized) }));
       },
       async delete(moduleId, key) {
-        const folder = await dataOf(moduleId, false);
-        try {
-          await folder?.removeEntry(await keyFileName(key));
-        } catch (error) {
-          if (!isMissing(error)) throw error;
-        }
+        await removeIfThere(await dataOf(moduleId, false), await keyFileName(key));
+      },
+      async clear(moduleId) {
+        const [namespace, name] = moduleId.split("/");
+        await removeIfThere(await folderAt(root, [TESSELLO, DATA, namespace]), name, { recursive: true });
       },
     },
   };

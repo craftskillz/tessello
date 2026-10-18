@@ -36,6 +36,13 @@ export interface Persistence {
     readFiles(folder: string): Promise<PackageFiles | null>;
     /** Creates a folder holding these files. */
     create(folder: string, files: PackageFiles): Promise<void>;
+    /**
+     * Makes a folder hold these files and no other, created if it does not exist. What `readFiles` leaves out (`.git/`
+     * for instance) stays.
+     */
+    replace(folder: string, files: PackageFiles): Promise<void>;
+    /** Removes a folder and everything in it. */
+    remove(folder: string): Promise<void>;
   };
   /** The storage of each Module (CONVENTION.md §6.1), under `.tessello/data/<Module ID>/`. */
   storage: {
@@ -43,6 +50,8 @@ export interface Persistence {
     read(moduleId: string): Promise<Map<string, string>>;
     write(moduleId: string, key: string, serialized: string): Promise<void>;
     delete(moduleId: string, key: string): Promise<void>;
+    /** Removes every stored entry of a Module. */
+    clear(moduleId: string): Promise<void>;
   };
 }
 
@@ -96,6 +105,13 @@ export function createMemoryPersistence(): MemoryPersistence {
         if (disk.has(folder)) throw new Error(`The folder "${folder}" already exists.`);
         disk.set(folder, new Map(files));
       },
+      async replace(folder, files) {
+        const kept = [...(disk.get(folder) ?? [])].filter(([path]) => IGNORED.test(path));
+        disk.set(folder, new Map([...kept, ...files]));
+      },
+      async remove(folder) {
+        disk.delete(folder);
+      },
     },
     storage: {
       async read(moduleId) {
@@ -106,6 +122,9 @@ export function createMemoryPersistence(): MemoryPersistence {
       },
       async delete(moduleId, key) {
         storageOf(moduleId).delete(key);
+      },
+      async clear(moduleId) {
+        storages.delete(moduleId);
       },
     },
   };

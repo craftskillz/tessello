@@ -44,8 +44,27 @@ export type WidgetSize = NonNullable<Manifest["widget"]>["size"];
 /** What the Host knows about a Module before the User decides to activate it. */
 export type Inspection =
   | { status: "invalid"; report: ValidationReport }
-  /** Its Module ID is already registered, for the Module in `folder`. Updates come with ticket 07. */
+  /** A folder declaring the Module ID already registered for the Module in `folder`: it cannot be activated. */
   | { status: "conflict"; manifest: Manifest; folder: string }
+  /**
+   * A package whose Module ID is already installed: the Host cannot tell an update from another Module reusing it, so
+   * the User confirms, seeing the installed and incoming name and version (ADR 0003).
+   */
+  | {
+      status: "update";
+      report: ValidationReport;
+      manifest: Manifest;
+      icon: Icon;
+      /** The installed Module: its name from its Manifest on disk, its Module ID when it has none. */
+      installed: { name: string; version: string; folder: string };
+      /** The Permissions the incoming version declares that the User has not granted: only these are presented. */
+      added: Permissions;
+      /**
+       * Replaces the Module's code with the package's and keeps its storage. Accepting the update grants `added`;
+       * declining is not calling it, and leaves the installed version in place.
+       */
+      update(): Promise<void>;
+    }
   | {
       status: "valid";
       /** No error, but it may carry warnings. */
@@ -193,22 +212,16 @@ export function createModules(persistence: Persistence) {
     return entries;
   }
 
-  /** The Validator's verdict on the files of a Module; `activate` runs once the User confirms. */
-  async function inspect(
-    files: PackageFiles,
-    activate: (manifest: Manifest) => Promise<void>,
-    report = validatePackage(files),
-  ): Promise<Inspection> {
-    if (!report.valid || !report.manifest) return { status: "invalid", report };
+  /** The Validator's verdict on the files of a Module, and the registered Module that already has its Module ID. */
+  async function check(files: PackageFiles, report = validatePackage(files)) {
+    if (!report.valid || !report.manifest) return { status: "invalid" as const, report };
     const manifest = report.manifest;
-    const registered = (await registry.read()).find((module) => module.id === manifest.id);
-    if (registered) return { status: "conflict", manifest, folder: registered.folder };
     return {
-      status: "valid",
+      status: "valid" as const,
       report,
       manifest,
       icon: { path: manifest.icon, bytes: files.get(manifest.icon)! },
-      install: () => activate(manifest),
+      registered: (await registry.read()).find((module) => module.id === manifest.id),
     };
   }
 
@@ -226,8 +239,8 @@ export function createModules(persistence: Persistence) {
     await registry.write(registered);
   }
 
-  /** Updates the registered Module with this ID, once read again. */
-  async function update(id: string, change: (module: RegisteredModule) => void) {
+  /** Changes the registered Module with this ID, once read again. */
+  async function changeRegistered(id: string, change: (module: RegisteredModule) => void) {
     const registered = await registry.read();
     const module = registered.find((candidate) => candidate.id === id);
     if (!module) return;
@@ -243,6 +256,24 @@ export function createModules(persistence: Persistence) {
     return files && nonEmptyString(looseManifest(files.get(MANIFEST) ?? null).id) === id ? { module, files } : null;
   }
 
+  /** Like `read`, scanning first when its folder is not where it was registered: it may have been renamed. */
+  async function locate(id: string) {
+    const found = await read(id);
+    if (found) return found;
+    await scan();
+    return read(id);
+  }
+
+  /**
+   * The folder an update of a registered Module replaces: the one declaring its Module ID; when there is none, its
+   * registered folder if free, or a new one beside it.
+   */
+  async function folderToUpdate(module: RegisteredModule): Promise<string> {
+    const found = await locate(module.id);
+    if (found) return found.module.folder;
+    return (await folders.list()).includes(module.folder) ? freeFolderName(module.folder) : module.folder;
+  }
+
   return {
     scan,
     /**
@@ -250,8 +281,7 @@ export function createModules(persistence: Persistence) {
      * (an editor, `git pull`). A new version updates the registry; added Permissions stop it.
      */
     async open(id: string): Promise<Opening> {
-      // Not where it was registered: its folder may have been renamed, and scanning finds it again.
-      const found = (await read(id)) ?? (await scan(), await read(id));
+      const found = await locate(id);
       if (!found) return { status: "missing" };
       const { module, files } = found;
       const report = validatePackage(files);
@@ -264,37 +294,82 @@ export function createModules(persistence: Persistence) {
           manifest,
           added,
           accept: () =>
-            update(id, (registered) => {
+            changeRegistered(id, (registered) => {
               registered.permissions = union(registered.permissions, added);
             }),
         };
       }
       if (manifest.version !== module.version) {
-        await update(id, (registered) => {
+        await changeRegistered(id, (registered) => {
           registered.version = manifest.version;
         });
       }
       return { status: "ready", manifest, files, permissions: module.permissions };
     },
+    /**
+     * Removes a registered Module: its storage, its folder if one still declares its Module ID, then its registration.
+     * Cut short, it can be done again. Uninstalling is the only way to withdraw a Permission (ADR 0004).
+     */
+    async uninstall(id: string) {
+      const found = await locate(id);
+      await persistence.storage.clear(id);
+      if (found) await folders.remove(found.module.folder);
+      await registry.write((await registry.read()).filter((module) => module.id !== id));
+    },
     /** Checks a folder of the Modules folder with the Validator before activating it. */
     async inspectFolder(folder: string): Promise<Inspection> {
       const files = await folders.readFiles(folder);
       if (!files) throw new Error(`The folder "${folder}" does not exist.`);
-      return inspect(files, (manifest) => addToRegistry(manifest, folder));
+      const checked = await check(files);
+      if (checked.status === "invalid") return checked;
+      const { report, manifest, icon, registered } = checked;
+      if (registered) return { status: "conflict", manifest, folder: registered.folder };
+      return { status: "valid", report, manifest, icon, install: () => addToRegistry(manifest, folder) };
     },
-    /** Checks a `.zip` package with the Validator; nothing is written until `install()` is called on a valid one. */
+    /**
+     * Checks a `.zip` package with the Validator; nothing is written until `install()` is called on a valid one, or
+     * `update()` on one whose Module ID is installed.
+     */
     async inspectZip(zip: Uint8Array): Promise<Inspection> {
-      const { report, files } = readZip(zip);
-      if (!files) return { status: "invalid", report };
-      return inspect(
-        files,
-        async (manifest) => {
-          const folder = await freeFolderName(manifest.id.slice(manifest.id.indexOf("/") + 1));
-          await folders.create(folder, files);
-          await addToRegistry(manifest, folder);
-        },
+      const { report: zipReport, files } = readZip(zip);
+      if (!files) return { status: "invalid", report: zipReport };
+      const checked = await check(files, zipReport);
+      if (checked.status === "invalid") return checked;
+      const { report, manifest, icon, registered } = checked;
+      if (!registered) {
+        return {
+          status: "valid",
+          report,
+          manifest,
+          icon,
+          install: async () => {
+            const folder = await freeFolderName(manifest.id.slice(manifest.id.indexOf("/") + 1));
+            await folders.create(folder, files);
+            await addToRegistry(manifest, folder);
+          },
+        };
+      }
+      const found = await locate(manifest.id);
+      const folder = found?.module.folder ?? registered.folder;
+      const { name } = found ? await summaryOf(folder) : { name: null };
+      return {
+        status: "update",
         report,
-      );
+        manifest,
+        icon,
+        installed: { name: name ?? registered.id, version: registered.version, folder },
+        added: addedPermissions(manifest.permissions, registered.permissions),
+        // Looked for again: the folder may have been renamed or removed since the User was shown the update.
+        update: async () => {
+          const target = await folderToUpdate(registered);
+          await folders.replace(target, files);
+          await changeRegistered(manifest.id, (module) => {
+            module.folder = target;
+            module.version = manifest.version;
+            module.permissions = union(module.permissions, manifest.permissions ?? {});
+          });
+        },
+      };
     },
   };
 }

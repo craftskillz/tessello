@@ -410,6 +410,31 @@ dialog::backdrop {
   color: #ffffff;
 }
 
+.actions button.danger {
+  border-color: var(--danger);
+  background: var(--danger);
+  color: #ffffff;
+}
+
+.versions {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.25rem 0.75rem;
+}
+
+.versions dt {
+  color: var(--text-muted);
+}
+
+.versions dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.warning {
+  color: var(--danger);
+}
+
 @media (max-width: 40rem) {
   body {
     grid-template-columns: 1fr;

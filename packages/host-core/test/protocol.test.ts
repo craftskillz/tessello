@@ -32,6 +32,7 @@ function slowPersistence(): Persistence {
       read: (moduleId) => later(memory.storage.read(moduleId)),
       write: (moduleId, key, serialized) => later(memory.storage.write(moduleId, key, serialized)),
       delete: (moduleId, key) => later(memory.storage.delete(moduleId, key)),
+      clear: (moduleId) => later(memory.storage.clear(moduleId)),
     },
   };
 }

@@ -40,5 +40,10 @@ export function createHome(persistence: Persistence, scan: () => Promise<ModuleE
       const arranged = saved.map((id) => (shown.has(id) ? next.shift()! : id));
       await persistence.home.write([...arranged, ...next]);
     },
+    /** Forgets the place of an uninstalled Module's Widget. */
+    async forget(id: string) {
+      const saved = await persistence.home.read();
+      if (saved.includes(id)) await persistence.home.write(saved.filter((other) => other !== id));
+    },
   };
 }

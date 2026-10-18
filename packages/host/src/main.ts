@@ -1,5 +1,5 @@
-// The Host's interface: the Modules folder, the Launcher, the Home and its Widgets, the View area, and installing a
-// Module from a dropped or chosen .zip file or from a folder placed in the Modules folder.
+// The Host's interface: the Modules folder, the Launcher, the Home and its Widgets, the View area, installing or
+// updating a Module from a dropped or chosen .zip file or from a folder placed in the Modules folder, and uninstalling.
 
 import type { Issue, Manifest, Permissions } from "@tessello/convention";
 import {
@@ -444,9 +444,57 @@ function renderLauncher() {
 function showGranted(entry: ModuleEntry) {
   showDialog(
     `Permissions of ${entry.name}`,
-    el("p", {}, "You granted them when you installed or activated it."),
+    el("p", {}, "You granted them when you installed or activated it. Uninstalling it is the only way to withdraw them."),
     permissionSummary(entry.name, entry.permissions ?? {}),
+    el("div", { className: "actions" }, button("Uninstall…", () => confirmUninstall(entry), "danger")),
   );
+}
+
+/** Uninstalls a Module once the User confirms: its folder and its data are removed (CONVENTION.md §8). */
+function confirmUninstall(entry: ModuleEntry) {
+  const id = entry.id!;
+  const confirm = el("button", { type: "button", className: "danger" }, "Uninstall");
+  confirm.addEventListener("click", async () => {
+    confirm.disabled = true;
+    // Stopped first, so that no View or Widget writes to the storage being removed.
+    dropSurfaces(id);
+    showHome();
+    try {
+      await host.uninstall(id);
+      dialog.close();
+    } catch (error) {
+      console.error(`${entry.name} could not be uninstalled:`, error);
+      showDialog(`${entry.name} could not be uninstalled`, el("p", {}, "Something went wrong in your Modules folder. Try again."));
+    }
+    await refresh();
+  });
+  dialog.replaceChildren(
+    el("h2", { id: "dialog-title" }, `Uninstall ${entry.name}?`),
+    el(
+      "p",
+      {},
+      entry.status === "missing"
+        ? `Its data is deleted from your Modules folder. Its folder “${entry.folder}” is already gone.`
+        : `Its folder “${entry.folder}” and its data are deleted from your Modules folder. This cannot be undone, unless you keep a copy, with git for instance.`,
+    ),
+    el("div", { className: "actions" }, button("Cancel", () => dialog.close()), confirm),
+  );
+  dialog.showModal();
+}
+
+/**
+ * Stops the View and the Widget of a Module whose code was replaced or removed. The Home mounts its Widget again on its
+ * next refresh; a View shown is opened again, one behind the Home is dropped.
+ */
+function dropSurfaces(id: string): boolean {
+  const cell = cells.get(id);
+  if (cell) removeCell(cell);
+  if (current?.id !== id) return false;
+  const shown = !current.element.hidden;
+  current.surface?.unmount();
+  current.element.remove();
+  current = null;
+  return shown;
 }
 
 function onLauncherClick(entry: ModuleEntry) {
@@ -464,7 +512,13 @@ function onLauncherClick(entry: ModuleEntry) {
         `, which the Module in “${registered?.folder}” already uses. Only that one runs. Give this one its own Module ID in its Manifest, or remove one of the two folders.`,
       ),
     );
-  } else showDialog(`${entry.name} can't be found`, missingExplanation(entry.id!));
+  } else {
+    showDialog(
+      `${entry.name} can't be found`,
+      missingExplanation(entry.id!),
+      el("div", { className: "actions" }, button("Uninstall…", () => confirmUninstall(entry), "danger")),
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -718,9 +772,13 @@ async function showInspection(source: string, pending: Promise<Inspection>, kind
         {},
         "Its Module ID ",
         el("code", {}, inspection.manifest.id),
-        ` is already used by the Module in the folder “${inspection.folder}”. Nothing was installed: updating a Module from a .zip is not available yet.`,
+        ` is already used by the Module in the folder “${inspection.folder}”. Only that one runs. Give this one its own Module ID in its Manifest, or remove one of the two folders.`,
       ),
     );
+    return;
+  }
+  if (inspection.status === "update") {
+    showUpdate(inspection);
     return;
   }
 
@@ -741,6 +799,58 @@ async function showInspection(source: string, pending: Promise<Inspection>, kind
     moduleSummary(manifest, icon),
     permissionSummary(manifest.name, manifest.permissions ?? {}),
     ...(warnings.length > 0 ? [el("p", {}, "The Validator has warnings; the Module can still be installed:"), issueList(warnings)] : []),
+    el("div", { className: "actions" }, button("Cancel", () => dialog.close()), confirm),
+  );
+  dialog.showModal();
+}
+
+/**
+ * A package of an installed Module: the Host cannot tell an update from another Module reusing its Module ID, so the
+ * User sees both names and versions (ADR 0003), and only the Permissions that are added (ADR 0004).
+ */
+function showUpdate(inspection: Extract<Inspection, { status: "update" }>) {
+  const { manifest, installed, added, report } = inspection;
+  const warnings = report.issues.filter((issue) => issue.severity === "warning");
+  const hasAdded = Object.keys(added).length > 0;
+  const confirm = el("button", { type: "button", className: "primary" }, hasAdded ? "Accept and update" : "Update");
+  confirm.addEventListener("click", async () => {
+    confirm.disabled = true;
+    try {
+      await inspection.update();
+      dialog.close();
+    } catch (error) {
+      console.error(`${installed.name} could not be updated:`, error);
+      showDialog(`${installed.name} could not be updated`, el("p", {}, "Something went wrong in your Modules folder. Open the Module to see which version it runs, and try again."));
+    }
+    const wasShown = dropSurfaces(manifest.id);
+    await refresh();
+    if (wasShown) await showView(manifest.id);
+  });
+  dialog.replaceChildren(
+    el("h2", { id: "dialog-title" }, `Update ${installed.name}?`),
+    el(
+      "p",
+      {},
+      "A Module with the Module ID ",
+      el("code", {}, manifest.id),
+      ` is already installed, in the folder “${installed.folder}”. Its code will be replaced, and its data kept.`,
+    ),
+    el(
+      "dl",
+      { className: "versions" },
+      el("dt", {}, "Installed"),
+      el("dd", {}, `${installed.name} ${installed.version}`),
+      el("dt", {}, "Incoming"),
+      el("dd", {}, `${manifest.name} ${manifest.version}`),
+    ),
+    ...(installed.name !== manifest.name ? [el("p", { className: "warning" }, "The names differ: make sure this is the same Module, from the same Creator.")] : []),
+    ...(hasAdded
+      ? [
+          el("p", {}, "This version asks for new Permissions. Declining them cancels the update, and the installed version stays as it is."),
+          permissionSummary(manifest.name, added, `What ${manifest.name} can now also do`),
+        ]
+      : [el("p", {}, "It asks for no new Permission.")]),
+    ...(warnings.length > 0 ? [el("p", {}, "The Validator has warnings; the Module can still be updated:"), issueList(warnings)] : []),
     el("div", { className: "actions" }, button("Cancel", () => dialog.close()), confirm),
   );
   dialog.showModal();

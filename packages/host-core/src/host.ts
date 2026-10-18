@@ -65,8 +65,16 @@ export interface Host {
   arrangeHome(order: string[]): Promise<void>;
   /** Checks a folder of the Modules folder with the Validator; it is activated only when `install()` is called. */
   inspectFolder(folder: string): Promise<Inspection>;
-  /** Checks a `.zip` package with the Validator; it is unpacked into a new folder only when `install()` is called. */
+  /**
+   * Checks a `.zip` package with the Validator; it is unpacked into a new folder only when `install()` is called. A
+   * package whose Module ID is installed is an `update`, which replaces nothing until `update()` is called.
+   */
   inspectZip(zip: Uint8Array): Promise<Inspection>;
+  /**
+   * Uninstalls a registered Module, once the User has confirmed: removes its folder, its storage, its registration and
+   * its place on the Home.
+   */
+  uninstall(id: string): Promise<void>;
   /** Reads a registered Module's files from disk to show its View, once checked again (ADR 0007). */
   open(id: string): Promise<Opening>;
   /** Starts answering the messages of an iframe the Host has just created. */
@@ -139,6 +147,10 @@ export function createHost(options: HostOptions): Host {
     inspectFolder: modules.inspectFolder,
     inspectZip: modules.inspectZip,
     open: modules.open,
+    async uninstall(id) {
+      await modules.uninstall(id);
+      await home.forget(id);
+    },
     mountSurface(surfaceOptions) {
       const surface: Surface = { ...surfaceOptions, ready: false, visible: true };
       surfaces.set(surface.frame, surface);
