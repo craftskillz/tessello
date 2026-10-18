@@ -1,7 +1,15 @@
 // The Modules of the User's Modules folder (CONVENTION.md §8, ADR 0007): finding them, activating them, and reading
 // a Module's files when its View opens. A Module is identified by its Module ID, never by the name of its folder.
 
-import { type Manifest, type PackageFiles, type Permissions, readZip, validatePackage, type ValidationReport } from "@tessello/convention";
+import {
+  type Manifest,
+  type PackageFiles,
+  type Permissions,
+  readZip,
+  validatePackage,
+  type ValidationReport,
+  WIDGET_SIZES,
+} from "@tessello/convention";
 import type { Persistence, RegisteredModule } from "./persistence.ts";
 
 export interface Icon {
@@ -25,7 +33,11 @@ export interface ModuleEntry {
   /** From the Manifest; the folder name or the Module ID when there is none. */
   name: string;
   icon: Icon | null;
+  /** The size of its Widget, from the Manifest; null when it declares none, or not as the Convention says. */
+  widget: WidgetSize | null;
 }
+
+export type WidgetSize = NonNullable<Manifest["widget"]>["size"];
 
 /** What the Host knows about a Module before the User decides to activate it. */
 export type Inspection =
@@ -102,6 +114,14 @@ interface Summary {
   id: string | null;
   name: string | null;
   icon: Icon | null;
+  widget: WidgetSize | null;
+}
+
+/** The Widget size of a Manifest that has not been validated. */
+function widgetSizeOf(manifest: Record<string, unknown>): WidgetSize | null {
+  const widget = manifest.widget as Record<string, unknown> | undefined;
+  if (typeof widget !== "object" || widget === null || nonEmptyString(widget.entry) === null) return null;
+  return typeof widget.size === "string" && WIDGET_SIZES.includes(widget.size) ? (widget.size as WidgetSize) : null;
 }
 
 export function createModules(persistence: Persistence) {
@@ -111,7 +131,12 @@ export function createModules(persistence: Persistence) {
     const manifest = looseManifest(await folders.readFile(folder, MANIFEST));
     const iconPath = nonEmptyString(manifest.icon);
     const iconBytes = iconPath === null ? null : await folders.readFile(folder, iconPath);
-    return { id: nonEmptyString(manifest.id), name: nonEmptyString(manifest.name), icon: iconBytes && { path: iconPath!, bytes: iconBytes } };
+    return {
+      id: nonEmptyString(manifest.id),
+      name: nonEmptyString(manifest.name),
+      icon: iconBytes && { path: iconPath!, bytes: iconBytes },
+      widget: widgetSizeOf(manifest),
+    };
   }
 
   /**
@@ -129,7 +154,7 @@ export function createModules(persistence: Persistence) {
       const candidates = names.filter((name) => !claimed.has(name) && summaries.get(name)!.id === module.id);
       const folder = candidates.includes(module.folder) ? module.folder : candidates[0];
       if (folder === undefined) {
-        entries.push({ status: "missing", folder: module.folder, id: module.id, name: module.id, icon: null });
+        entries.push({ status: "missing", folder: module.folder, id: module.id, name: module.id, icon: null, widget: null });
         continue;
       }
       claimed.add(folder);
@@ -138,14 +163,14 @@ export function createModules(persistence: Persistence) {
         moved = true;
       }
       const summary = summaries.get(folder)!;
-      entries.push({ status: "active", folder, id: module.id, name: summary.name ?? folder, icon: summary.icon });
+      entries.push({ status: "active", folder, id: module.id, name: summary.name ?? folder, icon: summary.icon, widget: summary.widget });
     }
     if (moved) await registry.write(registered);
     for (const folder of names) {
       if (claimed.has(folder)) continue;
-      const { id, name, icon } = summaries.get(folder)!;
+      const { id, name, icon, widget } = summaries.get(folder)!;
       const status = id !== null && registered.some((module) => module.id === id) ? "conflict" : "new";
-      entries.push({ status, folder, id, name: name ?? folder, icon });
+      entries.push({ status, folder, id, name: name ?? folder, icon, widget });
     }
     return entries;
   }

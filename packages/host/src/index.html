@@ -20,11 +20,17 @@
     </nav>
     <main id="stage" hidden>
       <section id="home" class="home">
-        <h1>Your space is ready</h1>
-        <p>
-          Drop a Module's <code>.zip</code> file anywhere on this page to install it, or place a Module's folder in your
-          Modules folder.
-        </p>
+        <div id="home-empty" class="home-empty">
+          <h1>Your space is ready</h1>
+          <p>
+            Drop a Module's <code>.zip</code> file anywhere on this page to install it, or place a Module's folder in
+            your Modules folder. The Widgets of your Modules show here; every Module is in the Launcher.
+          </p>
+        </div>
+        <div class="home-toolbar">
+          <button type="button" id="arrange-button" hidden>Arrange widgets</button>
+        </div>
+        <ol id="widgets" class="widgets" aria-label="Widgets"></ol>
       </section>
     </main>
     <dialog id="dialog" aria-labelledby="dialog-title"></dialog>

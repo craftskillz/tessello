@@ -33,7 +33,7 @@ describe("Modules in the Modules folder", () => {
 
     const unpacked = await readFolder(page, "modules/notes-2");
     assert.deepEqual(Object.keys(unpacked).sort(), Object.keys(await exampleFiles("notes")).sort());
-    assert.deepEqual(await registry(page), { modules: [{ id: "@tessello/notes", folder: "notes-2", version: "1.0.0", permissions: {} }] });
+    assert.deepEqual(await registry(page), { modules: [{ id: "@tessello/notes", folder: "notes-2", version: "1.1.0", permissions: {} }] });
   });
 
   test("a .zip the Validator refuses writes nothing in the folder", async () => {
@@ -49,7 +49,7 @@ describe("Modules in the Modules folder", () => {
     await page.reload();
     await launcher(page).getByRole("button", { name: "Notes New, to activate" }).click();
     const preview = page.getByRole("dialog", { name: "Activate Notes?" });
-    assert.match(await preview.innerText(), /Notes[\s\S]*1\.0\.0[\s\S]*@tessello\/notes/);
+    assert.match(await preview.innerText(), /Notes[\s\S]*1\.1\.0[\s\S]*@tessello\/notes/);
     assert.equal(await page.locator("iframe").count(), 0, "nothing runs before the User activates it");
     await preview.getByRole("button", { name: "Activate" }).click();
 
@@ -76,7 +76,8 @@ describe("Modules in the Modules folder", () => {
     await launcher(page).getByRole("button", { name: "Notes Conflict" }).click();
     const explanation = page.getByRole("dialog", { name: "“notes-copy” is in conflict" });
     assert.match(await explanation.innerText(), /@tessello\/notes[\s\S]*“notes”/);
-    assert.equal(await page.locator("iframe").count(), 0);
+    await page.locator("iframe[title='Notes widget']").waitFor({ state: "attached" });
+    assert.equal(await page.locator("iframe").count(), 1, "only the registered Notes runs, as its Widget");
   });
 
   test("a file changed on disk is used the next time the View opens", async () => {
@@ -102,7 +103,7 @@ describe("Modules in the Modules folder", () => {
     const report = page.getByRole("alert");
     await report.getByText("Notes no longer complies with the Convention").waitFor();
     assert.match(await report.innerText(), /\[manifest\/file-not-found\]/);
-    assert.equal(await page.locator("iframe").count(), 0);
+    assert.equal(await page.locator("iframe[title='Notes']").count(), 0);
   });
 
   test("Permissions added on disk stop the Module until the User accepts the added ones", async () => {
@@ -121,7 +122,7 @@ describe("Modules in the Modules folder", () => {
     const request = page.getByRole("alert");
     await request.getByText("Notes asks for new Permissions").waitFor();
     assert.match(await request.innerText(), /network: https:\/\/api\.example\.com/);
-    assert.equal(await page.locator("iframe").count(), 0);
+    assert.equal(await page.locator("iframe[title='Notes']").count(), 0);
     await request.getByRole("button", { name: "Decline" }).click();
     assert.deepEqual((await registry(page)).modules[0].permissions, {});
 

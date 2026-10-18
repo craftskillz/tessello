@@ -1,11 +1,12 @@
 // The Host's persistence in the browser (ADR 0007): the Modules folder the User chose, through the File System Access
-// API. Each Module is a top-level folder; `.tessello/` holds the registry and the storage of every Module, one
-// indented JSON file per key.
+// API. Each Module is a top-level folder; `.tessello/` holds the registry, the layout of the Home and the storage of
+// every Module, one indented JSON file per key.
 
 import type { Persistence, RegisteredModule } from "@tessello/host-core";
 
 const TESSELLO = ".tessello";
 const REGISTRY = "modules.json";
+const HOME = "home.json";
 const DATA = "data";
 /** Left out when reading a Module's files: a Creator's repository, and what archivers add. */
 const IGNORED_FOLDERS = new Set([".git", "__MACOSX"]);
@@ -102,6 +103,23 @@ export function createFolderPersistence(root: FileSystemDirectoryHandle): Persis
       },
       async write(modules) {
         await writeFile(await tessello(), REGISTRY, json({ modules }));
+      },
+    },
+    home: {
+      async read() {
+        const folder = await folderAt(root, [TESSELLO]);
+        const bytes = folder && (await readBytes(folder, HOME));
+        if (!bytes) return [];
+        // Edited by hand into something else, the layout is lost rather than the Home: the Widgets keep their default order.
+        try {
+          const { widgets } = JSON.parse(new TextDecoder().decode(bytes)) as { widgets: unknown };
+          return Array.isArray(widgets) ? widgets.filter((id): id is string => typeof id === "string") : [];
+        } catch {
+          return [];
+        }
+      },
+      async write(order) {
+        await writeFile(await tessello(), HOME, json({ widgets: order }));
       },
     },
     folders: {

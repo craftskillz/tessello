@@ -8,7 +8,7 @@ import { transform } from "esbuild";
 const at = (path: string) => fileURLToPath(new URL(path, import.meta.url));
 
 /** Where the example Modules keep their local copy of the SDK. */
-export const LOCAL_COPIES = [at("../../../examples/notes/view/tessello-sdk.js")];
+export const LOCAL_COPIES = [at("../../../examples/notes/tessello-sdk.js")];
 
 export async function buildLocalCopy(): Promise<string> {
   const source = await readFile(at("../src/index.ts"), "utf8");

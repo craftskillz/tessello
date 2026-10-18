@@ -1,5 +1,6 @@
 // The Notes View: notes are kept in the Host storage under the key "notes", as [{ id, text }], newest first.
-import { connect } from "./tessello-sdk.js";
+// Opened with the param { note: "new" } (the Widget's "+"), it is ready to write a new note.
+import { connect } from "../tessello-sdk.js";
 
 const host = await connect();
 const form = document.getElementById("new-note");
@@ -54,6 +55,12 @@ form.addEventListener("submit", (event) => {
   change((current) => [{ id: `${Date.now()}-${Math.random().toString(36).slice(2)}`, text: value }, ...current]);
 });
 
+function navigate(params) {
+  if (params.note === "new") text.focus();
+}
+
 applyTheme(host.context.theme);
 host.onThemeChange(applyTheme);
+host.onNavigationParams(navigate);
 render();
+navigate(host.context.params);

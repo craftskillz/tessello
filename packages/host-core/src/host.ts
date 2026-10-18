@@ -5,6 +5,7 @@ import { paramsOf } from "./navigation.ts";
 import { payloadObject } from "./payload.ts";
 import type { Persistence } from "./persistence.ts";
 import { ProtocolError } from "./protocol-error.ts";
+import { createHome, type HomeWidget } from "./home.ts";
 import { createModules, type Inspection, type ModuleEntry, type Opening } from "./modules.ts";
 import { createStorage } from "./storage.ts";
 
@@ -58,6 +59,10 @@ export interface MountedSurface {
 export interface Host {
   /** Every Module of the Modules folder, for the Launcher: reads only their Manifest and icon. */
   modules(): Promise<ModuleEntry[]>;
+  /** The Widgets of the active Modules, in the order of the Home; a Module without a Widget is not there. */
+  home(): Promise<HomeWidget[]>;
+  /** Saves the order of the Home's Widgets, given as the Module IDs, in `.tessello/home.json`. */
+  arrangeHome(order: string[]): Promise<void>;
   /** Checks a folder of the Modules folder with the Validator; it is activated only when `install()` is called. */
   inspectFolder(folder: string): Promise<Inspection>;
   /** Checks a `.zip` package with the Validator; it is unpacked into a new folder only when `install()` is called. */
@@ -89,6 +94,7 @@ export function createHost(options: HostOptions): Host {
   const surfaces = new Map<unknown, Surface>();
   const storage = createStorage(options.persistence);
   const modules = createModules(options.persistence);
+  const home = createHome(options.persistence, modules.scan);
   let theme = options.theme;
 
   const contextOf = (surface: Surface) => ({
@@ -128,6 +134,8 @@ export function createHost(options: HostOptions): Host {
 
   return {
     modules: modules.scan,
+    home: home.widgets,
+    arrangeHome: home.arrange,
     inspectFolder: modules.inspectFolder,
     inspectZip: modules.inspectZip,
     open: modules.open,

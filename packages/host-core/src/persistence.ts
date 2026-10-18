@@ -20,6 +20,12 @@ export interface Persistence {
     read(): Promise<RegisteredModule[]>;
     write(modules: RegisteredModule[]): Promise<void>;
   };
+  /** `.tessello/home.json`: the layout of the Home. */
+  home: {
+    /** The Module IDs of the Widgets, in the order the User arranged them; [] before the first arrangement. */
+    read(): Promise<string[]>;
+    write(order: string[]): Promise<void>;
+  };
   /** The folders of the Modules folder, one per Module. */
   folders: {
     /** The names of the top-level folders, `.tessello/` and hidden folders left out. */
@@ -50,6 +56,7 @@ const IGNORED = /(^|\/)(\.git|__MACOSX)\/|(^|\/)\.DS_Store$/;
 export function createMemoryPersistence(): MemoryPersistence {
   const disk = new Map<string, Map<string, Uint8Array>>();
   let registry: RegisteredModule[] = [];
+  let home: string[] = [];
   const storages = new Map<string, Map<string, string>>();
   const storageOf = (moduleId: string) => {
     let storage = storages.get(moduleId);
@@ -64,6 +71,14 @@ export function createMemoryPersistence(): MemoryPersistence {
       },
       async write(modules) {
         registry = structuredClone(modules);
+      },
+    },
+    home: {
+      async read() {
+        return [...home];
+      },
+      async write(order) {
+        home = [...order];
       },
     },
     folders: {

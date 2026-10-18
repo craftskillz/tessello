@@ -1,11 +1,20 @@
-// The Host's interface: the Modules folder, the Launcher, the View area, and installing a Module from a dropped or
-// chosen .zip file or from a folder placed in the Modules folder.
+// The Host's interface: the Modules folder, the Launcher, the Home and its Widgets, the View area, and installing a
+// Module from a dropped or chosen .zip file or from a folder placed in the Modules folder.
 
 import type { Issue, Manifest, Permissions } from "@tessello/convention";
-import { createHost, type Host, type Icon, type Inspection, type ModuleEntry, type MountedSurface, type Theme } from "@tessello/host-core";
+import {
+  createHost,
+  type HomeWidget,
+  type Host,
+  type Icon,
+  type Inspection,
+  type ModuleEntry,
+  type MountedSurface,
+  type Theme,
+} from "@tessello/host-core";
 import { copyModulesFolder, createFolderPersistence } from "./folder-persistence.ts";
 import { canUseFolders, hasTesselloFolder, isGranted, pickFolder, reconnect, rememberedFolder, rememberFolder } from "./modules-folder.ts";
-import { buildView, dataUrl, IFRAME_SANDBOX, typeOf } from "./srcdoc.ts";
+import { buildView, dataUrl, IFRAME_SANDBOX, typeOf, type ViewDocument } from "./srcdoc.ts";
 
 const THEME: Theme = {
   mode: "light",
@@ -17,6 +26,9 @@ const gate = byId<HTMLElement>("gate");
 const launcher = byId<HTMLElement>("launcher");
 const stage = byId<HTMLElement>("stage");
 const home = byId<HTMLElement>("home");
+const homeEmpty = byId<HTMLElement>("home-empty");
+const widgetList = byId<HTMLOListElement>("widgets");
+const arrangeButton = byId<HTMLButtonElement>("arrange-button");
 const launcherList = byId<HTMLUListElement>("launcher-modules");
 const folderButton = byId<HTMLButtonElement>("folder-button");
 const dialog = byId<HTMLDialogElement>("dialog");
@@ -170,7 +182,10 @@ function showFolderSettings(folder: FileSystemDirectoryHandle) {
 
 let host: Host;
 let entries: ModuleEntry[] = [];
-/** What the stage shows besides the Home: a View, or a message in its place. */
+/**
+ * What the stage shows besides the Home: a View, or a message in its place. Behind the Home, a View stays loaded and
+ * hidden until another one opens, so that its Widget can bring it back as it was.
+ */
 let current: { id: string; surface?: MountedSurface; element: HTMLElement } | null = null;
 /** The latest View asked for: a View whose document is still being built when another one is asked for is dropped. */
 let requested: object | null = null;
@@ -180,9 +195,14 @@ async function start(folder: FileSystemDirectoryHandle) {
     persistence: createFolderPersistence(folder),
     locale: "en",
     theme: THEME,
-    openView: ({ module }) => void showView(module.id),
+    openView: ({ module, params }) => {
+      // A View of this Module behind the Home has already been given the params.
+      if (current?.id === module.id && current.surface && current.element.hidden) bringBackView();
+      else void showView(module.id, params);
+    },
   });
   window.addEventListener("message", (event) => host.receive({ source: event.source, data: event.data }));
+  document.addEventListener("visibilitychange", updateVisibility);
   // A folder may have appeared or changed while the User was in another application.
   window.addEventListener("focus", () => void refresh());
   folderButton.textContent = `Modules folder: ${folder.name}`;
@@ -196,6 +216,14 @@ async function start(folder: FileSystemDirectoryHandle) {
 async function refresh() {
   entries = await host.modules();
   renderLauncher();
+  await renderHome();
+}
+
+/** Tells each View and Widget whether it is shown: the Home hides its Widgets behind a View (CONVENTION.md §6.4). */
+function updateVisibility() {
+  const pageShown = document.visibilityState === "visible";
+  for (const cell of cells.values()) cell.surface?.setVisible(pageShown && !home.hidden);
+  current?.surface?.setVisible(pageShown && !current.element.hidden);
 }
 
 function clearStage() {
@@ -203,13 +231,38 @@ function clearStage() {
   current?.element.remove();
   current = null;
   home.hidden = true;
+  updateVisibility();
 }
 
 function showHome() {
   requested = null;
-  clearStage();
+  if (current?.surface) current.element.hidden = true;
+  else clearStage();
   home.hidden = false;
   renderLauncher();
+  updateVisibility();
+}
+
+/** Shows again the View left behind the Home. */
+function bringBackView() {
+  requested = null;
+  home.hidden = true;
+  current!.element.hidden = false;
+  renderLauncher();
+  updateVisibility();
+}
+
+/** Starts a View or Widget in its iframe, which must be in the page: the files go to it once it has loaded. */
+function startSurface(iframe: HTMLIFrameElement, document: ViewDocument, surface: MountedSurface) {
+  iframe.addEventListener(
+    "load",
+    () => {
+      // The loader in the srcdoc waits for the Module's files, which it accepts only once.
+      iframe.contentWindow!.postMessage(document.message, "*", document.transfer);
+      surface.loaded();
+    },
+    { once: true },
+  );
 }
 
 /** Shows a message in place of a Module's View. */
@@ -298,18 +351,11 @@ async function showView(id: string, params: Record<string, string> = {}) {
         el("p", {}, "This Module did not finish starting. It may be broken: try again later, or ask its Creator for a fixed version."),
       );
       iframe.replaceWith(error);
-      current = { id: manifest.id, surface, element: error };
+      error.hidden = iframe.hidden;
+      current = { id: manifest.id, element: error };
     },
   });
-  // The loader in the srcdoc waits for the Module's files, which it accepts only once.
-  iframe.addEventListener(
-    "load",
-    () => {
-      iframe.contentWindow!.postMessage(view.message, "*", view.transfer);
-      surface.loaded();
-    },
-    { once: true },
-  );
+  startSurface(iframe, view, surface);
   current = { id: manifest.id, surface, element: iframe };
   await refresh();
 }
@@ -341,7 +387,9 @@ function renderLauncher() {
         el("span", { className: "name" }, entry.name),
         ...(label ? [el("span", { className: "status" }, label)] : []),
       );
-      if (entry.id !== null && current?.id === entry.id && entry.status === "active") entryButton.setAttribute("aria-current", "page");
+      if (entry.id !== null && current?.id === entry.id && !current.element.hidden && entry.status === "active") {
+        entryButton.setAttribute("aria-current", "page");
+      }
       entryButton.addEventListener("click", () => onLauncherClick(entry));
       return el("li", {}, entryButton);
     }),
@@ -365,6 +413,195 @@ function onLauncherClick(entry: ModuleEntry) {
     );
   } else showDialog(`${entry.name} can't be found`, missingExplanation(entry.id!));
 }
+
+// ---------------------------------------------------------------------------------------------------------------------
+// The Home: the Widgets of the active Modules in a grid of cells, in the order the User arranges (CONVENTION.md §7.1).
+
+interface WidgetCell {
+  widget: HomeWidget;
+  element: HTMLLIElement;
+  /** Where the iframe, or a message in its place, goes. */
+  body: HTMLElement;
+  surface?: MountedSurface;
+  /** Shows an error in place of the Widget: it is tried again the next time the Home is brought in line. */
+  failed?: boolean;
+}
+
+/** The Widgets on the Home, by Module ID, in no particular order: the list's children hold the order. */
+const cells = new Map<string, WidgetCell>();
+let homeRendering = Promise.resolve();
+let arranging = false;
+
+/**
+ * Brings the Home in line with the Modules folder. A Widget already shown is moved, not reloaded: `moveBefore` keeps an
+ * iframe running where `insertBefore` would reload it (in Chrome and Edge since version 133).
+ */
+function renderHome(): Promise<void> {
+  homeRendering = homeRendering
+    .then(async () => {
+      const widgets = await host.home();
+      for (const [id, cell] of cells) {
+        const widget = widgets.find((candidate) => candidate.id === id);
+        if (!widget || widget.size !== cell.widget.size) removeCell(cell);
+      }
+      let previous: Element | null = null;
+      for (const widget of widgets) {
+        const cell = cells.get(widget.id) ?? createCell(widget);
+        const next: Element | null = previous ? previous.nextElementSibling : widgetList.firstElementChild;
+        if (cell.element !== next) {
+          if (cell.element.isConnected) widgetList.moveBefore(cell.element, next);
+          else widgetList.insertBefore(cell.element, next);
+        }
+        previous = cell.element;
+        if (!cell.body.hasChildNodes() || cell.failed) void mountWidget(cell);
+      }
+      homeEmpty.hidden = widgets.length > 0;
+      arrangeButton.hidden = widgets.length < 2;
+      if (arrangeButton.hidden && arranging) toggleArranging();
+      updateVisibility();
+    })
+    .catch((error: unknown) => console.error("The Home could not be shown:", error));
+  return homeRendering;
+}
+
+function createCell(widget: HomeWidget): WidgetCell {
+  const body = el("div", { className: "widget-body" });
+  const element = el(
+    "li",
+    { className: `widget size-${widget.size}`, "aria-label": widget.name, draggable: arranging },
+    body,
+    el(
+      "div",
+      { className: "arrange" },
+      el("span", { className: "arrange-name" }, widget.name),
+      button("←", () => void move(widget.id, -1), "move"),
+      button("→", () => void move(widget.id, 1), "move"),
+    ),
+  );
+  const [earlier, later] = element.querySelectorAll<HTMLButtonElement>(".move");
+  earlier.setAttribute("aria-label", `Move ${widget.name} earlier`);
+  later.setAttribute("aria-label", `Move ${widget.name} later`);
+  element.dataset.id = widget.id;
+  element.addEventListener("dragstart", (event) => {
+    event.dataTransfer!.setData(WIDGET_DRAG, widget.id);
+    event.dataTransfer!.effectAllowed = "move";
+  });
+  element.addEventListener("dragover", (event) => {
+    if (arranging && event.dataTransfer?.types.includes(WIDGET_DRAG)) event.preventDefault();
+  });
+  element.addEventListener("drop", (event) => {
+    const dragged = event.dataTransfer?.getData(WIDGET_DRAG);
+    if (!arranging || !dragged) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const order = homeOrder().filter((id) => id !== dragged);
+    // Dropped on a Widget, the dragged one takes its place.
+    const target = homeOrder().indexOf(widget.id);
+    order.splice(target, 0, dragged);
+    void arrange(order);
+  });
+  const cell = { widget, element, body };
+  cells.set(widget.id, cell);
+  return cell;
+}
+
+const WIDGET_DRAG = "application/x-tessello-widget";
+
+declare global {
+  interface ParentNode {
+    /** Moves a node without removing it first (not yet in TypeScript's DOM types). */
+    moveBefore(node: Node, child: Node | null): void;
+  }
+}
+
+function removeCell(cell: WidgetCell) {
+  cell.surface?.unmount();
+  cell.element.remove();
+  cells.delete(cell.widget.id);
+}
+
+/** Shows a message in place of a Widget; the other Widgets are not affected (CONVENTION.md §6.4). */
+function showWidgetError(cell: WidgetCell, title: string, message: string) {
+  cell.failed = true;
+  cell.body.replaceChildren(el("div", { className: "widget-error", role: "alert" }, el("strong", {}, title), el("p", {}, message)));
+}
+
+async function mountWidget(cell: WidgetCell) {
+  cell.failed = false;
+  cell.body.replaceChildren(el("div", { className: "widget-loading" }));
+  try {
+    await startWidget(cell);
+  } catch (error) {
+    console.error(`The Widget of ${cell.widget.id} could not be shown:`, error);
+    if (cells.get(cell.widget.id) === cell) showWidgetError(cell, `${cell.widget.name} can't be shown`, "Something went wrong while starting it.");
+  }
+}
+
+async function startWidget(cell: WidgetCell) {
+  const { id, name } = cell.widget;
+  const opening = await host.open(id);
+  if (cells.get(id) !== cell) return;
+  if (opening.status !== "ready" || !opening.manifest.widget) {
+    const reasons: Record<Exclude<typeof opening.status, "ready">, string> = {
+      missing: "Its folder is no longer in your Modules folder.",
+      invalid: "It no longer complies with the Convention: open it from the Launcher to see why.",
+      permissions: "It asks for new Permissions: open it from the Launcher.",
+    };
+    showWidgetError(cell, `${name} can't be shown`, opening.status === "ready" ? "It no longer has a Widget." : reasons[opening.status]);
+    return;
+  }
+  const { manifest, files, permissions } = opening;
+  const document = await buildView({ files, entry: manifest.widget!.entry, permissions });
+  if (cells.get(id) !== cell) return;
+  const iframe = el("iframe", { className: "widget-frame", title: `${manifest.name} widget`, sandbox: IFRAME_SANDBOX });
+  iframe.srcdoc = document.srcdoc;
+  cell.body.replaceChildren(iframe);
+  const surface = host.mountSurface({
+    frame: iframe.contentWindow!,
+    module: { id: manifest.id, version: manifest.version },
+    surface: "widget",
+    onHandshakeTimeout: () => {
+      if (cell.surface !== surface) return;
+      surface.unmount();
+      cell.surface = undefined;
+      showWidgetError(cell, `${manifest.name} is not responding`, "This Widget did not finish starting.");
+    },
+  });
+  cell.surface = surface;
+  startSurface(iframe, document, surface);
+  updateVisibility();
+}
+
+/** The Module IDs of the Widgets, as the Home shows them. */
+const homeOrder = () => [...widgetList.children].map((element) => (element as HTMLElement).dataset.id!);
+
+async function arrange(order: string[]) {
+  try {
+    await host.arrangeHome(order);
+  } catch (error) {
+    console.error("The order of the Widgets could not be saved:", error);
+  }
+  await renderHome();
+}
+
+function move(id: string, offset: number) {
+  const order = homeOrder();
+  const from = order.indexOf(id);
+  const to = from + offset;
+  if (to < 0 || to >= order.length) return;
+  order.splice(to, 0, ...order.splice(from, 1));
+  return arrange(order);
+}
+
+/** In arrangement, the Widgets do not take clicks: each one can be dragged or moved with its buttons. */
+function toggleArranging() {
+  arranging = !arranging;
+  home.classList.toggle("arranging", arranging);
+  arrangeButton.textContent = arranging ? "Done" : "Arrange widgets";
+  for (const cell of cells.values()) cell.element.draggable = arranging;
+}
+
+arrangeButton.addEventListener("click", toggleArranging);
 
 // ---------------------------------------------------------------------------------------------------------------------
 // Installing a Module (CONVENTION.md §8).
