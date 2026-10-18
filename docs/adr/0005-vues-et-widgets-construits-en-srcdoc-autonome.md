@@ -28,3 +28,4 @@ Mesures du prototype (branche `prototype/01-iframe-sandbox`, `prototypes/01-ifra
 - Le runtime est une couche de compatibilité, pas une frontière de sécurité. Un Module qui le contourne obtient au pire une ressource locale introuvable, jamais un accès réseau non déclaré, puisque seule la CSP fait autorité.
 - Dans Firefox, une feuille de style `<link>` intégrée en `data:` s'applique parfois une dizaine de millisecondes après l'événement `load` (mesuré : 3 exécutions sur 4). Un Module qui lit ses styles calculés dès le chargement peut donc voir un état non stylé.
 - Le document embarque les fichiers en base64 (+33 %) pour chaque Vue et chaque Widget ouverts, avec un paquet limité à 10 Mo.
+- Les fichiers ne sont plus intégrés en URL `data:` mais transmis à l'iframe en URL `blob:`, et les Modules sont lus depuis le Dossier des Modules (ADR 0007).

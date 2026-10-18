@@ -4,7 +4,7 @@ Spec parente : `.scratch/tessello-v1/spec.md`. Vocabulaire : `GLOSSARY.md`. Cont
 
 **What to build:** L'Utilisateur dispose d'un Accueil qui regroupe les Widgets de ses Modules dans une grille, peut les réordonner, et passe d'un Widget à la Vue correspondante. Le Module « Notes » gagne un Widget.
 
-**Blocked by:** 03 (Thème, visibilité, navigation et erreurs du protocole), 04 (Premier Module dans le navigateur)
+**Blocked by:** 03 (Thème, visibilité, navigation et erreurs du protocole), 04 (Premier Module dans le navigateur), 04 bis (Le code et les données des Modules dans le Dossier des Modules)
 
 **Status:** ready-for-agent
 

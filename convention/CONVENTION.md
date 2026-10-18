@@ -197,7 +197,7 @@ An **event** is sent by the Host to the Module, has no `id` and expects no respo
 
 ### 6.1 Storage
 
-Each Module has a private key/value space, **shared by its View and its Widget** and invisible to other Modules. It is kept across updates of the Module and deleted when the Module is uninstalled. It is included in the Host's export.
+Each Module has a private key/value space, **shared by its View and its Widget** and invisible to other Modules. It is kept across updates of the Module and deleted when the Module is uninstalled. It is included in the Host's export. The Host keeps it in the User's Modules folder, **outside** the Module's own folder, so a Module's folder (for instance its Creator's git repository) never contains the User's data; a Module cannot read or write files of its folder, only this storage.
 
 | Request | Payload | Result |
 |---|---|---|
@@ -310,10 +310,11 @@ A View fills the Host's main area, outside the Launcher. It MUST adapt to its if
 
 These Host behaviors are listed here because Creators must take them into account.
 
-- **Install**: from a `.zip` file, from a URL pointing to a `.zip` file, or with the CLI (`npx tessello install <path-or-url>`). The Host runs the Validator first and refuses a non-compliant Module. It then lists the Module's Permissions in plain language, sensitive ones highlighted, and installs the Module only if the User accepts **all** of them; there is no partial grant.
-- **Update**: installing a package whose `id` is already installed replaces the installed Module and **keeps its storage**. A Module MUST therefore read the data written by its previous versions (or migrate it). If the new version declares Permissions the installed one did not have, the Host shows only the added ones and asks the User again; if the User declines, the update is cancelled and the installed version stays in place.
+- **Install**: by placing the Module's folder in the User's **Modules folder** (for instance with `git clone`, or by working on it in place), from a `.zip` file, from a URL pointing to a `.zip` file, or with the CLI (`npx tessello install <zip-or-url>`); a `.zip` or URL is unpacked into a new folder. The Host runs the Validator first and refuses a non-compliant Module. It then lists the Module's Permissions in plain language, sensitive ones highlighted, and installs the Module only if the User accepts **all** of them; there is no partial grant.
+- **Update**: installing a package whose `id` is already installed, or changing the Module's folder (for instance with `git pull`), updates the Module and **keeps its storage**. A Module MUST therefore read the data written by its previous versions (or migrate it). If the new version declares Permissions the installed one did not have, the Host shows only the added ones and asks the User again, and the Module does not run until the User accepts. If the User declines an update from a `.zip`, it is cancelled and the installed version stays in place; a Module whose folder has already changed stays inactive, its storage intact.
+- **Folder name**: a Module is identified by its `id`, never by the name of its folder. Two folders declaring the same `id` conflict: the Host runs only the one it has registered.
 - **Same `id`, different Creator**: the Host cannot tell an update from an unrelated Module that reuses an `id`. It always treats a known `id` as an update, and before replacing anything it shows the User the installed and incoming name and version, and asks for confirmation. Creators MUST therefore name their Modules under their own namespace.
-- **Uninstall**: removes the Module **and** its storage, after the User confirms. Uninstalling is the only way to withdraw a Permission.
+- **Uninstall**: removes the Module's folder **and** its storage, after the User confirms. Uninstalling is the only way to withdraw a Permission.
 
 ## 9. Validation
 

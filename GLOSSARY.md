@@ -54,6 +54,10 @@ _Avoid_: Tuile, carte, vignette
 L'écran de l'Hôte qui regroupe les Widgets des Modules installés.
 _Avoid_: Dashboard, tableau de bord
 
+**Dossier des Modules** (*Modules folder*):
+Le dossier de la machine de l'Utilisateur, choisi par lui, où l'Hôte range le code et les données de tous ses Modules.
+_Avoid_: Répertoire, workspace, espace de stockage
+
 **Lanceur** (*Launcher*):
 Élément permanent de l'Hôte qui liste les Modules installés et permet d'ouvrir leur Vue depuis n'importe où.
 _Avoid_: Dock, sidebar, menu

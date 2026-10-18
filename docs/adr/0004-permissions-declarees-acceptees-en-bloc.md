@@ -12,3 +12,4 @@ Les Modules doivent pouvoir faire beaucoup (un Module d'observabilité joint des
 - Toute capacité future (notifications, fichiers, commandes via le Pont…) s'ajoute comme une nouvelle Permission, en révision mineure de la Convention.
 - Le blocage réseau repose sur les mécanismes du navigateur (CSP) ; deux fuites résiduelles ne sont pas couvertes : l'ouverture d'un lien dans un nouvel onglet (gardée pour permettre les liens externes) et WebRTC. Statut mesuré et mécanisme de blocage retenu : ADR 0005.
 - Le Pont (exécution de commandes, appels sans contrainte CORS) est prévu mais hors Convention 1 ; il fera l'objet de son propre ADR.
+- Une mise à jour peut aussi venir d'un dossier déjà modifié (`git pull`, éditeur) : il n'y a alors plus d'« ancienne version » à garder en place. Tant que l'Utilisateur n'a pas accepté les Permissions ajoutées, le Module ne tourne pas, et ses données restent intactes (ADR 0007).

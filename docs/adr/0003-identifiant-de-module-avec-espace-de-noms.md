@@ -11,3 +11,4 @@ Chaque Module déclare dans son Manifeste un Identifiant de la forme `@espace/no
 
 - En local, l'Hôte ne peut pas distinguer une mise à jour d'un autre Module réutilisant le même Identifiant : il traite toujours un Identifiant connu comme une mise à jour, après confirmation de l'Utilisateur (nom et version installés vs entrants).
 - La marketplace devra réserver les Espaces de noms à leurs Créateurs.
+- Le nom du dossier d'un Module ne compte pas : deux dossiers du Dossier des Modules qui déclarent le même Identifiant sont en conflit, et seul celui qui est enregistré tourne (ADR 0007).

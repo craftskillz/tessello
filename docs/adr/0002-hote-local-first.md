@@ -5,3 +5,4 @@ La configuration de l'Utilisateur (Modules installés, disposition de l'Accueil)
 ## Consequences
 
 - Pas de synchronisation multi-appareils en V1 ; l'ajouter plus tard supposera des comptes et une stratégie de résolution de conflits.
+- Le code et les données des Modules ne sont plus dans le navigateur mais dans le Dossier des Modules, sur la machine de l'Utilisateur : voir l'ADR 0007.
