@@ -3,7 +3,7 @@
   "id": "@tessello/notes",
   "name": "Notes",
   "version": "1.0.0",
-  "description": "Jot down short notes. They stay in your browser.",
+  "description": "Jot down short notes. They stay on your computer.",
   "icon": "icon.svg",
   "view": {
     "entry": "view/index.html"

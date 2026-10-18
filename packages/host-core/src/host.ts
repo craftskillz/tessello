@@ -5,7 +5,7 @@ import { paramsOf } from "./navigation.ts";
 import { payloadObject } from "./payload.ts";
 import type { Persistence } from "./persistence.ts";
 import { ProtocolError } from "./protocol-error.ts";
-import { createRegistry, type Inspection, type InstalledModule } from "./registry.ts";
+import { createModules, type Inspection, type ModuleEntry, type Opening } from "./modules.ts";
 import { createStorage } from "./storage.ts";
 
 export interface Theme {
@@ -56,10 +56,14 @@ export interface MountedSurface {
 }
 
 export interface Host {
-  /** Checks a `.zip` package with the Validator; nothing is installed until `install()` is called on a valid one. */
-  inspect(zip: Uint8Array): Inspection;
-  /** Every installed Module. */
-  modules(): Promise<InstalledModule[]>;
+  /** Every Module of the Modules folder, for the Launcher: reads only their Manifest and icon. */
+  modules(): Promise<ModuleEntry[]>;
+  /** Checks a folder of the Modules folder with the Validator; it is activated only when `install()` is called. */
+  inspectFolder(folder: string): Promise<Inspection>;
+  /** Checks a `.zip` package with the Validator; it is unpacked into a new folder only when `install()` is called. */
+  inspectZip(zip: Uint8Array): Promise<Inspection>;
+  /** Reads a registered Module's files from disk to show its View, once checked again (ADR 0007). */
+  open(id: string): Promise<Opening>;
   /** Starts answering the messages of an iframe the Host has just created. */
   mountSurface(options: SurfaceOptions): MountedSurface;
   /** Handles a message received by the Host's window (wire it to the "message" event). */
@@ -84,7 +88,7 @@ interface Surface extends SurfaceOptions {
 export function createHost(options: HostOptions): Host {
   const surfaces = new Map<unknown, Surface>();
   const storage = createStorage(options.persistence);
-  const registry = createRegistry(options.persistence);
+  const modules = createModules(options.persistence);
   let theme = options.theme;
 
   const contextOf = (surface: Surface) => ({
@@ -123,8 +127,10 @@ export function createHost(options: HostOptions): Host {
     send(surface, { type: "response", id: request.id, ok: false, error: { code, message } });
 
   return {
-    inspect: registry.inspect,
-    modules: registry.modules,
+    modules: modules.scan,
+    inspectFolder: modules.inspectFolder,
+    inspectZip: modules.inspectZip,
+    open: modules.open,
     mountSurface(surfaceOptions) {
       const surface: Surface = { ...surfaceOptions, ready: false, visible: true };
       surfaces.set(surface.frame, surface);

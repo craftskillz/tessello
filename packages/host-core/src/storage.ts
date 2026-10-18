@@ -40,7 +40,7 @@ export function createStorage(persistence: Persistence) {
 
   const handlers: Record<string, Handler> = {
     "storage.get": async (moduleId, payload) => {
-      const serialized = (await persistence.readStorage(moduleId)).get(keyOf(payload));
+      const serialized = (await persistence.storage.read(moduleId)).get(keyOf(payload));
       return { value: serialized === undefined ? null : JSON.parse(serialized) };
     },
     "storage.set": async (moduleId, payload) => {
@@ -52,22 +52,22 @@ export function createStorage(persistence: Persistence) {
       if (byteLength(serialized) > LIMITS.storageValueBytes) {
         throw new ProtocolError("quota_exceeded", `value must be at most ${LIMITS.storageValueBytes} bytes once serialized`);
       }
-      const entries = await persistence.readStorage(moduleId);
+      const entries = await persistence.storage.read(moduleId);
       entries.set(key, serialized);
       const total = [...entries].reduce((sum, [entryKey, entryValue]) => sum + entryBytes(entryKey, entryValue), 0);
       if (total > LIMITS.storageTotalBytes) {
         throw new ProtocolError("quota_exceeded", `the storage of a Module must stay under ${LIMITS.storageTotalBytes} bytes`);
       }
-      await persistence.writeStorage(moduleId, key, serialized);
+      await persistence.storage.write(moduleId, key, serialized);
       return {};
     },
     "storage.delete": async (moduleId, payload) => {
-      await persistence.deleteStorageKey(moduleId, keyOf(payload));
+      await persistence.storage.delete(moduleId, keyOf(payload));
       return {};
     },
     "storage.keys": async (moduleId, payload) => {
       payloadObject(payload);
-      return { keys: [...(await persistence.readStorage(moduleId)).keys()] };
+      return { keys: [...(await persistence.storage.read(moduleId)).keys()] };
     },
   };
   return {

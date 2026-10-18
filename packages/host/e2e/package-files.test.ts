@@ -41,7 +41,7 @@ const FIXTURE = {
     results.reexports = double(2) + triple(1);
     const styled = getComputedStyle(document.getElementById("styled"));
     results.stylesheet = styled.width;
-    results.cssUrl = styled.backgroundImage.startsWith('url("data:image/png');
+    results.cssUrl = styled.backgroundImage.startsWith('url("blob:');
     results.cssImport = getComputedStyle(document.documentElement).getPropertyValue("--probe").trim();
     results.staticImage = await loaded(document.getElementById("static"));
     results.srcset = await loaded(document.getElementById("srcset"));
@@ -95,4 +95,30 @@ test("a View loads its package's stylesheets, images, modules, data files and Wo
     [],
     "no package file is requested from the Host's server",
   );
+});
+
+test("the View's Content Security Policy still applies once the loader has written its document", async () => {
+  const page = await host.newPage();
+  const requests: string[] = [];
+  page.on("request", (request) => requests.push(request.url()));
+  const probe = `${host.url}csp-probe`;
+  await dropFile(
+    page,
+    "probe.zip",
+    zip({
+      "manifest.json": { convention: 1, id: "@test/probe", name: "Probe", version: "1.0.0", icon: "icon.svg", view: { entry: "index.html" } },
+      "icon.svg": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1 1'/>",
+      "index.html": `<!doctype html><pre id="result"></pre><script type="module">
+        let result;
+        try { await fetch(${JSON.stringify(probe)}); result = "reached"; } catch { result = "blocked"; }
+        document.getElementById("result").textContent = result;
+      </script>`,
+    }),
+  );
+  await page.getByRole("dialog", { name: "Install Probe?" }).getByRole("button", { name: "Install" }).click();
+
+  const result = page.frameLocator("iframe[title='Probe']").locator("#result");
+  await result.filter({ hasText: /\w/ }).waitFor();
+  assert.equal(await result.innerText(), "blocked");
+  assert.deepEqual(requests.filter((url) => url.startsWith(probe)), []);
 });

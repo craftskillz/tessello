@@ -1,7 +1,10 @@
-// Builds the self-contained document of a View or Widget, loaded with `<iframe sandbox srcdoc>` (ADR 0005).
-// The Content Security Policy derived from the Permissions comes first, the Module's local files become data: URLs,
-// and a small runtime serves what can only be resolved while the Module runs (relative fetches, Workers, URLs set by
-// script). The runtime is a compatibility layer, not a security boundary: only the CSP decides what goes out.
+// Builds the document of a View or Widget, loaded with `<iframe sandbox srcdoc>` (ADR 0005, ADR 0007).
+// The srcdoc only holds the Content Security Policy derived from the Permissions and a small loader. The Host then
+// posts the Module's files to the iframe once: the loader turns them into blob: URLs, which belong to the iframe's
+// own opaque origin, and writes the View's document over itself. That document starts with the same CSP, then a small
+// runtime that serves what can only be resolved while the Module runs (relative fetches, Workers, URLs set by
+// script). The loader and the runtime are a compatibility layer, not a security boundary: only the CSP decides what
+// goes out.
 
 import type { PackageFiles, Permissions } from "@tessello/convention";
 import { init, parse } from "es-module-lexer";
@@ -66,11 +69,48 @@ const scriptJson = (value: unknown) => JSON.stringify(value).replace(/</g, "\\u0
 
 export const dataUrl = (type: string, bytes: Uint8Array) => `data:${type};base64,${base64(bytes)}`;
 
-export async function buildSrcdoc(options: { files: PackageFiles; entry: string; permissions?: Permissions }): Promise<string> {
+/** What the Host needs to show a View or Widget. */
+export interface ViewDocument {
+  /** The `srcdoc` of the iframe: the CSP and the loader, whatever the size of the Module. */
+  srcdoc: string;
+  /** Post it to the iframe once, when it has loaded: `postMessage(message, "*", transfer)`. */
+  message: LoaderMessage;
+  transfer: ArrayBuffer[];
+}
+
+interface LoaderMessage {
+  tessello: "files";
+  /** The entry document, with the CSP and the runtime first, and its local references as package URLs. */
+  html: string;
+  /**
+   * Every file of the package; stylesheets and scripts are already rewritten. `url` is the package URL that stands
+   * for the file in the document and the scripts.
+   */
+  files: { path: string; url: string; type: string; bytes: ArrayBuffer }[];
+}
+
+// A package URL as `packageUrl` writes it; its group is the escaped path.
+const PACKAGE_URL = new RegExp(PACKAGE_ROOT.replace(/[.\/]/g, "\\$&") + "([A-Za-z0-9\\-._~%/]*)", "g");
+
+// Placeholders of the entry document, which the loader replaces once the blob: URLs exist.
+const FILES_PLACEHOLDER = "__TESSELLO_FILES__";
+const IMPORTS_PLACEHOLDER = "__TESSELLO_IMPORTS__";
+
+/**
+ * The package URL of a path, which the loader recognizes and replaces with the file's blob: URL. Every character but
+ * [A-Za-z0-9-._~/] is escaped, so the URL never contains a quote, a parenthesis or a space.
+ */
+const packageUrl = (path: string) =>
+  PACKAGE_ROOT +
+  [...new TextEncoder().encode(path)]
+    .map((byte) => (/[A-Za-z0-9\-._~/]/.test(String.fromCharCode(byte)) ? String.fromCharCode(byte) : `%${byte.toString(16).toUpperCase().padStart(2, "0")}`))
+    .join("");
+
+export async function buildView(options: { files: PackageFiles; entry: string; permissions?: Permissions }): Promise<ViewDocument> {
   await init();
   const { files, entry } = options;
+  const csp = cspFor(options.permissions);
   const text = (path: string) => new TextDecoder().decode(files.get(path));
-  const urls = new Map<string, string>();
 
   /** The package path `ref` points to from the file `from`, or null when it is not a file of the package. */
   const pathOf = (ref: string, from: string) => {
@@ -84,18 +124,22 @@ export async function buildSrcdoc(options: { files: PackageFiles; entry: string;
     const path = decodeURIComponent(url.pathname.slice(1));
     return files.has(path) ? path : null;
   };
+  const urlFor = (ref: string, from: string) => {
+    const path = pathOf(ref, from);
+    return path === null ? null : packageUrl(path);
+  };
 
-  // CSS references become data: URLs; `seen` guards against @import cycles.
-  const css = (body: string, from: string, seen: Set<string>) =>
+  // CSS references become package URLs.
+  const css = (body: string, from: string) =>
     body
-      .replace(/@import\s+(["'])([^"']+)\1/g, (_match, _quote, ref) => `@import "${urlFor(ref, from, seen) ?? ref}"`)
+      .replace(/@import\s+(["'])([^"']+)\1/g, (_match, _quote, ref) => `@import "${urlFor(ref, from) ?? ref}"`)
       .replace(/url\(\s*(["']?)([^"')]+)\1\s*\)/g, (match, _quote, ref) => {
-        const url = urlFor(ref, from, seen);
+        const url = urlFor(ref, from);
         return url ? `url("${url}")` : match;
       });
 
-  // Relative module specifiers become absolute URLs under PACKAGE_ROOT, which the import map maps to data: URLs:
-  // a module loaded from a data: URL cannot resolve a relative specifier on its own.
+  // Relative module specifiers become package URLs, which the import map maps to blob: URLs: a module loaded from a
+  // blob: URL cannot resolve a relative specifier on its own.
   const js = (body: string, from: string) => {
     let imports;
     try {
@@ -111,7 +155,8 @@ export async function buildSrcdoc(options: { files: PackageFiles; entry: string;
       if (found.type === "import-meta") {
         replacement = `({ url: ${JSON.stringify(self)}, resolve: (specifier) => new URL(specifier, ${JSON.stringify(self)}).href })`;
       } else if (found.specifier && /^(\.{1,2}\/|\/(?!\/))/.test(found.specifier)) {
-        const absolute = new URL(found.specifier, self).href;
+        const path = pathOf(found.specifier, from);
+        const absolute = path === null ? new URL(found.specifier, self).href : packageUrl(path);
         replacement = found.type === "dynamic" ? JSON.stringify(absolute) : absolute;
       }
       if (replacement === null) continue;
@@ -121,28 +166,12 @@ export async function buildSrcdoc(options: { files: PackageFiles; entry: string;
     return out + body.slice(last);
   };
 
-  function urlFor(ref: string, from: string, seen = new Set<string>()): string | null {
-    const path = pathOf(ref, from);
-    if (!path) return null;
-    const cached = urls.get(path);
-    if (cached) return cached;
-    if (seen.has(path)) return null;
-    seen.add(path);
-    const type = typeOf(path);
-    let bytes = files.get(path)!;
-    if (type === "text/css") bytes = new TextEncoder().encode(css(text(path), path, seen));
-    if (type === "text/javascript") bytes = new TextEncoder().encode(js(text(path), path));
-    const url = dataUrl(type, bytes);
-    urls.set(path, url);
-    return url;
-  }
-
   const doc = new DOMParser().parseFromString(text(entry), "text/html");
-  // A local stylesheet becomes a <style>: it then applies before "load", which a data: <link> does not always do in
-  // Firefox (ADR 0005).
+  // A local stylesheet becomes a <style>: it then applies before "load", which a <link> to another file does not
+  // always do in Firefox (ADR 0005).
   for (const link of doc.querySelectorAll("link[rel~='stylesheet'][href]")) {
     const path = pathOf(link.getAttribute("href")!, entry);
-    if (path) link.replaceWith(Object.assign(doc.createElement("style"), { textContent: css(text(path), path, new Set()) }));
+    if (path) link.replaceWith(Object.assign(doc.createElement("style"), { textContent: css(text(path), path) }));
   }
   const rewrite = (selector: string, attribute: string) => {
     for (const element of doc.querySelectorAll(selector)) {
@@ -157,16 +186,8 @@ export async function buildSrcdoc(options: { files: PackageFiles; entry: string;
   for (const element of doc.querySelectorAll("[srcset]")) {
     element.setAttribute("srcset", srcset(element.getAttribute("srcset")!, (ref) => urlFor(ref, entry)));
   }
-  for (const style of doc.querySelectorAll("style")) style.textContent = css(style.textContent ?? "", entry, new Set());
-  for (const element of doc.querySelectorAll("[style]")) element.setAttribute("style", css(element.getAttribute("style")!, entry, new Set()));
-
-  const imports: Record<string, string> = {};
-  const table: Record<string, string> = {};
-  for (const path of files.keys()) {
-    const url = urlFor(path, "")!;
-    table[path] = url;
-    if (typeOf(path) === "text/javascript") imports[PACKAGE_ROOT + path] = url;
-  }
+  for (const style of doc.querySelectorAll("style")) style.textContent = css(style.textContent ?? "", entry);
+  for (const element of doc.querySelectorAll("[style]")) element.setAttribute("style", css(element.getAttribute("style")!, entry));
 
   const head = doc.head;
   const first = head.firstChild;
@@ -176,13 +197,67 @@ export async function buildSrcdoc(options: { files: PackageFiles; entry: string;
     if (content) element.textContent = content;
     head.insertBefore(element, first);
   };
-  add("meta", { "http-equiv": "Content-Security-Policy", content: cspFor(options.permissions) });
+  add("meta", { "http-equiv": "Content-Security-Policy", content: csp });
   add("base", { href: new URL(".", PACKAGE_ROOT + entry).href });
-  add("script", {}, runtime(table));
-  add("script", { type: "importmap" }, scriptJson({ imports }));
-  return `<!doctype html>${doc.documentElement.outerHTML}`;
+  add("script", {}, RUNTIME);
+  add("script", { type: "importmap" }, IMPORTS_PLACEHOLDER);
+
+  const message: LoaderMessage = { tessello: "files", html: `<!doctype html>${doc.documentElement.outerHTML}`, files: [] };
+  for (const [path, bytes] of files) {
+    const type = typeOf(path);
+    let content = bytes;
+    if (type === "text/css") content = new TextEncoder().encode(css(text(path), path));
+    if (type === "text/javascript") content = new TextEncoder().encode(js(text(path), path));
+    message.files.push({ path, url: packageUrl(path), type, bytes: content.slice().buffer });
+  }
+  const srcdoc = `<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="${csp}"><script>${loader()}</script></head></html>`;
+  return { srcdoc, message, transfer: message.files.map((file) => file.bytes) };
 }
 
+/**
+ * The script of the srcdoc. It accepts a single message, from the Host, before any code of the Module runs: it makes
+ * a blob: URL of every file, stylesheets once the files they reference have theirs, puts them in place of the package
+ * URLs of the entry document and writes that document over its own.
+ */
+function loader(): string {
+  return `(() => {
+  const ROOT = ${scriptJson(PACKAGE_ROOT)};
+  const PACKAGE_URL = ${PACKAGE_URL};
+  const json = (value) => JSON.stringify(value).replace(/</g, "\\u003c");
+  addEventListener("message", function receive(event) {
+    if (event.source !== parent || event.data?.tessello !== "files") return;
+    removeEventListener("message", receive);
+    const { html, files } = event.data;
+    const urls = new Map(), styles = new Map();
+    const blob = (content, type) => URL.createObjectURL(new Blob([content], { type }));
+    for (const { path, type, bytes } of files) {
+      if (type === "text/css") styles.set(path, new TextDecoder().decode(bytes));
+      else urls.set(path, blob(bytes, type));
+    }
+    // The blob: URL of a file; a stylesheet gets one once the files it references have theirs (seen stops @import cycles).
+    const urlOf = (path, seen) => {
+      if (urls.has(path)) return urls.get(path);
+      if (!styles.has(path) || seen.has(path)) return null;
+      seen.add(path);
+      const url = blob(resolve(styles.get(path), seen), "text/css");
+      urls.set(path, url);
+      return url;
+    };
+    const resolve = (text, seen = new Set()) => text.replace(PACKAGE_URL, (match, encoded) => {
+      try { return urlOf(decodeURIComponent(encoded), seen) ?? match; } catch { return match; }
+    });
+    for (const path of styles.keys()) urlOf(path, new Set());
+    const imports = {};
+    for (const { path, url, type } of files) if (type === "text/javascript") imports[url] = urls.get(path);
+    const page = resolve(html)
+      .replace(${scriptJson(FILES_PLACEHOLDER)}, () => json(Object.fromEntries(urls)))
+      .replace(${scriptJson(IMPORTS_PLACEHOLDER)}, () => json({ imports }));
+    document.open();
+    document.write(page);
+    document.close();
+  });
+})();`;
+}
 // Candidates of a srcset: a comma separates them when whitespace or a descriptor ("2x", "100w") is next to it, since a
 // URL (a data: URL in particular) may contain commas.
 const SRCSET_SEPARATOR = /,\s+|(?<=\s\d+(?:\.\d+)?[xwh]),/;
@@ -198,10 +273,9 @@ function srcset(value: string, urlFor: (ref: string) => string | null): string {
 }
 
 /** The script run in the document before the Module's own: resolves package URLs set while the Module runs. */
-function runtime(table: Record<string, string>): string {
-  return `(() => {
-  const ROOT = ${scriptJson(PACKAGE_ROOT)}, FILES = ${scriptJson(table)};
-  // The data: URL of a package file, "" for a missing one under the package root, null for any other URL.
+const RUNTIME = `(() => {
+  const ROOT = ${scriptJson(PACKAGE_ROOT)}, FILES = ${FILES_PLACEHOLDER};
+  // The blob: URL of a package file, "" for a missing one under the package root, null for any other URL.
   const local = (ref) => {
     try {
       const url = new URL(ref, document.baseURI);
@@ -231,12 +305,12 @@ function runtime(table: Record<string, string>): string {
   const fix = (element) => {
     for (const name of ["src", "poster"]) {
       const value = element.getAttribute(name);
-      const data = value && !value.startsWith("data:") && local(value);
+      const data = value && !/^(data|blob):/.test(value) && local(value);
       if (data) element.setAttribute(name, data);
     }
     if (element.matches("link, image, use")) {
       const value = element.getAttribute("href");
-      const data = value && !value.startsWith("data:") && local(value);
+      const data = value && !/^(data|blob):/.test(value) && local(value);
       if (data) element.setAttribute("href", data);
     }
     const set = element.getAttribute("srcset");
@@ -256,4 +330,3 @@ function runtime(table: Record<string, string>): string {
     location.hash = link.getAttribute("href");
   });
 })();`;
-}

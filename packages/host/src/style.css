@@ -22,6 +22,25 @@ body {
   grid-template-columns: 14rem 1fr;
 }
 
+[hidden] {
+  display: none !important;
+}
+
+.gate {
+  grid-column: 1 / -1;
+  max-width: 40rem;
+  margin: 0 auto;
+  padding: 3rem 1.5rem;
+}
+
+.gate p {
+  color: var(--text-muted);
+}
+
+.gate .actions {
+  justify-content: start;
+}
+
 body.dragging main {
   outline: 3px dashed var(--accent);
   outline-offset: -12px;
@@ -79,6 +98,40 @@ body.dragging main {
 .launcher-install {
   margin-top: auto;
   color: var(--accent);
+}
+
+.launcher .status {
+  margin-left: auto;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.launcher .conflict .status,
+.launcher .missing .status {
+  color: var(--danger);
+}
+
+.launcher .missing .name {
+  color: var(--text-muted);
+}
+
+.launcher .no-icon {
+  width: 1.75rem;
+  height: 1.75rem;
+  flex: none;
+  border-radius: 6px;
+  background: var(--border);
+}
+
+.launcher-folder {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+.permissions {
+  padding-left: 1.25rem;
+  margin: 0;
 }
 
 main {

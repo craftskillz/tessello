@@ -19,18 +19,20 @@ const THEME: Theme = {
 const WEATHER = { id: "@yassine/weather", version: "1.0.0" };
 const NOTES = { id: "@yassine/notes", version: "2.1.0" };
 
-const newHost = (persistence = createMemoryPersistence(), openView: HostOptions["openView"] = () => {}) =>
+const newHost = (persistence: Persistence = createMemoryPersistence(), openView: HostOptions["openView"] = () => {}) =>
   createHost({ persistence, locale: "fr-FR", theme: THEME, openView });
 
-// Answers after a delay, as IndexedDB does, so that concurrent requests can interleave.
+// Answers after a delay, as files on disk do, so that concurrent requests can interleave.
 function slowPersistence(): Persistence {
   const memory = createMemoryPersistence();
   const later = <T>(value: Promise<T>) => new Promise<T>((resolve) => setTimeout(() => resolve(value), 5));
   return {
     ...memory,
-    readStorage: (moduleId) => later(memory.readStorage(moduleId)),
-    writeStorage: (moduleId, key, serialized) => later(memory.writeStorage(moduleId, key, serialized)),
-    deleteStorageKey: (moduleId, key) => later(memory.deleteStorageKey(moduleId, key)),
+    storage: {
+      read: (moduleId) => later(memory.storage.read(moduleId)),
+      write: (moduleId, key, serialized) => later(memory.storage.write(moduleId, key, serialized)),
+      delete: (moduleId, key) => later(memory.storage.delete(moduleId, key)),
+    },
   };
 }
 
