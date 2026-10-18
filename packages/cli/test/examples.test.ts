@@ -5,7 +5,7 @@ import { run } from "../src/cli.ts";
 
 const example = (name: string) => fileURLToPath(new URL(`../../../examples/${name}`, import.meta.url));
 
-for (const name of ["notes"]) {
+for (const name of ["notes", "meteo"]) {
   test(`the example Module "${name}" passes the Validator without error or warning`, async () => {
     const out: string[] = [];
     const code = await run(["validate", example(name)], { out: (text) => out.push(text), err: (text) => out.push(text) });

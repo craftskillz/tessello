@@ -36,7 +36,7 @@ const FIXTURE = {
 test("a Module's storage is one indented JSON file per key under .tessello/data/, whatever the case or length of the key, or a name Windows reserves", async () => {
   const page = await host.newPage();
   await dropFile(page, "keys.zip", zip(FIXTURE));
-  await page.getByRole("dialog", { name: "Install Keys?" }).getByRole("button", { name: "Install" }).click();
+  await page.getByRole("dialog", { name: "Install Keys?" }).getByRole("button", { name: "Accept and install" }).click();
   const results = page.frameLocator("iframe[title='Keys']").locator("#results");
   await results.filter({ hasText: "{" }).waitFor();
 

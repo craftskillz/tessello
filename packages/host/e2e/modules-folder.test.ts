@@ -11,7 +11,7 @@ const notes = (page: Page) => page.frameLocator("iframe[title='Notes']");
 /** Installs Notes from its .zip and adds a note. */
 async function installNotesWithANote(page: Page, note: string) {
   await dropFile(page, "notes.zip", await zipExample("notes"));
-  await page.getByRole("dialog", { name: "Install Notes?" }).getByRole("button", { name: "Install" }).click();
+  await page.getByRole("dialog", { name: "Install Notes?" }).getByRole("button", { name: "Accept and install" }).click();
   await notes(page).getByRole("textbox", { name: "New note" }).fill(note);
   await notes(page).getByRole("button", { name: "Add note" }).click();
   await notes(page).getByText(note).waitFor();

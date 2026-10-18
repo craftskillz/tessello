@@ -276,12 +276,53 @@ function showInStage(id: string, ...children: Node[]) {
 
 const nameOf = (id: string) => entries.find((entry) => entry.id === id)?.name ?? id;
 
-function permissionList(permissions: Permissions) {
+/** A Permission entry in plain language: its host and port, without the scheme. */
+function describeOrigin(origin: string) {
+  const [, scheme, server] = /^([a-z]+):\/\/(.*)$/.exec(origin)!;
+  const where = server.startsWith("*.") ? `any subdomain of ${server.slice(2)}` : server;
+  return scheme.startsWith("ws") ? `${where} (live connection)` : where;
+}
+
+const originList = (origins: string[]) => el("ul", { className: "origins" }, ...origins.map((origin) => el("li", {}, describeOrigin(origin))));
+
+let summaryCount = 0;
+
+/**
+ * What a Module can do with these Permissions, in plain language, and what they do not guarantee (ADR 0008): the
+ * servers it contacts are limited, its files, the Host and the other Modules are isolated, and what the User enters
+ * in it can still leave.
+ */
+function permissionSummary(name: string, permissions: Permissions, title = `What ${name} can do`) {
+  const id = `permission-summary-${++summaryCount}`;
+  const network = permissions.network ?? [];
+  const local = permissions.localNetwork ?? [];
   return el(
-    "ul",
-    { className: "permissions" },
-    ...Object.entries(permissions).flatMap(([name, origins]: [string, string[]]) =>
-      origins.map((origin) => el("li", {}, `${name}: `, el("code", {}, origin))),
+    "section",
+    { className: "permission-summary", "aria-labelledby": id },
+    el("h3", { id }, title),
+    ...(network.length + local.length === 0 ? [el("p", {}, `No network access: ${name} declares no server, and Tessello blocks the requests it would make.`)] : []),
+    ...(network.length > 0 ? [el("p", {}, el("strong", {}, "Limited"), `: ${name} can contact only these servers:`), originList(network)] : []),
+    ...(local.length > 0
+      ? [
+          el(
+            "div",
+            { className: "sensitive" },
+            el(
+              "p",
+              {},
+              el("strong", {}, "Local network"),
+              ": reach these addresses on your computer or your local network, where devices and services a web page usually cannot reach live:",
+            ),
+            originList(local),
+          ),
+        ]
+      : []),
+    el("p", { className: "limits" }, el("strong", {}, "Isolated"), `: ${name} cannot read your files, Tessello or your other Modules.`),
+    el(
+      "p",
+      { className: "limits" },
+      el("strong", {}, "Not guaranteed"),
+      `: ${name} can still send what you enter in it elsewhere, for example by opening a link. Install only Modules you trust.`,
     ),
   );
 }
@@ -305,12 +346,12 @@ async function showView(id: string, params: Record<string, string> = {}) {
     return;
   }
   if (opening.status === "permissions") {
-    // Ticket 06 replaces this raw list with the consent screen.
+    const { name } = opening.manifest;
     showInStage(
       id,
-      el("h2", {}, `${opening.manifest.name} asks for new Permissions`),
-      el("p", {}, "Its folder now declares Permissions you have not granted. It does not run until you accept them:"),
-      permissionList(opening.added),
+      el("h2", {}, `${name} asks for new Permissions`),
+      el("p", {}, "Its folder now declares Permissions you have not granted. It does not run until you accept them all."),
+      permissionSummary(name, opening.added, `What ${name} can now also do`),
       el(
         "div",
         { className: "actions" },
@@ -391,8 +432,20 @@ function renderLauncher() {
         entryButton.setAttribute("aria-current", "page");
       }
       entryButton.addEventListener("click", () => onLauncherClick(entry));
-      return el("li", {}, entryButton);
+      if (entry.status !== "active") return el("li", {}, entryButton);
+      const permissionsButton = el("button", { type: "button", className: "entry-permissions", title: `Permissions of ${entry.name}`, "aria-label": "Permissions" }, "ⓘ");
+      permissionsButton.addEventListener("click", () => showGranted(entry));
+      return el("li", {}, entryButton, permissionsButton);
     }),
+  );
+}
+
+/** The Permissions the User granted to an active Module: the Host limits it to those, whatever its folder declares now. */
+function showGranted(entry: ModuleEntry) {
+  showDialog(
+    `Permissions of ${entry.name}`,
+    el("p", {}, "You granted them when you installed or activated it."),
+    permissionSummary(entry.name, entry.permissions ?? {}),
   );
 }
 
@@ -642,7 +695,6 @@ function moduleSummary(manifest: Manifest, icon: Icon) {
       el("dt", {}, "Module ID"),
       el("dd", {}, el("code", {}, manifest.id)),
       ...(manifest.description ? [el("dt", {}, "Description"), el("dd", {}, manifest.description)] : []),
-      ...(Object.keys(manifest.permissions ?? {}).length > 0 ? [el("dt", {}, "Permissions"), el("dd", {}, permissionList(manifest.permissions!))] : []),
     ),
   );
 }
@@ -674,7 +726,8 @@ async function showInspection(source: string, pending: Promise<Inspection>, kind
 
   const { manifest, icon, report } = inspection;
   const warnings = report.issues.filter((issue) => issue.severity === "warning");
-  const confirm = el("button", { type: "button", className: "primary" }, kind === "zip" ? "Install" : "Activate");
+  // Every Permission or none (ADR 0004): accepting them all, or cancelling, are the only choices.
+  const confirm = el("button", { type: "button", className: "primary" }, kind === "zip" ? "Accept and install" : "Accept and activate");
   confirm.addEventListener("click", async () => {
     confirm.disabled = true;
     await inspection.install();
@@ -686,6 +739,7 @@ async function showInspection(source: string, pending: Promise<Inspection>, kind
     el("h2", { id: "dialog-title" }, kind === "zip" ? `Install ${manifest.name}?` : `Activate ${manifest.name}?`),
     ...(kind === "folder" ? [el("p", {}, `Found in ${source} of your Modules folder.`)] : []),
     moduleSummary(manifest, icon),
+    permissionSummary(manifest.name, manifest.permissions ?? {}),
     ...(warnings.length > 0 ? [el("p", {}, "The Validator has warnings; the Module can still be installed:"), issueList(warnings)] : []),
     el("div", { className: "actions" }, button("Cancel", () => dialog.close()), confirm),
   );

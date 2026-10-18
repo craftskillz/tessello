@@ -14,7 +14,7 @@ async function activateNotes(page: Page) {
   await writeFolder(page, "modules/notes", await exampleFiles("notes"));
   await page.reload();
   await launcher(page).getByRole("button", { name: "Notes New, to activate" }).click();
-  await page.getByRole("dialog", { name: "Activate Notes?" }).getByRole("button", { name: "Activate" }).click();
+  await page.getByRole("dialog", { name: "Activate Notes?" }).getByRole("button", { name: "Accept and activate" }).click();
   await notes(page).getByText("No notes yet.").waitFor();
 }
 
@@ -28,7 +28,7 @@ describe("Modules in the Modules folder", () => {
     const page = await host.newPage();
     await writeFolder(page, "modules/notes", { "readme.txt": "Something else" });
     await dropFile(page, "notes.zip", await zipExample("notes"));
-    await page.getByRole("dialog", { name: "Install Notes?" }).getByRole("button", { name: "Install" }).click();
+    await page.getByRole("dialog", { name: "Install Notes?" }).getByRole("button", { name: "Accept and install" }).click();
     await notes(page).getByText("No notes yet.").waitFor();
 
     const unpacked = await readFolder(page, "modules/notes-2");
@@ -51,7 +51,7 @@ describe("Modules in the Modules folder", () => {
     const preview = page.getByRole("dialog", { name: "Activate Notes?" });
     assert.match(await preview.innerText(), /Notes[\s\S]*1\.1\.0[\s\S]*@tessello\/notes/);
     assert.equal(await page.locator("iframe").count(), 0, "nothing runs before the User activates it");
-    await preview.getByRole("button", { name: "Activate" }).click();
+    await preview.getByRole("button", { name: "Accept and activate" }).click();
 
     await notes(page).getByText("No notes yet.").waitFor();
     assert.equal((await registry(page)).modules[0].folder, "notes");
@@ -121,7 +121,10 @@ describe("Modules in the Modules folder", () => {
     await open();
     const request = page.getByRole("alert");
     await request.getByText("Notes asks for new Permissions").waitFor();
-    assert.match(await request.innerText(), /network: https:\/\/api\.example\.com/);
+    assert.match(
+      await request.getByRole("region", { name: "What Notes can now also do" }).innerText(),
+      /only these servers[\s\S]*api\.example\.com/,
+    );
     assert.equal(await page.locator("iframe[title='Notes']").count(), 0);
     await request.getByRole("button", { name: "Decline" }).click();
     assert.deepEqual((await registry(page)).modules[0].permissions, {});

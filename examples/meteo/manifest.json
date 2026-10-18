@@ -1,0 +1,18 @@
+{
+  "convention": 1,
+  "id": "@tessello/meteo",
+  "name": "Weather",
+  "version": "1.0.0",
+  "description": "The current weather of the cities you follow, from Open-Meteo.",
+  "icon": "icon.svg",
+  "view": {
+    "entry": "view/index.html"
+  },
+  "widget": {
+    "entry": "widget/index.html",
+    "size": "M"
+  },
+  "permissions": {
+    "network": ["https://api.open-meteo.com"]
+  }
+}

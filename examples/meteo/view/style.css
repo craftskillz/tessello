@@ -1,0 +1,98 @@
+:root {
+  --background: #ffffff;
+  --surface: #f4f5f7;
+  --text: #16181d;
+  --text-muted: #5f6670;
+  --accent: #2f6fec;
+  --border: #d9dce1;
+  font-family: system-ui, sans-serif;
+}
+
+body {
+  margin: 0;
+  background: var(--background);
+  color: var(--text);
+}
+
+main {
+  max-width: 44rem;
+  margin: 0 auto;
+  padding: 1.5rem;
+}
+
+nav ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0 0 0.75rem;
+  padding: 0;
+  list-style: none;
+}
+
+nav li {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+nav button,
+nav select {
+  font: inherit;
+  color: inherit;
+}
+
+.city,
+.remove {
+  border: 0;
+  background: var(--surface);
+  padding: 0.35rem 0.8rem;
+  cursor: pointer;
+}
+
+.remove {
+  padding: 0.35rem 0.6rem;
+  color: var(--text-muted);
+}
+
+.city[aria-current] {
+  background: var(--accent);
+  color: #ffffff;
+}
+
+form {
+  display: flex;
+  gap: 0.5rem;
+}
+
+form select,
+form button {
+  padding: 0.35rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+}
+
+#detail {
+  margin-top: 1.5rem;
+  padding: 1.25rem;
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+#detail h2 {
+  margin: 0 0 0.5rem;
+}
+
+.now {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0;
+  font-size: 2.5rem;
+  font-weight: 700;
+}
+
+.muted {
+  color: var(--text-muted);
+}

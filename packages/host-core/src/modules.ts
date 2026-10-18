@@ -35,6 +35,8 @@ export interface ModuleEntry {
   icon: Icon | null;
   /** The size of its Widget, from the Manifest; null when it declares none, or not as the Convention says. */
   widget: WidgetSize | null;
+  /** For an `active` or `missing` Module, the Permissions the User granted; null for a folder not activated. */
+  permissions: Permissions | null;
 }
 
 export type WidgetSize = NonNullable<Manifest["widget"]>["size"];
@@ -154,7 +156,15 @@ export function createModules(persistence: Persistence) {
       const candidates = names.filter((name) => !claimed.has(name) && summaries.get(name)!.id === module.id);
       const folder = candidates.includes(module.folder) ? module.folder : candidates[0];
       if (folder === undefined) {
-        entries.push({ status: "missing", folder: module.folder, id: module.id, name: module.id, icon: null, widget: null });
+        entries.push({
+          status: "missing",
+          folder: module.folder,
+          id: module.id,
+          name: module.id,
+          icon: null,
+          widget: null,
+          permissions: module.permissions,
+        });
         continue;
       }
       claimed.add(folder);
@@ -163,14 +173,22 @@ export function createModules(persistence: Persistence) {
         moved = true;
       }
       const summary = summaries.get(folder)!;
-      entries.push({ status: "active", folder, id: module.id, name: summary.name ?? folder, icon: summary.icon, widget: summary.widget });
+      entries.push({
+        status: "active",
+        folder,
+        id: module.id,
+        name: summary.name ?? folder,
+        icon: summary.icon,
+        widget: summary.widget,
+        permissions: module.permissions,
+      });
     }
     if (moved) await registry.write(registered);
     for (const folder of names) {
       if (claimed.has(folder)) continue;
       const { id, name, icon, widget } = summaries.get(folder)!;
       const status = id !== null && registered.some((module) => module.id === id) ? "conflict" : "new";
-      entries.push({ status, folder, id, name: name ?? folder, icon, widget });
+      entries.push({ status, folder, id, name: name ?? folder, icon, widget, permissions: null });
     }
     return entries;
   }

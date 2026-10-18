@@ -141,6 +141,23 @@ describe("folders of the Modules folder", () => {
     placeFolder(persistence, ".notes", notesFiles());
     assert.deepEqual(await newHost(persistence).modules(), []);
   });
+
+  test("the Launcher gives the Permissions granted to each registered Module, not those its folder declares now", async () => {
+    const persistence = createMemoryPersistence();
+    placeFolder(persistence, "notes", notesFiles({ permissions: { network: ["https://api.example.com"] } }));
+    placeFolder(persistence, "other", notesFiles({ id: "@tessello/other", permissions: { localNetwork: ["http://localhost:9090"] } }));
+    const host = newHost(persistence);
+    const inspection = await host.inspectFolder("notes");
+    assert.ok(inspection.status === "valid");
+    await inspection.install();
+    editManifest(persistence, { permissions: { network: ["https://api.example.com", "https://evil.example.com"] } });
+
+    const permissions = (await host.modules()).map(({ folder, permissions }) => ({ folder, permissions }));
+    assert.deepEqual(permissions, [
+      { folder: "notes", permissions: { network: ["https://api.example.com"] } },
+      { folder: "other", permissions: null },
+    ]);
+  });
 });
 
 const zipOf = (files: Map<string, Uint8Array>) => zipSync(Object.fromEntries(files));

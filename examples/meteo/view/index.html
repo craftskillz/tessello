@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Weather</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main>
+      <h1>Weather</h1>
+      <nav aria-label="Cities">
+        <ul id="cities"></ul>
+        <form id="add-city">
+          <select id="new-city" aria-label="City to follow"></select>
+          <button type="submit">Follow</button>
+        </form>
+      </nav>
+      <section id="detail" aria-live="polite"></section>
+    </main>
+    <script type="module" src="app.js"></script>
+  </body>
+</html>

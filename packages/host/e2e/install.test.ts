@@ -16,7 +16,7 @@ describe("installing a Module", () => {
     const launcher = page.getByRole("navigation", { name: "Launcher" });
     assert.equal(await launcher.getByRole("button", { name: "Notes" }).count(), 0, "nothing is installed before confirming");
 
-    await preview.getByRole("button", { name: "Install" }).click();
+    await preview.getByRole("button", { name: "Accept and install" }).click();
     await launcher.getByRole("button", { name: "Notes" }).click();
 
     const iframe = page.locator("iframe[title='Notes']");
@@ -51,7 +51,7 @@ describe("persistence", () => {
   test("installed Modules and their data are still there after a reload", async () => {
     const page = await host.newPage();
     await dropFile(page, "notes.zip", await zipExample("notes"));
-    await page.getByRole("dialog", { name: "Install Notes?" }).getByRole("button", { name: "Install" }).click();
+    await page.getByRole("dialog", { name: "Install Notes?" }).getByRole("button", { name: "Accept and install" }).click();
     const notes = page.frameLocator("iframe[title='Notes']");
     await notes.getByRole("textbox", { name: "New note" }).fill("Buy oat milk");
     await notes.getByRole("button", { name: "Add note" }).click();

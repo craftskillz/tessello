@@ -69,7 +69,7 @@ test("a View loads its package's stylesheets, images, modules, data files and Wo
   const requests: string[] = [];
   page.on("request", (request) => requests.push(request.url()));
   await dropFile(page, "files.zip", zip(FIXTURE));
-  await page.getByRole("dialog", { name: "Install Files?" }).getByRole("button", { name: "Install" }).click();
+  await page.getByRole("dialog", { name: "Install Files?" }).getByRole("button", { name: "Accept and install" }).click();
 
   const results = page.frameLocator("iframe[title='Files']").locator("#results");
   await results.filter({ hasText: "{" }).waitFor();
@@ -115,7 +115,7 @@ test("the View's Content Security Policy still applies once the loader has writt
       </script>`,
     }),
   );
-  await page.getByRole("dialog", { name: "Install Probe?" }).getByRole("button", { name: "Install" }).click();
+  await page.getByRole("dialog", { name: "Install Probe?" }).getByRole("button", { name: "Accept and install" }).click();
 
   const result = page.frameLocator("iframe[title='Probe']").locator("#result");
   await result.filter({ hasText: /\w/ }).waitFor();

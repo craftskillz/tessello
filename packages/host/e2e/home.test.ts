@@ -8,7 +8,7 @@ const host = useHost();
 /** Installs a .zip from the Host's drop zone, then goes back to the Home. */
 async function install(page: Page, name: string, bytes: Uint8Array) {
   await dropFile(page, `${name}.zip`, bytes);
-  await page.getByRole("dialog", { name: `Install ${name}?` }).getByRole("button", { name: "Install" }).click();
+  await page.getByRole("dialog", { name: `Install ${name}?` }).getByRole("button", { name: "Accept and install" }).click();
   await page.locator(`iframe[title='${name}']`).waitFor();
   await page.getByRole("button", { name: "Tessello" }).click();
 }

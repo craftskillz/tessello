@@ -129,9 +129,55 @@ body.dragging main {
   overflow-wrap: anywhere;
 }
 
-.permissions {
-  padding-left: 1.25rem;
+.launcher li {
+  display: flex;
+  align-items: center;
+}
+
+.launcher .entry-permissions {
+  flex: none;
+  width: auto;
+  padding: 0.35rem 0.5rem;
+  color: var(--text-muted);
+}
+
+.permission-summary {
+  margin-top: 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.permission-summary h3 {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+}
+
+.permission-summary p {
+  margin: 0.5rem 0;
+}
+
+.permission-summary .origins {
   margin: 0;
+  padding-left: 1.25rem;
+  overflow-wrap: anywhere;
+}
+
+.permission-summary .sensitive {
+  margin: 0.5rem 0;
+  padding: 0.25rem 0.75rem;
+  border-left: 4px solid var(--danger);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
+}
+
+.permission-summary .sensitive strong {
+  color: var(--danger);
+}
+
+.permission-summary .limits {
+  font-size: 0.9rem;
+  color: var(--text-muted);
 }
 
 main {

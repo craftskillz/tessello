@@ -21,7 +21,7 @@ test("the document of a View does not contain the Module's files, whatever their
       </script>`,
     }),
   );
-  await page.getByRole("dialog", { name: "Install Big?" }).getByRole("button", { name: "Install" }).click();
+  await page.getByRole("dialog", { name: "Install Big?" }).getByRole("button", { name: "Accept and install" }).click();
 
   await page.frameLocator("iframe[title='Big']").locator("#size").filter({ hasText: /\d/ }).waitFor();
   assert.equal(await page.frameLocator("iframe[title='Big']").locator("#size").innerText(), String(big.length));

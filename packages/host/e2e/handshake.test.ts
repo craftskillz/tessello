@@ -14,7 +14,7 @@ test("a View that does not send ready within 10 seconds is replaced by an error,
     "index.html": "<!doctype html><p>I never say hello.</p>",
   });
   await dropFile(page, "silent.zip", silent);
-  await page.getByRole("dialog", { name: "Install Silent?" }).getByRole("button", { name: "Install" }).click();
+  await page.getByRole("dialog", { name: "Install Silent?" }).getByRole("button", { name: "Accept and install" }).click();
   const frame = await (await page.locator("iframe[title='Silent']").elementHandle())!.contentFrame();
   await frame!.waitForLoadState("load");
   await frame!.getByText("I never say hello.").waitFor();
