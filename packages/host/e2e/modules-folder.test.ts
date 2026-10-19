@@ -18,9 +18,10 @@ async function installNotesWithANote(page: Page, note: string) {
 }
 
 describe("the Modules folder", () => {
-  test("a browser that cannot choose a folder only shows that Tessello needs Chrome or Edge on a computer", async () => {
+  test("a browser that cannot choose a folder only shows that it cannot open the Modules folder, and why", async () => {
     const page = await host.newPage({ unsupported: true });
-    await page.getByRole("heading", { name: "Tessello needs Chrome or Edge on a computer" }).waitFor();
+    await page.getByRole("heading", { name: "This browser can't open your Modules folder" }).waitFor();
+    assert.match(await page.locator("#gate").innerText(), /does not let a web page use a folder of your computer/);
     assert.equal(await launcher(page).isVisible(), false);
     assert.equal(await page.getByRole("button").count(), 0);
   });

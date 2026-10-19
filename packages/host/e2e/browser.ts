@@ -5,6 +5,7 @@
 // tools (git clone, an editor, git pull) are made by writing in that folder.
 
 import { readdir, readFile } from "node:fs/promises";
+import { createServer } from "node:http";
 import { join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { after, before } from "node:test";
@@ -23,6 +24,8 @@ export interface PageOptions {
   unsupported?: boolean;
   /** Chooses the Modules folder on the first launch; true by default. */
   choose?: boolean;
+  /** Opens the Host at this fragment, such as an install link's "#install=…". */
+  hash?: string;
 }
 
 /** Starts the Host and a browser for the tests of the calling file; `newPage()` opens a fresh, empty Host. */
@@ -45,10 +48,10 @@ export function useHost() {
       return state.url;
     },
     /** A page in a new browser context, so no folder or IndexedDB data is shared with other tests. */
-    async newPage({ unsupported = false, choose = true }: PageOptions = {}): Promise<Page> {
+    async newPage({ unsupported = false, choose = true, hash = "" }: PageOptions = {}): Promise<Page> {
       const page = await (await browser.newContext()).newPage();
       await page.addInitScript(unsupported ? "delete window.showDirectoryPicker;" : FOLDER_PICKER);
-      await page.goto(state.url);
+      await page.goto(state.url + hash);
       if (!unsupported && choose) await chooseFolder(page);
       return page;
     },
@@ -149,4 +152,61 @@ export async function dropFile(page: Page, name: string, bytes: Uint8Array): Pro
   );
   await page.dispatchEvent("body", "dragover", { dataTransfer });
   await page.dispatchEvent("body", "drop", { dataTransfer });
+}
+
+/** An install link to the Host for a package URL. */
+export const installLink = (packageUrl: string) => `#install=${encodeURIComponent(packageUrl)}`;
+
+/**
+ * Serves packages from a second origin, as a Creator's hosting does: under `/cors/` with the CORS header the Host
+ * needs (ADR 0009), under `/no-cors/` without it. `/huge.zip` sends more than the package size limit, with no
+ * Content-Length. `requests` lists the paths asked for.
+ */
+export function usePackageServer() {
+  const packages = new Map<string, Uint8Array>();
+  const state = { url: "", requests: [] as string[] };
+  let close: () => void;
+  before(async () => {
+    const server = createServer((request, response) => {
+      const path = new URL(request.url ?? "/", "http://packages").pathname;
+      state.requests.push(path);
+      if (path === "/huge.zip") {
+        response.writeHead(200, { "Content-Type": "application/zip", "Access-Control-Allow-Origin": "*" });
+        const chunk = new Uint8Array(1024 * 1024);
+        let sent = 0;
+        const send = () => {
+          while (sent < 64 && !response.destroyed) {
+            sent++;
+            if (!response.write(chunk)) return void response.once("drain", send);
+          }
+          response.end();
+        };
+        return send();
+      }
+      const [, access, name] = /^\/(cors|no-cors)\/(.+)$/.exec(path) ?? [];
+      const cors = access === "cors" ? { "Access-Control-Allow-Origin": "*" } : {};
+      const bytes = packages.get(name);
+      if (!bytes) return void response.writeHead(404, cors).end();
+      response.writeHead(200, { "Content-Type": "application/zip", ...cors });
+      response.end(bytes);
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    state.url = `http://127.0.0.1:${typeof address === "object" && address ? address.port : 0}`;
+    close = () => server.close();
+  });
+  after(() => close?.());
+  return {
+    get url() {
+      return state.url;
+    },
+    get requests() {
+      return state.requests;
+    },
+    /** Serves a package under this name; returns its URLs with and without CORS. */
+    serve(name: string, bytes: Uint8Array) {
+      packages.set(name, bytes);
+      return { cors: `${state.url}/cors/${name}`, noCors: `${state.url}/no-cors/${name}` };
+    },
+  };
 }

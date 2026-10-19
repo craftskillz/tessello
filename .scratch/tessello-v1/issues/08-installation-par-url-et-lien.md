@@ -6,19 +6,19 @@ Spec parente : `.scratch/tessello-v1/spec.md`. Vocabulaire : `GLOSSARY.md`. Cont
 
 **Blocked by:** 04 (Premier Module dans le navigateur)
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] Un champ « Install from a URL », à côté du choix d'un `.zip`, télécharge le paquet et lance le même parcours que l'installation par fichier. L'écran d'accord affiche l'URL d'origine sous le nom, la version et l'Identifiant.
-- [ ] Seules les URL `https:` sont acceptées, plus `http://localhost` et `http://127.0.0.1` pour les Créateurs. Toute autre URL (`http:` ailleurs, `data:`, `blob:`, `file:`…) est refusée avant toute requête, avec une explication.
-- [ ] Un échec réseau et un refus CORS, que le navigateur ne distingue pas, donnent un seul message : le serveur est injoignable ou n'autorise pas Tessello à télécharger le fichier. Le message propose de télécharger le `.zip` soi-même et de le déposer dans l'Hôte.
-- [ ] Un téléchargement qui dépasse `LIMITS.packageBytes` est interrompu, d'abord d'après `Content-Length`, puis en comptant les octets reçus. Il est refusé avec le code `package/too-large`.
-- [ ] Le lien d'installation a la forme `https://<Hôte>/#install=<URL encodée>`. L'Hôte lit le fragment au chargement, puis le retire avec `history.replaceState` pour qu'un rechargement ne relance pas l'installation.
-- [ ] Si le Dossier des Modules n'est pas encore choisi ou autorisé, l'URL en attente est conservée pendant le choix ou la reconnexion du dossier. Le téléchargement démarre ensuite seul. Rien n'est jamais installé sans l'accord de l'écran d'installation.
-- [ ] Un Module installé par URL se comporte exactement comme un Module installé par `.zip`. Le registre n'enregistre pas son URL d'origine (pas de mise à jour automatique en V1).
-- [ ] La page « navigateur non pris en charge » explique la vraie raison : le navigateur ne laisse pas une page web utiliser un dossier de l'ordinateur, alors que Chrome et Edge sur ordinateur le font. La détection reste celle de `showDirectoryPicker`. Ouverte par un lien d'installation, elle indique aussi l'URL du Module et propose un bouton qui copie le lien.
-- [ ] La règle « contenu à la racine du `.zip` » reste stricte. Un « Download ZIP » de dépôt GitHub (dossier racine imbriqué, sans CORS) n'est pas pris en charge.
-- [ ] La Convention (§8) contient une note « Publishing your Module » : un hébergement qui envoie les en-têtes CORS (GitHub Pages, `raw.githubusercontent.com`) et un contenu à la racine du `.zip`.
-- [ ] Les vérifications du schéma d'URL et de la taille sont testées là où elles sont écrites. Les tests navigateur (point d'entrée D) couvrent : le lien avec le dossier prêt, le lien conservé pendant le choix du dossier, l'installation par URL, une URL servie sans CORS depuis une seconde origine, un téléchargement trop gros interrompu et un schéma refusé. Le serveur de test ouvre un second port, servi avec et sans CORS.
+- [x] Un champ « Install from a URL », à côté du choix d'un `.zip`, télécharge le paquet et lance le même parcours que l'installation par fichier. L'écran d'accord affiche l'URL d'origine sous le nom, la version et l'Identifiant.
+- [x] Seules les URL `https:` sont acceptées, plus `http://localhost` et `http://127.0.0.1` pour les Créateurs. Toute autre URL (`http:` ailleurs, `data:`, `blob:`, `file:`…) est refusée avant toute requête, avec une explication.
+- [x] Un échec réseau et un refus CORS, que le navigateur ne distingue pas, donnent un seul message : le serveur est injoignable ou n'autorise pas Tessello à télécharger le fichier. Le message propose de télécharger le `.zip` soi-même et de le déposer dans l'Hôte.
+- [x] Un téléchargement qui dépasse `LIMITS.packageBytes` est interrompu, d'abord d'après `Content-Length`, puis en comptant les octets reçus. Il est refusé avec le code `package/too-large`.
+- [x] Le lien d'installation a la forme `https://<Hôte>/#install=<URL encodée>`. L'Hôte lit le fragment au chargement, puis le retire avec `history.replaceState` pour qu'un rechargement ne relance pas l'installation.
+- [x] Si le Dossier des Modules n'est pas encore choisi ou autorisé, l'URL en attente est conservée pendant le choix ou la reconnexion du dossier. Le téléchargement démarre ensuite seul. Rien n'est jamais installé sans l'accord de l'écran d'installation.
+- [x] Un Module installé par URL se comporte exactement comme un Module installé par `.zip`. Le registre n'enregistre pas son URL d'origine (pas de mise à jour automatique en V1).
+- [x] La page « navigateur non pris en charge » explique la vraie raison : le navigateur ne laisse pas une page web utiliser un dossier de l'ordinateur, alors que Chrome et Edge sur ordinateur le font. La détection reste celle de `showDirectoryPicker`. Ouverte par un lien d'installation, elle indique aussi l'URL du Module et propose un bouton qui copie le lien.
+- [x] La règle « contenu à la racine du `.zip` » reste stricte. Un « Download ZIP » de dépôt GitHub (dossier racine imbriqué, sans CORS) n'est pas pris en charge.
+- [x] La Convention (§8) contient une note « Publishing your Module » : un hébergement qui envoie les en-têtes CORS (GitHub Pages, `raw.githubusercontent.com`) et un contenu à la racine du `.zip`.
+- [x] Les vérifications du schéma d'URL et de la taille sont testées là où elles sont écrites. Les tests navigateur (point d'entrée D) couvrent : le lien avec le dossier prêt, le lien conservé pendant le choix du dossier, l'installation par URL, une URL servie sans CORS depuis une seconde origine, un téléchargement trop gros interrompu et un schéma refusé. Le serveur de test ouvre un second port, servi avec et sans CORS.
 
 ## Comments
 

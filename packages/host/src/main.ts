@@ -1,5 +1,6 @@
 // The Host's interface: the Modules folder, the Launcher, the Home and its Widgets, the View area, installing or
-// updating a Module from a dropped or chosen .zip file or from a folder placed in the Modules folder, and uninstalling.
+// updating a Module from a dropped or chosen .zip file, from a URL or an install link, or from a folder placed in the
+// Modules folder, and uninstalling.
 
 import type { Issue, Manifest, Permissions } from "@tessello/convention";
 import {
@@ -13,6 +14,7 @@ import {
   type Theme,
 } from "@tessello/host-core";
 import { copyModulesFolder, createFolderPersistence } from "./folder-persistence.ts";
+import { checkPackageUrl, downloadPackage } from "./package-url.ts";
 import { canUseFolders, hasTesselloFolder, isGranted, pickFolder, reconnect, rememberedFolder, rememberFolder } from "./modules-folder.ts";
 import { buildView, dataUrl, IFRAME_SANDBOX, typeOf, type ViewDocument } from "./srcdoc.ts";
 
@@ -90,20 +92,65 @@ const FOLDER_EXPLANATION = [
   ),
 ];
 
-function showUnsupported() {
+/**
+ * Shown when the browser has no `showDirectoryPicker`: without it the Host cannot use the Modules folder. Opened from
+ * an install link, it names the Module's URL and lets the User copy the link, to open it in another browser.
+ */
+function showUnsupported(link: InstallLink | null) {
+  const copyButton = (link: InstallLink) => {
+    const copy = button("Copy the install link", async () => {
+      try {
+        await navigator.clipboard.writeText(link.href);
+        copy.textContent = "Install link copied";
+      } catch {
+        copy.replaceWith(el("code", {}, link.href));
+      }
+    });
+    return copy;
+  };
   showGate(
-    el("h1", {}, "Tessello needs Chrome or Edge on a computer"),
+    el("h1", {}, "This browser can't open your Modules folder"),
     el(
       "p",
       {},
-      "Tessello keeps your Modules and their data in a folder of your computer, and only Chrome and Edge on a computer let a web page use a folder. Open this page in one of them.",
+      "Tessello keeps your Modules and their data in a folder of your computer. This browser does not let a web page use a folder of your computer, whereas Chrome and Edge on a computer do. Open this page in one of them.",
     ),
+    ...(link
+      ? [
+          el("p", {}, "You opened an install link for the Module at ", el("code", {}, link.url), ". Copy the link, then open it in Chrome or Edge on a computer."),
+          el("div", { className: "actions" }, copyButton(link)),
+        ]
+      : []),
   );
 }
+
+/** An install link: the package URL it carries, and the whole link, to open it elsewhere. */
+interface InstallLink {
+  url: string;
+  href: string;
+}
+
+/** An install link's package URL, kept while the User chooses or reconnects the Modules folder. */
+let pendingInstall: string | null = null;
+
+/** On the Modules folder pages, tells the User that the Module of an install link waits for the folder. */
+const pendingNote = () =>
+  pendingInstall === null
+    ? []
+    : [
+        el(
+          "p",
+          { className: "pending-install" },
+          "Once your Modules folder is ready, Tessello downloads the Module at ",
+          el("code", {}, pendingInstall),
+          " and asks you before installing it.",
+        ),
+      ];
 
 function showChooseFolder() {
   showGate(
     el("h1", {}, "Choose your Modules folder"),
+    ...pendingNote(),
     ...FOLDER_EXPLANATION,
     el(
       "div",
@@ -124,6 +171,7 @@ function showReconnect(folder: FileSystemDirectoryHandle) {
   showGate(
     el("h1", {}, "Reconnect your Modules folder"),
     el("p", {}, `Your browser asks again for permission to use your Modules folder, “${folder.name}”.`),
+    ...pendingNote(),
     el(
       "div",
       { className: "actions" },
@@ -211,6 +259,11 @@ async function start(folder: FileSystemDirectoryHandle) {
   launcher.hidden = stage.hidden = false;
   await refresh();
   showHome();
+  if (pendingInstall !== null) {
+    const url = pendingInstall;
+    pendingInstall = null;
+    installLinked(url);
+  }
 }
 
 async function refresh() {
@@ -734,7 +787,12 @@ function issueList(issues: Issue[]) {
 
 const errorList = (issues: Issue[]) => issueList(issues.filter((issue) => issue.severity === "error"));
 
-function moduleSummary(manifest: Manifest, icon: Icon) {
+/** The row naming the URL a package was downloaded from, if any. */
+const downloadedFromRow = (downloadedFrom?: string) =>
+  downloadedFrom ? [el("dt", {}, "Downloaded from"), el("dd", {}, el("code", {}, downloadedFrom))] : [];
+
+/** The Module's name, version, Module ID and description, then the URL it was downloaded from, if any. */
+function moduleSummary(manifest: Manifest, icon: Icon, downloadedFrom?: string) {
   return el(
     "div",
     { className: "module-summary" },
@@ -749,12 +807,16 @@ function moduleSummary(manifest: Manifest, icon: Icon) {
       el("dt", {}, "Module ID"),
       el("dd", {}, el("code", {}, manifest.id)),
       ...(manifest.description ? [el("dt", {}, "Description"), el("dd", {}, manifest.description)] : []),
+      ...downloadedFromRow(downloadedFrom),
     ),
   );
 }
 
-/** Shows what is about to be activated, or why it cannot be. `source` names it: a .zip file or a folder. */
-async function showInspection(source: string, pending: Promise<Inspection>, kind: "zip" | "folder") {
+/**
+ * Shows what is about to be activated, or why it cannot be. `source` names it: a .zip file or a folder.
+ * `downloadedFrom` is the URL a .zip was downloaded from.
+ */
+async function showInspection(source: string, pending: Promise<Inspection>, kind: "zip" | "folder", downloadedFrom?: string) {
   const inspection = await pending;
   if (inspection.status === "invalid") {
     showDialog(
@@ -778,7 +840,7 @@ async function showInspection(source: string, pending: Promise<Inspection>, kind
     return;
   }
   if (inspection.status === "update") {
-    showUpdate(inspection);
+    showUpdate(inspection, downloadedFrom);
     return;
   }
 
@@ -796,7 +858,7 @@ async function showInspection(source: string, pending: Promise<Inspection>, kind
   dialog.replaceChildren(
     el("h2", { id: "dialog-title" }, kind === "zip" ? `Install ${manifest.name}?` : `Activate ${manifest.name}?`),
     ...(kind === "folder" ? [el("p", {}, `Found in ${source} of your Modules folder.`)] : []),
-    moduleSummary(manifest, icon),
+    moduleSummary(manifest, icon, downloadedFrom),
     permissionSummary(manifest.name, manifest.permissions ?? {}),
     ...(warnings.length > 0 ? [el("p", {}, "The Validator has warnings; the Module can still be installed:"), issueList(warnings)] : []),
     el("div", { className: "actions" }, button("Cancel", () => dialog.close()), confirm),
@@ -808,7 +870,7 @@ async function showInspection(source: string, pending: Promise<Inspection>, kind
  * A package of an installed Module: the Host cannot tell an update from another Module reusing its Module ID, so the
  * User sees both names and versions (ADR 0003), and only the Permissions that are added (ADR 0004).
  */
-function showUpdate(inspection: Extract<Inspection, { status: "update" }>) {
+function showUpdate(inspection: Extract<Inspection, { status: "update" }>, downloadedFrom?: string) {
   const { manifest, installed, added, report } = inspection;
   const warnings = report.issues.filter((issue) => issue.severity === "warning");
   const hasAdded = Object.keys(added).length > 0;
@@ -842,6 +904,7 @@ function showUpdate(inspection: Extract<Inspection, { status: "update" }>) {
       el("dd", {}, `${installed.name} ${installed.version}`),
       el("dt", {}, "Incoming"),
       el("dd", {}, `${manifest.name} ${manifest.version}`),
+      ...downloadedFromRow(downloadedFrom),
     ),
     ...(installed.name !== manifest.name ? [el("p", { className: "warning" }, "The names differ: make sure this is the same Module, from the same Creator.")] : []),
     ...(hasAdded
@@ -857,6 +920,111 @@ function showUpdate(inspection: Extract<Inspection, { status: "update" }>) {
 }
 
 const installZip = async (file: File) => showInspection(file.name, host.inspectZip(new Uint8Array(await file.arrayBuffer())), "zip");
+
+/** The name of the file a URL points to, to name the package in messages. */
+function fileNameOf(url: string) {
+  const name = new URL(url).pathname.split("/").at(-1) ?? "";
+  try {
+    return decodeURIComponent(name) || url;
+  } catch {
+    return name;
+  }
+}
+
+/** The field "Install from a URL": a refused URL is explained there, before any request. */
+function showUrlForm() {
+  const input = el("input", { type: "url", name: "url", required: true, placeholder: "https://…", autocomplete: "off" });
+  const problem = el("p", { className: "form-error", role: "alert" });
+  problem.hidden = true;
+  const form = el(
+    "form",
+    { className: "url-form", noValidate: true },
+    el("label", {}, "URL of the .zip file", input),
+    problem,
+    el("div", { className: "actions" }, button("Cancel", () => dialog.close()), el("button", { type: "submit", className: "primary" }, "Download")),
+  );
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const check = checkPackageUrl(input.value);
+    if (check.status === "refused") {
+      problem.textContent = check.reason;
+      problem.hidden = false;
+      return;
+    }
+    void installFromUrl(check.url);
+  });
+  dialog.replaceChildren(
+    el("h2", { id: "dialog-title" }, "Install from a URL"),
+    el("p", {}, "Paste the address of a Module's .zip file, as its Creator published it."),
+    form,
+  );
+  dialog.showModal();
+}
+
+/** The download in progress: a new one, or closing its dialog, stops it. */
+let downloading = new AbortController();
+
+/** Downloads a package from an accepted URL, then goes on as for a .zip file, the URL shown under the Module. */
+async function installFromUrl(url: string) {
+  const name = fileNameOf(url);
+  downloading.abort();
+  const stop = (downloading = new AbortController());
+  const { signal } = stop;
+  dialog.addEventListener("close", () => stop.abort(), { signal });
+  dialog.replaceChildren(
+    el("h2", { id: "dialog-title" }, `Downloading ${name}…`),
+    el("p", {}, "From ", el("code", {}, url)),
+    el("div", { className: "actions" }, button("Cancel", () => dialog.close())),
+  );
+  dialog.showModal();
+  let download;
+  try {
+    download = await downloadPackage(url, { signal });
+  } catch (error) {
+    if (signal.aborted) return;
+    throw error;
+  }
+  if (signal.aborted) return;
+  stop.abort();
+  if (download.status === "unreachable") {
+    showDialog(
+      `${name} can't be downloaded`,
+      el("p", {}, "The server is unreachable, or it does not allow Tessello to download the file. Nothing was installed."),
+      el("p", {}, el("a", { href: url, download: "" }, "Download the .zip file"), " yourself, then drop it on Tessello to install it."),
+    );
+  } else if (download.status === "failed") {
+    showDialog(
+      `${name} can't be downloaded`,
+      el("p", {}, `The server answered with the error ${download.httpStatus}. Check the URL, or ask the Module's Creator where it is published.`),
+    );
+  } else if (download.status === "too-large") {
+    showDialog(`${name} can't be installed`, el("p", {}, "It is too large to be a Tessello Module. Nothing was installed."), errorList([download.issue]));
+  } else {
+    await showInspection(name, host.inspectZip(download.bytes), "zip", url);
+  }
+}
+
+/** The Module of an install link: downloaded, then installed only once the User accepts, as from the field. */
+function installLinked(url: string) {
+  const check = checkPackageUrl(url);
+  if (check.status === "refused") showDialog("This install link can't be used", el("p", {}, check.reason));
+  else void installFromUrl(check.url);
+}
+
+/**
+ * The package URL of an install link, `#install=<encoded URL>`, removed from the address once read, so that a reload
+ * does not install again.
+ */
+function takeInstallLink(): string | null {
+  const encoded = /^#install=(.+)$/.exec(location.hash)?.[1];
+  if (encoded === undefined) return null;
+  history.replaceState(null, "", location.pathname + location.search);
+  try {
+    return decodeURIComponent(encoded);
+  } catch {
+    return encoded;
+  }
+}
 
 // Dropping a file anywhere on the Host installs it.
 document.body.addEventListener("dragover", (event) => {
@@ -878,9 +1046,20 @@ fileInput.addEventListener("change", () => {
   fileInput.value = "";
   if (file) void installZip(file);
 });
+byId<HTMLButtonElement>("install-url-button").addEventListener("click", showUrlForm);
 byId<HTMLButtonElement>("home-button").addEventListener("click", showHome);
+// An install link opened in a tab where the Host already runs only changes the fragment.
+window.addEventListener("hashchange", () => {
+  const url = takeInstallLink();
+  if (url === null) return;
+  if (host) installLinked(url);
+  else pendingInstall = url;
+});
 
-if (!canUseFolders()) showUnsupported();
+// Kept whole before the link is removed from the address, to be copied on the page of an unsupported browser.
+const installLinkHref = location.href;
+pendingInstall = takeInstallLink();
+if (!canUseFolders()) showUnsupported(pendingInstall === null ? null : { url: pendingInstall, href: installLinkHref });
 else {
   const folder = await rememberedFolder();
   if (!folder) showChooseFolder();

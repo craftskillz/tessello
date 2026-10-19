@@ -100,6 +100,10 @@ body.dragging main {
   color: var(--accent);
 }
 
+.launcher-install + .launcher-install {
+  margin-top: 0;
+}
+
 .launcher .status {
   margin-left: auto;
   font-size: 0.75rem;
@@ -433,6 +437,29 @@ dialog::backdrop {
 
 .warning {
   color: var(--danger);
+}
+
+.url-form label {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.url-form input {
+  font: inherit;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--background);
+  color: inherit;
+}
+
+.form-error {
+  color: var(--danger);
+}
+
+dialog code,
+.pending-install code {
+  overflow-wrap: anywhere;
 }
 
 @media (max-width: 40rem) {
