@@ -30,6 +30,10 @@ _Avoid_: Docs, aide, README, manuel
 Nom unique et stable d'un Module, préfixé par l'Espace de noms de son Créateur (ex. `@yassine/meteo`) ; il reste identique d'une version à l'autre.
 _Avoid_: Nom, slug, clé
 
+**Espace** (*Space*):
+Tout ce que l'Utilisateur a assemblé dans l'Hôte : ses Modules activés et leur code, leurs données, les Permissions accordées et la disposition de l'Accueil. Il s'exporte en un seul fichier et s'importe dans un autre Hôte.
+_Avoid_: Workspace, profil, configuration
+
 **Espace de noms** (*Namespace*):
 Préfixe propre à un Créateur, sous lequel il nomme tous ses Modules.
 _Avoid_: Scope, organisation, compte

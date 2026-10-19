@@ -4,3 +4,4 @@ export { createMemoryPersistence } from "./persistence.ts";
 export type { MemoryPersistence, Persistence, RegisteredModule } from "./persistence.ts";
 export type { HomeWidget } from "./home.ts";
 export type { Icon, Inspection, ModuleEntry, Opening, WidgetSize } from "./modules.ts";
+export type { ImportedModule, SpaceExport, SpaceInspection } from "./space.ts";

@@ -217,12 +217,25 @@ function showFolderSettings(folder: FileSystemDirectoryHandle) {
       el("code", {}, ".tessello/"),
       " there, and leaves this one as it is. A folder that already holds a .tessello/ folder is used as it is.",
     ),
+    el("div", { className: "actions" }, button("Choose another folder…", () => void changeFolder(folder))),
+    el("h3", {}, "Export and import"),
+    el(
+      "p",
+      {},
+      "Export your whole space in a single .zip file: your Modules, their data, the Permissions you granted and the layout of the Home. Import it in Tessello on another browser or computer to find your space as it was.",
+    ),
+    el(
+      "p",
+      {},
+      "Importing adds the Modules that are not installed here, with their data. A Module already installed is left as it is, with its own data.",
+    ),
     el(
       "div",
       { className: "actions" },
-      button("Close", () => dialog.close()),
-      button("Choose another folder…", () => void changeFolder(folder), "primary"),
+      button("Import a space…", () => spaceInput.click()),
+      button("Export your space", () => void exportSpace(), "primary"),
     ),
+    el("div", { className: "actions" }, button("Close", () => dialog.close())),
   );
   dialog.showModal();
 }
@@ -791,6 +804,89 @@ function toggleArranging() {
 }
 
 arrangeButton.addEventListener("click", toggleArranging);
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Export and import of the space in a single file (ADR 0002).
+
+const spaceInput = el("input", { type: "file", accept: ".zip,application/zip", hidden: true, "aria-label": "Space file to import" });
+document.body.append(spaceInput);
+spaceInput.addEventListener("change", () => {
+  const file = spaceInput.files?.[0];
+  spaceInput.value = "";
+  if (file) void importSpace(file);
+});
+
+/** Saves the export as a file named after today's date, and names the Modules it had to leave out. */
+async function exportSpace() {
+  const { file, missing } = await host.exportSpace();
+  const url = URL.createObjectURL(new Blob([file as BlobPart], { type: "application/zip" }));
+  el("a", { href: url, download: `tessello-space-${new Date().toISOString().slice(0, 10)}.zip` }).click();
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  if (missing.length > 0) {
+    showDialog(
+      "Your space was exported without some Modules",
+      el("p", {}, "Their folder is no longer in your Modules folder, so their code could not be exported. Put their folder back and export again to include them:"),
+      el("ul", {}, ...missing.map((id) => el("li", {}, nameOf(id), " ", el("code", {}, id)))),
+    );
+  }
+}
+
+/**
+ * Shows the Modules of an export and the Permissions the User had granted them; they are activated only once the User
+ * accepts them all. A Module already installed is listed, and left as it is.
+ */
+async function importSpace(file: File) {
+  const inspection = await host.inspectSpace(new Uint8Array(await file.arrayBuffer()));
+  if (inspection.status === "invalid") {
+    showDialog(
+      `${file.name} can't be imported`,
+      el("p", {}, `${inspection.problem} Nothing was imported.`),
+      ...(inspection.report ? [el("p", {}, "The Validator reports:"), errorList(inspection.report.issues)] : []),
+    );
+    return;
+  }
+  const incoming = inspection.modules.filter((module) => !module.installed);
+  const installed = inspection.modules.filter((module) => module.installed);
+  const installedList = installed.length > 0
+    ? [
+        el("p", {}, "Already installed here, left as they are with their own data:"),
+        el("ul", {}, ...installed.map(({ manifest }) => el("li", {}, `${manifest.name} `, el("code", {}, manifest.id)))),
+      ]
+    : [];
+  if (incoming.length === 0) {
+    showDialog(`Nothing to import from ${file.name}`, el("p", {}, "Every Module of this space is already installed here."), ...installedList);
+    return;
+  }
+  // Every Permission or none (ADR 0004): accepting them all, or cancelling, are the only choices.
+  const confirm = el("button", { type: "button", className: "primary" }, "Accept and import");
+  confirm.addEventListener("click", async () => {
+    confirm.disabled = true;
+    try {
+      await inspection.import();
+      dialog.close();
+    } catch (error) {
+      console.error(`${file.name} could not be imported:`, error);
+      showDialog(`${file.name} could not be imported`, el("p", {}, "Something went wrong in your Modules folder. Try again: the Modules already imported are left as they are."));
+    }
+    await refresh();
+    showHome();
+  });
+  dialog.replaceChildren(
+    el("h2", { id: "dialog-title" }, `Import ${incoming.length === 1 ? "1 Module" : `${incoming.length} Modules`}?`),
+    el("p", {}, `From ${file.name}, with their data and their place on the Home. Each one gets the Permissions you had granted it:`),
+    ...incoming.flatMap(({ manifest, icon, permissions, report }) => {
+      const warnings = report.issues.filter((issue) => issue.severity === "warning");
+      return [
+        moduleSummary(manifest, icon),
+        permissionSummary(manifest.name, permissions),
+        ...(warnings.length > 0 ? [el("p", {}, "The Validator has warnings; the Module can still be imported:"), issueList(warnings)] : []),
+      ];
+    }),
+    ...installedList,
+    el("div", { className: "actions" }, button("Cancel", () => dialog.close()), confirm),
+  );
+  dialog.showModal();
+}
 
 // ---------------------------------------------------------------------------------------------------------------------
 // Installing a Module (CONVENTION.md §8).

@@ -28,6 +28,18 @@ function serialize(value: unknown): string {
   return serialized;
 }
 
+/** Why these entries (key → serialized value) could not all be in a Module's storage, or null when they can. */
+export function storageProblem(entries: ReadonlyMap<string, string>): string | null {
+  let total = 0;
+  for (const [key, serialized] of entries) {
+    if (key.length === 0) return "a key is empty";
+    if (key.length > LIMITS.storageKeyLength) return `the key "${key.slice(0, 40)}…" is longer than ${LIMITS.storageKeyLength} characters`;
+    if (byteLength(serialized) > LIMITS.storageValueBytes) return `the value of "${key}" is larger than ${LIMITS.storageValueBytes} bytes`;
+    total += entryBytes(key, serialized);
+  }
+  return total > LIMITS.storageTotalBytes ? `it is larger than the ${LIMITS.storageTotalBytes} bytes a Module may store` : null;
+}
+
 export function createStorage(persistence: Persistence) {
   // The requests of one Module (from its View and its Widget) run one after the other,
   // so a quota check always sees the writes that came before it.

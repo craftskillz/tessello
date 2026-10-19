@@ -276,6 +276,8 @@ export function createModules(persistence: Persistence) {
 
   return {
     scan,
+    locate,
+    freeFolderName,
     /**
      * Reads a Module's files when its View opens and runs the Validator again: its folder may have changed since
      * (an editor, `git pull`). A new version updates the registry; added Permissions stop it.

@@ -45,6 +45,8 @@ Installing a package whose `id` is already installed is an update: the Module's 
 
 Every Module comes with a **User guide**, a Markdown file named by `guide` in its Manifest (Convention §3.2). Click **ⓘ** next to a Module in the Launcher, then **User guide**, to read it.
 
+To move your space to another browser or computer, click **Modules folder** in the Launcher, then **Export your space**: a single `.zip` holds your Modules, their data, the Permissions you granted and the layout of the Home. **Import a space…** in the other Host shows the Modules and their Permissions before activating them. Importing merges: a Module already installed is left as it is, with its own data (ADR 0011).
+
 ### An example Module (`examples/`)
 
 The folder is the package:

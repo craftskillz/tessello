@@ -7,6 +7,7 @@ import type { Persistence } from "./persistence.ts";
 import { ProtocolError } from "./protocol-error.ts";
 import { createHome, type HomeWidget } from "./home.ts";
 import { createModules, type Inspection, type ModuleEntry, type Opening } from "./modules.ts";
+import { createSpace, type SpaceExport, type SpaceInspection } from "./space.ts";
 import { createStorage } from "./storage.ts";
 
 export interface Theme {
@@ -75,6 +76,16 @@ export interface Host {
    * its place on the Home.
    */
   uninstall(id: string): Promise<void>;
+  /**
+   * The whole space in a single `.zip` file (ADR 0002): every registered Module whose folder is found, with its code,
+   * its data and the Permissions granted, and the layout of the Home.
+   */
+  exportSpace(): Promise<SpaceExport>;
+  /**
+   * Reads an export, every Module checked again by the Validator; nothing is written until `import()` is called on a
+   * valid one. Importing merges: a Module whose Module ID is installed is left as it is.
+   */
+  inspectSpace(file: Uint8Array): Promise<SpaceInspection>;
   /** Reads a registered Module's files from disk to show its View, once checked again (ADR 0007). */
   open(id: string): Promise<Opening>;
   /** Starts answering the messages of an iframe the Host has just created. */
@@ -103,6 +114,7 @@ export function createHost(options: HostOptions): Host {
   const storage = createStorage(options.persistence);
   const modules = createModules(options.persistence);
   const home = createHome(options.persistence, modules.scan);
+  const space = createSpace(options.persistence, modules, home.widgets);
   let theme = options.theme;
 
   const contextOf = (surface: Surface) => ({
@@ -147,6 +159,8 @@ export function createHost(options: HostOptions): Host {
     inspectFolder: modules.inspectFolder,
     inspectZip: modules.inspectZip,
     open: modules.open,
+    exportSpace: space.exportSpace,
+    inspectSpace: space.inspectSpace,
     async uninstall(id) {
       await modules.uninstall(id);
       await home.forget(id);
