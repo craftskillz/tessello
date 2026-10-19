@@ -28,7 +28,7 @@ Déjà livré : la Convention (version 1, avec Permissions), le Validateur et la
 3 bis. En tant qu'Utilisateur, je veux ajouter un Module en clonant ou en copiant son dossier dans mon Dossier des Modules, et que l'Hôte le détecte et me propose de l'activer, afin d'installer un Module comme on récupère un projet.
 4. En tant qu'Utilisateur, je veux installer un Module en collant l'URL de son `.zip`, afin d'installer un Module publié en ligne.
 5. En tant qu'Utilisateur, je veux ouvrir un lien d'installation qui m'amène dans l'Hôte avec le Module prêt à installer, afin d'installer en un clic depuis une page web ou un message.
-6. En tant que Créateur, je veux lancer `tessello install` sur un `.zip` ou une URL, afin que l'Hôte s'ouvre avec mon Module prêt à installer. Un dossier, lui, s'ajoute simplement au Dossier des Modules (histoire 3 bis).
+6. ~~En tant que Créateur, je veux lancer `tessello install` sur un `.zip` ou une URL, afin que l'Hôte s'ouvre avec mon Module prêt à installer.~~ Retirée de la V1 (ticket 08) : un dossier s'ajoute au Dossier des Modules (histoire 3 bis), et un `.zip` se dépose dans l'Hôte.
 7. En tant qu'Utilisateur, je veux que l'Hôte refuse un Module non conforme en m'expliquant pourquoi, afin de ne jamais installer un Module cassé.
 8. En tant qu'Utilisateur, je veux voir le nom, la version, l'icône, la description et l'Identifiant d'un Module avant de l'installer, afin de savoir ce que j'installe.
 
@@ -103,7 +103,7 @@ Déjà livré : la Convention (version 1, avec Permissions), le Validateur et la
 - **SDK** (nouveau, `@tessello/sdk`) : une bibliothèque JavaScript sans dépendance qui enveloppe le protocole. Interface : une fonction de connexion qui envoie `ready` et renvoie le contexte (surface, Module, langue, thème, paramètres), puis le stockage (lire, écrire, supprimer, lister les clés), des abonnements aux changements de thème, de visibilité et de paramètres de navigation, et l'ouverture de la Vue depuis un Widget. Les erreurs du protocole remontent comme des erreurs typées portant leur code. Il est distribué sur npm **et** sous forme d'un fichier ES module unique que le Créateur copie dans son paquet, ce qui évite toute Permission réseau.
 - **Cœur de l'Hôte** (nouveau, sans interface) : le registre des Modules installés (Identifiant, dossier, version, Permissions accordées), la détection des dossiers ajoutés, modifiés ou retirés, le stockage par Module avec ses quotas, le traitement du protocole pour chaque surface (Vue ou Widget) avec ses codes d'erreur, le cycle installation → présentation des Permissions → accord ou refus, la mise à jour avec différence de Permissions, la désinstallation, l'export et l'import, et la disposition de l'Accueil. La persistance (le Dossier des Modules sur la machine de l'Utilisateur, ADR 0007) est derrière une interface, avec une implémentation en mémoire pour les tests.
 - **Interface de l'Hôte** (nouveau) : une PWA statique avec l'Accueil (grille de cellules, Widgets S = 1×1, M = 2×1, L = 2×2, réordonnables), le Lanceur, la zone de Vue, les points d'entrée d'installation (dépôt de fichier, URL, lien d'installation), l'écran d'accord des Permissions, l'écran de différence lors d'une mise à jour, la confirmation de désinstallation, l'affichage des rapports du Validateur, l'erreur de handshake (10 s), les thèmes clair et sombre, et l'anglais en langue principale avec le français en seconde langue.
-- **CLI** (existant, `tessello`) : ajout de `install <zip|url>`, qui ouvre l'Hôte avec un lien d'installation. Le CLI et ses dépendances sont compilés en JavaScript avant publication, car Node n'exécute pas le TypeScript situé dans `node_modules`.
+- **CLI** (existant, `tessello`) : `validate` seulement en V1 (`install` est retiré, ticket 08). Le CLI et ses dépendances sont compilés en JavaScript avant publication, car Node n'exécute pas le TypeScript situé dans `node_modules`.
 - **Modules d'exemple** (nouveaux) : trois Modules conformes, qui passent le Validateur sans avertissement et servent aussi de fixtures aux tests navigateur.
   - Un Module sans Permission, avec stockage et Widget S (par exemple des notes).
   - Un Module avec Permission `network`, Widget M et ouverture de la Vue avec paramètres (par exemple une météo sur une API publique compatible CORS).
@@ -121,21 +121,21 @@ Déjà livré : la Convention (version 1, avec Permissions), le Validateur et la
   Les données d'un Module sont rangées hors de son dossier de code : le dépôt git d'un Créateur ne reçoit donc jamais les données d'un Utilisateur. Chaque clé du stockage est un fichier JSON indenté, pour des différences git courtes et sans conflit quand deux machines modifient des clés différentes.
 - **Identité** (ADR 0003) : un Identifiant connu signifie une mise à jour, après confirmation de l'Utilisateur. Le stockage est rattaché à l'Identifiant. Deux dossiers déclarant le même Identifiant sont signalés en conflit, et seul le premier enregistré tourne.
 - **Permissions** (ADR 0004) : accord en bloc à l'installation, nouvel accord limité à la différence lors d'une mise à jour, retrait par désinstallation. Un dossier modifié ne gagne jamais d'accès : la CSP suit les Permissions accordées enregistrées par l'Hôte, jamais le Manifeste relu sur disque. L'Hôte **bloque** tout accès non déclaré (requêtes et ressources distantes), via la politique de sécurité de contenu appliquée aux fichiers qu'il sert aux iframes.
-- **Installation par URL** : l'URL pointe vers le `.zip`, et non vers le Manifeste, car l'export complet exige de connaître tous les fichiers du Module.
+- **Installation par URL** (ADR 0009) : l'URL pointe vers le `.zip`, et non vers le Manifeste, car l'export complet exige de connaître tous les fichiers du Module. L'Hôte la télécharge directement, sans intermédiaire : le serveur du paquet doit envoyer les en-têtes CORS. Le lien d'installation a la forme `https://<Hôte>/#install=<URL encodée>`.
 - **Limites** : elles sont définies à un seul endroit, dans le paquet de la Convention, et le SDK et l'Hôte les importent. Elles peuvent être relevées (révision mineure) mais jamais abaissées.
 - **Hébergement** : Cloudflare Pages, avec les en-têtes HTTP nécessaires à la PWA et à la politique de sécurité de contenu.
 
 ### Questions techniques à trancher pendant l'implémentation
 
 - **Comment l'Hôte sert les fichiers d'un Module à une iframe d'origine opaque**, avec la politique de sécurité de contenu dérivée des Permissions. Deux pistes : un service worker, ou une origine dédiée au contenu des Modules. Il faut vérifier quelle approche permet réellement d'appliquer la politique aux requêtes de l'iframe. C'est à investiguer avant de construire l'affichage des Modules.
-- **Comment `tessello install` transmet un zip local à l'Hôte** dans le navigateur. Un serveur local temporaire est soumis aux restrictions d'accès au réseau local du navigateur, et un paquet de 10 Mo ne tient pas dans une URL. Un dossier n'a plus besoin d'être transmis : il suffit de le placer dans le Dossier des Modules.
+- ~~**Comment `tessello install` transmet un zip local à l'Hôte** dans le navigateur.~~ Sans objet : `tessello install` est retiré de la V1 (ticket 08).
 - **Le comportement réel de Chrome et Edge** face aux requêtes `localNetwork` d'une iframe sandbox servie depuis un site public.
 
 ## Testing Decisions
 
 - **Un bon test** vérifie un comportement observable depuis un point d'entrée public (un rapport de validation, une sortie de CLI, une réponse du protocole, ce que voit l'Utilisateur), jamais des détails internes. Les tests sont écrits avant ou avec le code (TDD) à ces points d'entrée.
 - **Point d'entrée A, l'API du Validateur** (existant) : toutes les règles de la Convention. Les Modules d'exemple doivent la passer sans erreur ni avertissement. Prior art : les tests du Validateur et des Permissions, qui construisent des paquets en mémoire.
-- **Point d'entrée B, le CLI** (existant) : appelé avec des arguments, on vérifie la sortie et le code de retour. Couvre `validate` et `install`. Prior art : les tests du CLI sur dossiers temporaires et archives générées.
+- **Point d'entrée B, le CLI** (existant) : appelé avec des arguments, on vérifie la sortie et le code de retour. Couvre `validate`. Prior art : les tests du CLI sur dossiers temporaires et archives générées.
 - **Point d'entrée C, le cœur de l'Hôte piloté par le SDK** (nouveau) : un canal de messages en mémoire relie le SDK au cœur de l'Hôte, avec un stockage en mémoire. Il couvre :
   - le handshake et le contexte, puis `not_ready` avant `ready` ;
   - le stockage, son isolement entre Modules, son partage entre Vue et Widget, et les quotas (`quota_exceeded`) ;
@@ -153,6 +153,7 @@ Déjà livré : la Convention (version 1, avec Permissions), le Validateur et la
 - Les Permissions et capacités au-delà de `network` et `localNetwork` : notifications, fichiers, presse-papiers, etc.
 - La communication entre Modules.
 - La mise à jour automatique des Modules installés par URL.
+- La commande `tessello install` (histoire 6), et un proxy pour télécharger les paquets servis sans CORS (ADR 0009).
 - Les comptes, la synchronisation entre appareils par l'Hôte et tout backend pour l'Hôte. L'Utilisateur peut synchroniser son Dossier des Modules lui-même, par exemple avec git.
 - Le suivi en direct des modifications du dossier pendant qu'une Vue est ouverte : elles sont prises en compte à la prochaine ouverture.
 - Un LLM intégré à l'Hôte.

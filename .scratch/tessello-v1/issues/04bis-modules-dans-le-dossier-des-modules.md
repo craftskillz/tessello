@@ -81,7 +81,7 @@ L'Hôte ne fonctionne plus que dans Chrome et Edge sur ordinateur (ADR 0007).
 - 05 (Accueil et Widgets) : un Widget se lit comme une Vue, depuis le dossier. La disposition de l'Accueil est dans `.tessello/home.json`.
 - 06 (Permissions) : il remplace la liste brute par l'écran d'accord, à l'activation d'un dossier comme à l'installation d'un `.zip`.
 - 07 (Mise à jour et désinstallation) : une mise à jour peut venir d'un `.zip` ou d'un dossier modifié. La désinstallation supprime le dossier du Module, `.git` compris, et ses données, après une confirmation qui le dit.
-- 08 (Installation par URL et CLI) : `tessello install` ne prend plus de dossier, puisqu'il suffit de le placer dans le Dossier des Modules. Le ticket est à revoir.
+- 08 (Installation par URL et lien d'installation) : `tessello install` ne prend plus de dossier, puisqu'il suffit de le placer dans le Dossier des Modules. Le ticket a été revu le 2026-10-19 : la commande est retirée de la V1.
 - 09 (Export et import) : l'export lit le dossier et l'import l'écrit.
 - 12 (Déploiement) : PWA sur ordinateur seulement, et page « non pris en charge ».
 - 14 (Skill de création) : la skill peut faire travailler le LLM directement dans un dossier du Dossier des Modules.
