@@ -74,7 +74,7 @@ describe("the Survival Kit sample Module", () => {
     await dialog.getByRole("textbox", { name: "Description" }).fill("production dashboards");
     await dialog.getByRole("textbox", { name: "URL" }).fill("grafana.example.com");
     await dialog.getByRole("button", { name: "Add" }).click();
-    await stored(page, "links", (links) => links[0]?.liens.length === 1);
+    await stored(page, "links", (categories) => categories[0]?.links.length === 1);
 
     await page.reload();
     await openFromLauncher(page);
@@ -157,7 +157,7 @@ describe("the Survival Kit sample Module", () => {
 
     await view(page).getByRole("checkbox", { name: "Imported task" }).waitFor();
     assert.equal(await view(page).getByRole("checkbox", { name: "Replaced by the import" }).count(), 0);
-    await stored(page, "links", (links) => links[0]?.titre === "Imported links");
+    await stored(page, "links", (categories) => categories[0]?.title === "Imported links");
     await page.reload();
     await openFromLauncher(page);
     await view(page).getByRole("checkbox", { name: "Imported done task" }).waitFor();
