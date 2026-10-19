@@ -13,6 +13,7 @@ function manifest(overrides: Record<string, unknown> = {}): Record<string, unkno
     version: "1.0.0",
     icon: "icon.svg",
     view: { entry: "view/index.html" },
+    guide: "guide.md",
     ...overrides,
   };
 }
@@ -31,6 +32,7 @@ function validModule(manifestOverrides: Record<string, unknown> = {}, extraFiles
     "manifest.json": manifest(manifestOverrides),
     "icon.svg": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1 1'/>",
     "view/index.html": READY_VIEW,
+    "guide.md": "# Weather\n\nAdd a city to see its forecast.\n",
     ...extraFiles,
   });
 }
@@ -93,7 +95,7 @@ describe("Manifest errors", () => {
     assert.deepEqual(codes(validatePackage(pkg({ "manifest.json": "[]" }))), ["manifest/invalid-json"]);
   });
 
-  for (const field of ["convention", "id", "name", "version", "icon", "view"]) {
+  for (const field of ["convention", "id", "name", "version", "icon", "view", "guide"]) {
     test(`missing required field "${field}"`, () => {
       const files = validModule();
       const m = manifest();
@@ -182,6 +184,44 @@ describe("paths", () => {
   });
 });
 
+describe("User guide", () => {
+  const guide = (markdown: string, extraFiles: Record<string, string | Uint8Array> = {}) =>
+    validatePackage(validModule({ guide: "docs/guide.md" }, { "docs/guide.md": markdown, ...extraFiles }));
+
+  test("may sit in a folder and show images of the package, relative to itself", () => {
+    const report = guide("# Weather\n\n![The View](images/view.png)\n\n| Widget |\n|---|\n| ![](../icon.svg) |", { "docs/images/view.png": png(800, 600) });
+    assert.deepEqual(report.issues, []);
+    assert.equal(report.manifest?.guide, "docs/guide.md");
+  });
+
+  test("wrong type, missing file and unsafe path", () => {
+    assert.deepEqual(codes(validatePackage(validModule({ guide: ["guide.md"] }))), ["manifest/invalid-type"]);
+    assert.deepEqual(codes(validatePackage(validModule({ guide: "missing.md" }))), ["manifest/file-not-found"]);
+    assert.deepEqual(codes(validatePackage(validModule({ guide: "../guide.md" }))), ["manifest/unsafe-path"]);
+  });
+
+  test("must be a Markdown file", () => {
+    const report = validatePackage(validModule({ guide: "guide.html" }, { "guide.html": "<h1>Weather</h1>" }));
+    assert.deepEqual(codes(report), ["manifest/guide-not-markdown"]);
+  });
+
+  test("must not be empty", () => {
+    assert.deepEqual(codes(guide(" \n\t\n")), ["guide/empty"]);
+  });
+
+  test("an image missing from the package is a warning", () => {
+    const report = guide("![The View](images/view.png) ![Not an image](guide.md)");
+    assert.deepEqual(codes(report), []);
+    assert.deepEqual(codes(report, "warning"), ["guide/missing-image", "guide/missing-image"]);
+    assert.match(report.issues[0]!.message, /"docs\/images\/view.png" is not an image of the package/);
+  });
+
+  test("a remote image, or one with an absolute path, is a warning: the Host does not show it", () => {
+    const report = guide("![a](https://example.com/a.png) ![b](/b.png) ![c](data:image/png;base64,AA==)");
+    assert.deepEqual(codes(report, "warning"), ["guide/remote-image", "guide/remote-image", "guide/remote-image"]);
+  });
+});
+
 describe("icon", () => {
   test("unsupported format", () => {
     assert.deepEqual(codes(validatePackage(validModule({ icon: "icon.jpg" }, { "icon.jpg": "x" }))), ["icon/invalid-format"]);
@@ -260,6 +300,7 @@ describe("validateZip", () => {
         "manifest.json": JSON.stringify(manifest()),
         "icon.svg": "<svg/>",
         "view/index.html": READY_VIEW,
+        "guide.md": "# Weather",
         "__MACOSX/._manifest.json": "junk",
         ".DS_Store": "junk",
       }),

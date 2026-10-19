@@ -22,6 +22,10 @@ _Avoid_: Spec, interface, API, protocole
 La carte d'identité déclarative d'un Module (nom, version, icône, Vue, Widget éventuel), lisible sans exécuter le Module.
 _Avoid_: Config, descripteur, package.json
 
+**Guide d'utilisation** (*User guide*):
+Le mode d'emploi d'un Module destiné à l'Utilisateur : un fichier Markdown de son paquet, nommé par le Manifeste, que l'Hôte affiche depuis le Lanceur sans exécuter de code du Module.
+_Avoid_: Docs, aide, README, manuel
+
 **Identifiant** (*Module ID*):
 Nom unique et stable d'un Module, préfixé par l'Espace de noms de son Créateur (ex. `@yassine/meteo`) ; il reste identique d'une version à l'autre.
 _Avoid_: Nom, slug, clé

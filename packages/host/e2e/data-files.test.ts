@@ -11,8 +11,8 @@ const VALUES: Record<string, unknown> = { A: "capital", a: "small", con: "a name
 
 // Writes VALUES when its storage is empty, then shows every key and its value, read back from the Host.
 const FIXTURE = {
-  "manifest.json": { convention: 1, id: "@test/keys", name: "Keys", version: "1.0.0", icon: "icon.svg", view: { entry: "index.html" } },
-  "icon.svg": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1 1'/>",
+  "manifest.json": { convention: 1, id: "@test/keys", name: "Keys", version: "1.0.0", icon: "icon.svg", guide: "guide.md", view: { entry: "index.html" } },
+  "icon.svg": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1 1'/>", "guide.md": "# Guide",
   "index.html": `<!doctype html><pre id="results"></pre><script type="module">
     const call = (type, payload) => new Promise((resolve) => {
       const id = Math.random().toString(36).slice(2);

@@ -1,4 +1,5 @@
 import { unzipSync } from "fflate";
+import { GUIDE_IMAGE_EXTENSIONS, guideImagePath, guideImageSources } from "./guide.ts";
 import { LIMITS, SUPPORTED_CONVENTIONS, WIDGET_SIZES } from "./limits.ts";
 import { invalidEntryReason, isCovered, PERMISSION_NAMES, type Permissions } from "./permissions.ts";
 import { pngSize } from "./png.ts";
@@ -25,6 +26,8 @@ export interface Manifest {
   description?: string;
   icon: string;
   view: { entry: string };
+  /** The package path of the User guide, a Markdown file (ADR 0010). */
+  guide: string;
   widget?: { entry: string; size: "S" | "M" | "L" };
   permissions?: Permissions;
 }
@@ -41,7 +44,7 @@ const MANIFEST = "manifest.json";
 const ID_PATTERN = /^@[a-z0-9][a-z0-9-]{0,38}\/[a-z0-9][a-z0-9-]{0,63}$/;
 const SEMVER_PATTERN =
   /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?$/;
-const KNOWN_FIELDS = new Set(["convention", "id", "name", "version", "description", "icon", "view", "widget", "permissions"]);
+const KNOWN_FIELDS = new Set(["convention", "id", "name", "version", "description", "icon", "view", "guide", "widget", "permissions"]);
 const TEXT_EXTENSIONS = [".html", ".htm", ".js", ".mjs"];
 const HTML_EXTENSIONS = [".html", ".htm"];
 
@@ -171,6 +174,8 @@ function checkManifest(m: Record<string, unknown>, files: PackageFiles, issues: 
     checkEntry(m.view, "view", files, issues);
   }
 
+  if (checkString(m, "guide", issues)) checkGuide(m.guide as string, files, issues);
+
   if (m.widget !== undefined) {
     if (!isObject(m.widget)) {
       issues.push(error("manifest/invalid-type", `${field("widget")} must be an object with "entry" and "size" fields.`, MANIFEST));
@@ -273,6 +278,30 @@ function checkIcon(icon: string, files: PackageFiles, issues: Issue[]): void {
   }
 }
 
+/** Checks the User guide: a Markdown file with some text, whose images are in the package (ADR 0010). */
+function checkGuide(guide: string, files: PackageFiles, issues: Issue[]): void {
+  if (!checkReferencedFile("guide", guide, files, issues)) return;
+  if (!hasExtension(guide, [".md"])) {
+    issues.push(error("manifest/guide-not-markdown", `manifest.json: "guide" must point to a Markdown file (.md), got "${guide}".`, MANIFEST));
+    return;
+  }
+  const markdown = new TextDecoder().decode(files.get(guide));
+  if (!markdown.trim()) {
+    issues.push(error("guide/empty", `The User guide "${guide}" is empty.`, guide));
+    return;
+  }
+  for (const src of guideImageSources(markdown)) {
+    const path = guideImagePath(guide, src);
+    if (path === null) {
+      issues.push(
+        warning("guide/remote-image", `${guide} shows the image "${src}", which is not in the package; the Host shows only images of the package.`, guide),
+      );
+    } else if (!files.has(path) || !hasExtension(path, GUIDE_IMAGE_EXTENSIONS)) {
+      issues.push(warning("guide/missing-image", `${guide} shows the image "${src}", but "${path}" is not an image of the package.`, guide));
+    }
+  }
+}
+
 /** Checks that a Manifest path is safe and exists; returns true when it does. */
 function checkReferencedFile(fieldName: string, path: string, files: PackageFiles, issues: Issue[]): boolean {
   if (isUnsafePath(path)) {
@@ -370,7 +399,7 @@ function isArchiveNoise(name: string): boolean {
   return name.startsWith("__MACOSX/") || name === ".DS_Store" || name.endsWith("/.DS_Store");
 }
 
-function hasExtension(path: string, extensions: string[]): boolean {
+function hasExtension(path: string, extensions: readonly string[]): boolean {
   const lower = path.toLowerCase();
   return extensions.some((ext) => lower.endsWith(ext));
 }

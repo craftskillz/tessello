@@ -23,10 +23,12 @@ const notesFiles = (manifest: object = {}) =>
         version: "1.0.0",
         icon: "icon.svg",
         view: { entry: "view/index.html" },
+        guide: "guide.md",
         ...manifest,
       }),
       "icon.svg": ICON,
       "view/index.html": READY_VIEW,
+      "guide.md": "# Notes",
     }).map(([path, content]) => [path, strToU8(content)]),
   );
 
@@ -229,7 +231,7 @@ describe("updating a Module from a .zip", () => {
     const opening = await host.open("@tessello/notes");
     assert.ok(opening.status === "ready");
     assert.equal(opening.manifest.version, "1.1.0");
-    assert.deepEqual([...opening.files.keys()].sort(), ["icon.svg", "manifest.json", "view/index.html"]);
+    assert.deepEqual([...opening.files.keys()].sort(), ["guide.md", "icon.svg", "manifest.json", "view/index.html"]);
     assert.equal(new TextDecoder().decode(opening.files.get("view/index.html")), "<!doctype html><p>1.1.0</p>");
     assert.equal(persistence.disk.get("notes")!.has(".git/HEAD"), true, "the Creator's repository is not touched");
     assert.deepEqual([...(await persistence.storage.read("@tessello/notes"))], [["notes", "[]"]]);

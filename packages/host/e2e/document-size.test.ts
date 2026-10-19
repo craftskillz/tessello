@@ -13,8 +13,8 @@ test("the document of a View does not contain the Module's files, whatever their
     page,
     "big.zip",
     zip({
-      "manifest.json": { convention: 1, id: "@test/big", name: "Big", version: "1.0.0", icon: "icon.svg", view: { entry: "index.html" } },
-      "icon.svg": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1 1'/>",
+      "manifest.json": { convention: 1, id: "@test/big", name: "Big", version: "1.0.0", icon: "icon.svg", guide: "guide.md", view: { entry: "index.html" } },
+      "icon.svg": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1 1'/>", "guide.md": "# Guide",
       "big.bin": big,
       "index.html": `<!doctype html><p id="size"></p><script type="module">
         document.getElementById("size").textContent = (await (await fetch("big.bin")).arrayBuffer()).byteLength;

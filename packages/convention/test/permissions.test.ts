@@ -13,6 +13,7 @@ function moduleWith(permissions: unknown, viewSource = READY) {
     version: "1.0.0",
     icon: "icon.svg",
     view: { entry: "view/index.html" },
+    guide: "guide.md",
     ...(permissions === undefined ? {} : { permissions }),
   };
   return validatePackage(
@@ -20,6 +21,7 @@ function moduleWith(permissions: unknown, viewSource = READY) {
       ["manifest.json", strToU8(JSON.stringify(manifest))],
       ["icon.svg", strToU8("<svg/>")],
       ["view/index.html", strToU8(viewSource)],
+      ["guide.md", strToU8("# Observability")],
     ]),
   );
 }

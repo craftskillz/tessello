@@ -13,6 +13,7 @@ const MANIFEST = {
   version: "1.0.0",
   icon: "icon.svg",
   view: { entry: "view/index.html" },
+  guide: "guide.md",
 };
 const VIEW = `<script>parent.postMessage({ tessello: 1, type: "ready", id: "1" }, "*")</script>`;
 
@@ -22,6 +23,7 @@ async function moduleFolder(manifest: object = MANIFEST): Promise<string> {
   await writeFile(join(dir, "manifest.json"), JSON.stringify(manifest));
   await writeFile(join(dir, "icon.svg"), "<svg/>");
   await writeFile(join(dir, "view", "index.html"), VIEW);
+  await writeFile(join(dir, "guide.md"), "# Weather");
   await writeFile(join(dir, ".DS_Store"), "junk");
   return dir;
 }
@@ -53,7 +55,7 @@ describe("tessello validate", () => {
     const zipPath = join(dir, "weather.zip");
     await writeFile(
       zipPath,
-      zipSync({ "manifest.json": strToU8(JSON.stringify(MANIFEST)), "icon.svg": strToU8("<svg/>"), "view/index.html": strToU8(VIEW) }),
+      zipSync({ "manifest.json": strToU8(JSON.stringify(MANIFEST)), "icon.svg": strToU8("<svg/>"), "view/index.html": strToU8(VIEW), "guide.md": strToU8("# Weather") }),
     );
     assert.equal((await cli("validate", zipPath)).code, 0);
   });

@@ -40,11 +40,11 @@ function probeModule(name: string, size?: "S" | "M" | "L", options: { silentWidg
       id,
       name,
       version: "1.0.0",
-      icon: "icon.svg",
+      icon: "icon.svg", guide: "guide.md",
       view: { entry: "view.html" },
       ...(size ? { widget: { entry: "widget.html", size } } : {}),
     },
-    "icon.svg": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1 1'/>",
+    "icon.svg": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1 1'/>", "guide.md": "# Guide",
     "view.html": probe(`${name} view`),
     ...(size ? { "widget.html": probe(`${name} widget`, options.silentWidget) } : {}),
   });

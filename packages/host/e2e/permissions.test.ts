@@ -52,11 +52,11 @@ describe("the consent screen", () => {
           id: "@test/prometheus",
           name: "Prometheus",
           version: "1.0.0",
-          icon: "icon.svg",
+          icon: "icon.svg", guide: "guide.md",
           view: { entry: "index.html" },
           permissions: { localNetwork: ["http://localhost:9090"] },
         },
-        "icon.svg": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1 1'/>",
+        "icon.svg": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1 1'/>", "guide.md": "# Guide",
         "index.html": `<script>parent.postMessage({ tessello: 1, type: "ready", id: "1" }, "*")</script>`,
       }),
     );
@@ -133,11 +133,11 @@ describe("blocking", () => {
           id: "@test/probe",
           name: "Probe",
           version: "1.0.0",
-          icon: "icon.svg",
+          icon: "icon.svg", guide: "guide.md",
           view: { entry: "index.html" },
           permissions: { network: ["https://declared.example.com"] },
         },
-        "icon.svg": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1 1'/>",
+        "icon.svg": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1 1'/>", "guide.md": "# Guide",
         "index.html": `<!doctype html><pre id="result"></pre><script type="module">
           const request = (origin) => fetch(origin + "/data.json").then((response) => response.json()).then(() => "reached", () => "blocked");
           const image = (origin) => new Promise((resolve) => {

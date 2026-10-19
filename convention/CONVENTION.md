@@ -6,7 +6,7 @@ The key words **MUST**, **MUST NOT**, **SHOULD**, **SHOULD NOT** and **MAY** are
 
 ## 1. Overview
 
-A **Module** is an installable unit of a Tessello **Host**. Every Module provides one **View** (a full-screen presentation) and MAY provide one **Widget** (a compact presentation shown on the Host's **Home**).
+A **Module** is an installable unit of a Tessello **Host**. Every Module provides one **View** (a full-screen presentation), MAY provide one **Widget** (a compact presentation shown on the Host's **Home**), and comes with a **User guide** (a Markdown file the Host shows to the User).
 
 Each View and each Widget runs in its own sandboxed `<iframe>`. A Module never touches the Host directly: it only exchanges messages with it, using the protocol defined in this document. Anything a Module needs from the Host (storage, theme, navigation, lifecycle) goes through these messages.
 
@@ -30,6 +30,7 @@ A Module is a directory with a `manifest.json` file at its root:
 weather/
 ├── manifest.json
 ├── icon.svg
+├── guide.md
 ├── view/
 │   ├── index.html
 │   └── app.js
@@ -58,6 +59,7 @@ weather/
   "view": {
     "entry": "view/index.html"
   },
+  "guide": "guide.md",
   "widget": {
     "entry": "widget/index.html",
     "size": "M"
@@ -77,6 +79,7 @@ weather/
 | `description` | no | Plain text, ≤ 200 characters. |
 | `icon` | yes | Path to a square `.svg` or `.png` file (PNG: at least 256×256 px). Shown in the Launcher. |
 | `view.entry` | yes | Path to the View's HTML entry page. |
+| `guide` | yes | Path to the Module's User guide, a Markdown `.md` file (§3.2). |
 | `widget` | no | Present only if the Module provides a Widget. |
 | `widget.entry` | if `widget` | Path to the Widget's HTML entry page. |
 | `widget.size` | if `widget` | One of `"S"`, `"M"`, `"L"` (see §7.1). |
@@ -111,6 +114,26 @@ Rules for every entry:
 - Unknown Permission names are an error: a Host cannot grant what it does not know.
 
 Browsers still apply their own rules on top of the Permissions: an API MUST accept cross-origin requests (CORS) from origin `null`, and a browser MAY ask the User before letting a page reach the local network. A future, optional **Bridge** (a local program run by the User) will lift these limits and add further Permissions, such as running declared commands; it is not part of Convention 1.
+
+### 3.2 User guide
+
+Every Module MUST come with a **User guide**: a Markdown file of the package, named by `guide`, that tells the User how to use the Module. The Host shows it from the Launcher, next to the Module's Permissions. The guide is written for Users, not for Creators: it is not a developer README.
+
+The Host renders the guide as [CommonMark](https://commonmark.org) with GitHub tables, strikethrough and task lists, and shows it **without running any code**:
+
+- raw HTML is shown as text;
+- images are shown only when they are image files of the package (`.svg`, `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, `.avif`), referenced by a path relative to the guide (`![The View](images/view.png)`). A remote image is never loaded: the guide reads the same offline, whatever the Module's Permissions;
+- `https:`, `http:` and `mailto:` links open in a new tab; `#…` links go to a heading of the guide, whose id is its text in lowercase, with spaces turned into `-` and punctuation removed, as on GitHub (`## Your data` → `#your-data`); any other link is shown as text;
+- the guide follows the Host's theme.
+
+A guide SHOULD explain:
+
+- what the Module is for, in a sentence or two;
+- how to use its View and, if it has one, its Widget;
+- what each message it may show means, and what to do about it;
+- where its data goes, which servers it contacts and why (its Permissions), and that uninstalling it deletes its data.
+
+Screenshots help: take them in the Host, and keep them small, since they count in the package size (§2).
 
 ## 4. Runtime environment
 
@@ -332,10 +355,11 @@ Errors:
 5. A required Manifest field is missing (`manifest/field-required`) or has the wrong type (`manifest/invalid-type`).
 6. A Manifest field has an invalid value (`manifest/invalid-convention`, `manifest/invalid-id`, `manifest/invalid-name`, `manifest/invalid-version`, `manifest/invalid-description`, `manifest/invalid-widget-size`).
 7. `convention` is not a version supported by the Validator (`manifest/unsupported-convention`).
-8. A path in the Manifest is absolute or contains `..` (`manifest/unsafe-path`), points to a missing file (`manifest/file-not-found`), or an entry is not an `.html` page (`manifest/entry-not-html`).
+8. A path in the Manifest is absolute or contains `..` (`manifest/unsafe-path`), points to a missing file (`manifest/file-not-found`), an entry is not an `.html` page (`manifest/entry-not-html`), or the guide is not a `.md` file (`manifest/guide-not-markdown`).
 9. The icon is not `.svg` or `.png` (`icon/invalid-format`), or a PNG icon is unreadable (`icon/invalid-png`), not square (`icon/not-square`) or smaller than 256×256 px (`icon/too-small`).
 10. `permissions` is not an object, a Permission is not an array of strings, or an entry is not a valid origin for its Permission (`permissions/invalid`).
 11. `permissions` contains an unknown Permission (`permissions/unknown`).
+12. The User guide is empty, or holds only white space (`guide/empty`).
 
 Warnings (the package stays installable):
 
@@ -344,6 +368,7 @@ Warnings (the package stays installable):
 3. An HTML page or script uses an API unavailable in the sandbox: `localStorage`, `sessionStorage`, `indexedDB`, `document.cookie`, `window.top`, `alert`, `confirm`, `prompt`, or embeds a frame (`<iframe>`, `<frame>`, `<object>`, `<embed>`) (`sandbox/unavailable-api`).
 4. No source appears to send the `ready` request (`lifecycle/no-ready`).
 5. A source loads or calls an absolute URL whose origin is not covered by the Permissions; the Host will block it (`permissions/undeclared-origin`).
+6. The User guide shows an image that is not an image file of the package (`guide/missing-image`), or a remote image, or an image with an absolute path, which the Host does not show (`guide/remote-image`).
 
 Warnings come from a static scan of `.html`, `.htm`, `.js` and `.mjs` files and are best effort: they can miss a problem in minified code, or flag a harmless mention.
 
@@ -384,4 +409,5 @@ These limits are deliberately conservative. They MAY be **raised** in a minor re
 ## 12. Versioning of this Convention
 
 - Adding optional Manifest fields, request types, event types or Permissions, or **raising a limit** (§11), is a **minor revision**: it keeps `convention: 1`, and existing Modules keep working (Modules ignore unknown events, Hosts ignore unknown Manifest fields).
-- Any change that could break an existing Module (removing or renaming a field, a message type or a capability, tightening a limit) requires a new Convention version (`convention: 2`). A Host states which Convention versions it supports and refuses the others with a clear message.
+- Any change that could break an existing Module (removing or renaming a field, a message type or a capability, adding a required field, tightening a limit) requires a new Convention version (`convention: 2`). A Host states which Convention versions it supports and refuses the others with a clear message.
+- While this Convention is a **draft**, nothing has been published under it yet, so it MAY still change without a new version. The required `guide` field (§3.2) was added this way.

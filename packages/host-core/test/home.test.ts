@@ -22,10 +22,12 @@ function moduleFiles(id: string, name: string, widget?: "S" | "M" | "L") {
         version: "1.0.0",
         icon: "icon.svg",
         view: { entry: "view/index.html" },
+        guide: "guide.md",
         ...(widget ? { widget: { entry: "widget/index.html", size: widget } } : {}),
       }),
       "icon.svg": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1 1'/>",
       "view/index.html": PAGE,
+      "guide.md": `# ${name}`,
       ...(widget ? { "widget/index.html": PAGE } : {}),
     }).map(([path, content]) => [path, strToU8(content)]),
   );

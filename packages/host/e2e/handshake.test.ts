@@ -9,8 +9,8 @@ test("a View that does not send ready within 10 seconds is replaced by an error,
   await page.clock.install();
   await page.reload();
   const silent = zip({
-    "manifest.json": { convention: 1, id: "@test/silent", name: "Silent", version: "1.0.0", icon: "icon.svg", view: { entry: "index.html" } },
-    "icon.svg": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1 1'/>",
+    "manifest.json": { convention: 1, id: "@test/silent", name: "Silent", version: "1.0.0", icon: "icon.svg", guide: "guide.md", view: { entry: "index.html" } },
+    "icon.svg": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1 1'/>", "guide.md": "# Guide",
     "index.html": "<!doctype html><p>I never say hello.</p>",
   });
   await dropFile(page, "silent.zip", silent);

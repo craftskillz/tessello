@@ -12,8 +12,8 @@ const DOT = Uint8Array.from(
 
 // A View that loads its package files in every way a Module may, and writes what it got into #results.
 const FIXTURE = {
-  "manifest.json": { convention: 1, id: "@test/files", name: "Files", version: "1.0.0", icon: "icon.svg", view: { entry: "view/index.html" } },
-  "icon.svg": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1 1'/>",
+  "manifest.json": { convention: 1, id: "@test/files", name: "Files", version: "1.0.0", icon: "icon.svg", guide: "guide.md", view: { entry: "view/index.html" } },
+  "icon.svg": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1 1'/>", "guide.md": "# Guide",
   "img/dot.png": DOT,
   "view/index.html": `<!doctype html>
     <link rel="stylesheet" href="css/style.css">
@@ -106,8 +106,8 @@ test("the View's Content Security Policy still applies once the loader has writt
     page,
     "probe.zip",
     zip({
-      "manifest.json": { convention: 1, id: "@test/probe", name: "Probe", version: "1.0.0", icon: "icon.svg", view: { entry: "index.html" } },
-      "icon.svg": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1 1'/>",
+      "manifest.json": { convention: 1, id: "@test/probe", name: "Probe", version: "1.0.0", icon: "icon.svg", guide: "guide.md", view: { entry: "index.html" } },
+      "icon.svg": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1 1'/>", "guide.md": "# Guide",
       "index.html": `<!doctype html><pre id="result"></pre><script type="module">
         let result;
         try { await fetch(${JSON.stringify(probe)}); result = "reached"; } catch { result = "blocked"; }
