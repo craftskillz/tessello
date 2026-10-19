@@ -64,7 +64,7 @@ cd sample-modules/survival-kit/dist && zip -r ../survival-kit.zip . && cd -
 
 Then drop `sample-modules/survival-kit/survival-kit.zip` onto the Host, or copy `dist/` into your Modules folder.
 
-To try it: open **Survival Kit** from the Launcher (tasks, notes, links, **Import a kit** for a `.survival-kit.json` of living-documentation); click **Tessello** to see its L Widget on the Home, where you can check an urgent task, open the View filtered on Urgent from the "N urgent" count, or click "open kit".
+Its User guide (ⓘ, then **User guide**) explains everything, with screenshots; its source is `sample-modules/survival-kit/guide/guide.md`. To try it: open **Survival Kit** from the Launcher (tasks, notes, links, **Import a kit** for a `.survival-kit.json` of living-documentation); click **Tessello** to see its L Widget on the Home, where you can check an urgent task, open the View filtered on Urgent from the "N urgent" count, or click "open kit".
 
 **After a change to its sources**: build again, then either zip and drop it again (an update, data kept), or copy `dist/` again over the folder in your Modules folder and come back to the Host window.
 

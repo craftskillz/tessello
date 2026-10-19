@@ -173,6 +173,20 @@ describe("the Survival Kit sample Module", () => {
     await view(page).getByRole("alert").getByText(/Your last change could not be saved: the storage of the Survival Kit is full/).waitFor();
   });
 
+  test("its User guide opens from the Launcher, with its screenshots", async () => {
+    const page = await host.newPage();
+    await install(page);
+    const launcher = page.getByRole("navigation", { name: "Launcher" });
+    await launcher.getByRole("listitem").filter({ hasText: "Survival Kit" }).getByRole("button", { name: "About" }).click();
+    await page.getByRole("dialog", { name: "About Survival Kit" }).getByRole("button", { name: "User guide" }).click();
+    const guide = page.frameLocator("iframe[title='Survival Kit: User guide']");
+    await guide.getByRole("heading", { name: "Survival Kit", level: 1 }).waitFor();
+    for (const image of await guide.getByRole("img").all()) {
+      assert.ok(await image.evaluate((element: HTMLImageElement) => element.complete && element.naturalWidth > 0), `${await image.getAttribute("alt")} is shown`);
+    }
+    assert.equal(await guide.getByRole("img").count(), 7);
+  });
+
   test("copies a Code block to the clipboard from the sandboxed iframe", async () => {
     const page = await host.newPage();
     await page.context().grantPermissions(["clipboard-read"], { origin: host.url });
