@@ -9,7 +9,17 @@
     "erasableSyntaxOnly": true,
     "verbatimModuleSyntax": true,
     "skipLibCheck": true,
-    "types": ["node"]
+    "types": [
+      "node"
+    ]
   },
-  "include": ["packages/*/src", "packages/*/test", "packages/*/scripts", "packages/*/e2e"]
+  "include": [
+    "packages/*/src",
+    "packages/*/test",
+    "packages/*/scripts",
+    "packages/*/e2e",
+    "sample-modules/*/src",
+    "sample-modules/*/test",
+    "sample-modules/*/scripts"
+  ]
 }

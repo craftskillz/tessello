@@ -4,7 +4,8 @@
 // system (OPFS) instead, which has the same FileSystemDirectoryHandle interface. Changes a User makes with their own
 // tools (git clone, an editor, git pull) are made by writing in that folder.
 
-import { readdir, readFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { createServer } from "node:http";
 import { join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -119,8 +120,10 @@ export async function readFolder(page: Page, folder: string): Promise<Record<str
 }
 
 /** The files of an example Module folder. */
-export async function exampleFiles(name: string): Promise<Record<string, Uint8Array>> {
-  const root = fileURLToPath(new URL(`../../../examples/${name}`, import.meta.url));
+export const exampleFiles = (name: string) => filesOf(fileURLToPath(new URL(`../../../examples/${name}`, import.meta.url)));
+
+/** Every file under a folder of the disk: path → bytes. */
+async function filesOf(root: string): Promise<Record<string, Uint8Array>> {
   const files: Record<string, Uint8Array> = {};
   for (const entry of await readdir(root, { recursive: true, withFileTypes: true })) {
     if (!entry.isFile() || entry.name === ".DS_Store") continue;
@@ -133,6 +136,17 @@ export async function exampleFiles(name: string): Promise<Record<string, Uint8Ar
 /** Zips an example Module folder, as a Creator would before sharing it. */
 export async function zipExample(name: string): Promise<Uint8Array> {
   return zipSync(await exampleFiles(name));
+}
+
+/** Builds a sample Module from its sources, then zips its package, as its Creator does before sharing it. */
+export async function zipSample(name: string): Promise<Uint8Array> {
+  const { buildPackage } = await import(`../../../sample-modules/${name}/scripts/build.ts`);
+  const out = await mkdtemp(join(tmpdir(), `tessello-${name}-`));
+  try {
+    return zipSync(await filesOf(await buildPackage(out)));
+  } finally {
+    await rm(out, { recursive: true, force: true });
+  }
 }
 
 /** Zips in-memory files: path → text, bytes, or an object written as JSON. */
