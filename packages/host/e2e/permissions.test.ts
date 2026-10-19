@@ -82,8 +82,8 @@ describe("the consent screen", () => {
     await consent.getByRole("button", { name: "Accept and install" }).click();
     await page.frameLocator("iframe[title='Weather']").getByRole("heading", { name: "Paris" }).waitFor();
 
-    await launcher.getByRole("listitem").filter({ hasText: "Weather" }).getByRole("button", { name: "Permissions" }).click();
-    const granted = page.getByRole("dialog", { name: "Permissions of Weather" });
+    await launcher.getByRole("listitem").filter({ hasText: "Weather" }).getByRole("button", { name: "About" }).click();
+    const granted = page.getByRole("dialog", { name: "About Weather" });
     assert.match(await granted.innerText(), /Limited[\s\S]*only these servers[\s\S]*api\.open-meteo\.com/);
   });
 });

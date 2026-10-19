@@ -27,10 +27,10 @@ async function installNotes(page: Page) {
 
 const launcher = (page: Page) => page.getByRole("navigation", { name: "Launcher" });
 
-/** Opens the Permissions granted to Notes, from the Launcher. */
+/** Opens the About dialog of Notes, with the Permissions granted to it, from the Launcher. */
 async function openGranted(page: Page) {
-  await launcher(page).getByRole("listitem").filter({ hasText: "Notes" }).getByRole("button", { name: "Permissions" }).click();
-  return page.getByRole("dialog", { name: "Permissions of Notes" });
+  await launcher(page).getByRole("listitem").filter({ hasText: "Notes" }).getByRole("button", { name: "About" }).click();
+  return page.getByRole("dialog", { name: "About Notes" });
 }
 
 async function grantedPermissions(page: Page) {

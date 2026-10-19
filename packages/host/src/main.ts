@@ -11,9 +11,11 @@ import {
   type Inspection,
   type ModuleEntry,
   type MountedSurface,
+  type Opening,
   type Theme,
 } from "@tessello/host-core";
 import { copyModulesFolder, createFolderPersistence } from "./folder-persistence.ts";
+import { GUIDE_SANDBOX, guideDocument } from "./guide.ts";
 import { checkPackageUrl, downloadPackage } from "./package-url.ts";
 import { canUseFolders, hasTesselloFolder, isGranted, pickFolder, reconnect, rememberedFolder, rememberFolder } from "./modules-folder.ts";
 import { buildView, dataUrl, IFRAME_SANDBOX, typeOf, type ViewDocument } from "./srcdoc.ts";
@@ -486,22 +488,49 @@ function renderLauncher() {
       }
       entryButton.addEventListener("click", () => onLauncherClick(entry));
       if (entry.status !== "active") return el("li", {}, entryButton);
-      const permissionsButton = el("button", { type: "button", className: "entry-permissions", title: `Permissions of ${entry.name}`, "aria-label": "Permissions" }, "ⓘ");
-      permissionsButton.addEventListener("click", () => showGranted(entry));
-      return el("li", {}, entryButton, permissionsButton);
+      // Named "About" only: "About Notes" would also answer to the name of the Module's own button.
+      const aboutButton = el("button", { type: "button", className: "entry-about", title: `About ${entry.name}`, "aria-label": "About" }, "ⓘ");
+      aboutButton.addEventListener("click", () => void showAbout(entry));
+      return el("li", {}, entryButton, aboutButton);
     }),
   );
 }
 
-/** The Permissions the User granted to an active Module: the Host limits it to those, whatever its folder declares now. */
-function showGranted(entry: ModuleEntry) {
+/**
+ * An active Module: what it is, its User guide, and the Permissions the User granted, to which the Host limits it
+ * whatever its folder declares now. Its folder is read again, as when its View opens.
+ */
+async function showAbout(entry: ModuleEntry) {
+  const opening = await host.open(entry.id!);
+  dialog.classList.remove("guide");
   showDialog(
-    `Permissions of ${entry.name}`,
-    el("p", {}, "You granted them when you installed or activated it. Uninstalling it is the only way to withdraw them."),
+    `About ${entry.name}`,
+    ...(opening.status === "ready"
+      ? [
+          moduleSummary(opening.manifest, { path: opening.manifest.icon, bytes: opening.files.get(opening.manifest.icon)! }),
+          el("div", { className: "actions start" }, button("User guide", () => showGuide(entry, opening), "primary")),
+        ]
+      : [el("p", {}, `Its folder has changed: open ${entry.name} from the Launcher to see why. Its User guide is shown once it runs again.`)]),
+    el("p", {}, "You granted its Permissions when you installed or activated it. Uninstalling it is the only way to withdraw them."),
     permissionSummary(entry.name, entry.permissions ?? {}),
     el("div", { className: "actions" }, button("Uninstall…", () => confirmUninstall(entry), "danger")),
   );
 }
+
+/** A Module's User guide, in a wide dialog (CONVENTION.md §3.2): the Host renders it, and nothing of the Module runs. */
+function showGuide(entry: ModuleEntry, { manifest, files }: Extract<Opening, { status: "ready" }>) {
+  const title = `${entry.name}: User guide`;
+  const frame = el("iframe", { className: "guide-frame", title, sandbox: GUIDE_SANDBOX });
+  frame.srcdoc = guideDocument({ files, guide: manifest.guide, title, theme: THEME });
+  dialog.classList.add("guide");
+  dialog.replaceChildren(
+    el("h2", { id: "dialog-title" }, title),
+    frame,
+    el("div", { className: "actions" }, button("Back", () => void showAbout(entry)), button("Close", () => dialog.close(), "primary")),
+  );
+}
+
+dialog.addEventListener("close", () => dialog.classList.remove("guide"));
 
 /** Uninstalls a Module once the User confirms: its folder and its data are removed (CONVENTION.md §8). */
 function confirmUninstall(entry: ModuleEntry) {

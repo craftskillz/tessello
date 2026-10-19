@@ -138,7 +138,7 @@ body.dragging main {
   align-items: center;
 }
 
-.launcher .entry-permissions {
+.launcher .entry-about {
   flex: none;
   width: auto;
   padding: 0.35rem 0.5rem;
@@ -346,6 +346,34 @@ dialog {
   background: var(--background);
 }
 
+/* The User guide of a Module: wide and tall, its iframe fills what the title and the buttons leave. */
+dialog.guide[open] {
+  display: flex;
+  flex-direction: column;
+  width: min(60rem, calc(100vw - 2rem));
+  height: calc(100vh - 3rem);
+  max-height: none;
+  padding: 1rem 1.25rem;
+}
+
+dialog.guide h2 {
+  margin: 0 0 0.75rem;
+  font-size: 1.1rem;
+}
+
+.guide-frame {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--background);
+}
+
+dialog.guide .actions {
+  margin-top: 1rem;
+}
+
 dialog::backdrop {
   background: rgb(0 0 0 / 0.35);
 }
@@ -396,6 +424,11 @@ dialog::backdrop {
   justify-content: end;
   gap: 0.5rem;
   margin-top: 1.5rem;
+}
+
+.actions.start {
+  justify-content: start;
+  margin-top: 1rem;
 }
 
 .actions button {

@@ -43,6 +43,8 @@ A package must have `manifest.json` at its root. Two ways to install it:
 
 Installing a package whose `id` is already installed is an update: the Module's data is kept.
 
+Every Module comes with a **User guide**, a Markdown file named by `guide` in its Manifest (Convention §3.2). Click **ⓘ** next to a Module in the Launcher, then **User guide**, to read it.
+
 ### An example Module (`examples/`)
 
 The folder is the package:
