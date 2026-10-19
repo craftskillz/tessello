@@ -11,6 +11,11 @@
   background: var(--background);
 }
 
+/* The six colors of the theme are set from main.ts (theme.ts); the others follow its mode. */
+:root[data-mode="dark"] {
+  --danger: #ff6b6b;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -127,6 +132,7 @@ body.dragging main {
   background: var(--border);
 }
 
+.launcher-settings,
 .launcher-folder {
   font-size: 0.85rem;
   color: var(--text-muted);
@@ -488,6 +494,46 @@ dialog::backdrop {
 
 .form-error {
   color: var(--danger);
+}
+
+.settings fieldset {
+  margin: 0 0 1rem;
+  padding: 0;
+  border: 0;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.settings legend {
+  margin-bottom: 0.35rem;
+  font-weight: 600;
+}
+
+.settings fieldset label {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.settings .language {
+  display: grid;
+  gap: 0.35rem;
+  font-weight: 600;
+}
+
+.settings select {
+  font: inherit;
+  font-weight: normal;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--background);
+  color: inherit;
+}
+
+.settings .note {
+  color: var(--text-muted);
+  font-size: 0.9rem;
 }
 
 dialog code,

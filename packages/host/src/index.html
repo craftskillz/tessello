@@ -9,29 +9,27 @@
   </head>
   <body>
     <section id="gate" class="gate" hidden></section>
-    <nav class="launcher" id="launcher" aria-label="Launcher" hidden>
+    <nav class="launcher" id="launcher" aria-label="Launcher" data-i18n-label="launcher" hidden>
       <button type="button" class="launcher-home" id="home-button">Tessello</button>
       <ul id="launcher-modules"></ul>
       <label class="launcher-install">
-        Install a Module…
+        <span data-i18n="installModule">Install a Module…</span>
         <input type="file" id="install-file" accept=".zip,application/zip" hidden />
       </label>
-      <button type="button" class="launcher-install" id="install-url-button">Install from a URL…</button>
+      <button type="button" class="launcher-install" id="install-url-button" data-i18n="installFromUrl">Install from a URL…</button>
+      <button type="button" class="launcher-settings" id="settings-button" data-i18n="settings">Settings</button>
       <button type="button" class="launcher-folder" id="folder-button">Modules folder</button>
     </nav>
     <main id="stage" hidden>
       <section id="home" class="home">
         <div id="home-empty" class="home-empty">
-          <h1>Your space is ready</h1>
-          <p>
-            Drop a Module's <code>.zip</code> file anywhere on this page to install it, or place a Module's folder in
-            your Modules folder. The Widgets of your Modules show here; every Module is in the Launcher.
-          </p>
+          <h1 data-i18n="homeEmptyTitle">Your space is ready</h1>
+          <p id="home-empty-text"></p>
         </div>
         <div class="home-toolbar">
-          <button type="button" id="arrange-button" hidden>Arrange widgets</button>
+          <button type="button" id="arrange-button" data-i18n="arrangeWidgets" hidden>Arrange widgets</button>
         </div>
-        <ol id="widgets" class="widgets" aria-label="Widgets"></ol>
+        <ol id="widgets" class="widgets" aria-label="Widgets" data-i18n-label="widgets"></ol>
       </section>
     </main>
     <dialog id="dialog" aria-labelledby="dialog-title"></dialog>

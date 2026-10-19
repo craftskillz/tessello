@@ -1,0 +1,445 @@
+// The language of the Host's interface: English by default, French as a second language. The French messages use the
+// terms of GLOSSARY.md. A message that holds an element, such as a folder name in <code>, takes it as a parameter and
+// returns the parts to append. The Validator's messages stay in English, like the Convention (spec, "Langues").
+
+import type { UrlRefusal } from "./package-url.ts";
+
+export type Language = "en" | "fr";
+
+export const LANGUAGES: readonly { language: Language; name: string }[] = [
+  { language: "en", name: "English" },
+  { language: "fr", name: "Français" },
+];
+
+/** The language saved by the User; anything else, such as nothing saved yet, is English. */
+export const languageOf = (stored: string | null): Language => (stored === "fr" ? "fr" : "en");
+
+type Part = string | Node;
+
+/** A non-breaking space, before French ":", "?" and "!" and inside quotes. */
+const NBSP = "\u00a0";
+
+const frQuote = (name: string) => `«${NBSP}${name}${NBSP}»`;
+
+const en = {
+  launcher: "Launcher",
+  widgets: "Widgets",
+  installModule: "Install a Module…",
+  installFromUrl: "Install from a URL…",
+  homeEmptyTitle: "Your space is ready",
+  homeEmptyText: (zip: Part): Part[] => [
+    "Drop a Module's ",
+    zip,
+    " file anywhere on this page to install it, or place a Module's folder in your Modules folder. The Widgets of your Modules show here; every Module is in the Launcher.",
+  ],
+  arrangeWidgets: "Arrange widgets",
+  done: "Done",
+  close: "Close",
+  cancel: "Cancel",
+  back: "Back",
+  accept: "Accept",
+  decline: "Decline",
+  /** A name between the quotes of the language. */
+  quote: (name: string) => `“${name}”`,
+  /** A line of a Validator report: its severity, then its message, which stays in English. */
+  issueLine: (severity: string, message: string) => `${severity}: ${message}`,
+
+  // The Modules folder.
+  folderKeeps: (data: Part): Part[] => ["Tessello keeps each Module in its own folder there, and the data of your Modules under ", data, ". Nothing in it is sent anywhere."],
+  folderGit: (data: Part): Part[] => [
+    "You can version this folder with git. The data of a Module may contain secrets, such as API tokens: exclude ",
+    data,
+    " from git if needed.",
+  ],
+  folderExisting: "Choosing a folder that already holds a .tessello/ folder finds its Modules, Permissions and data as they were.",
+  folderAddress:
+    "Your browser remembers this folder for this address of Tessello only. Opened from another address, such as a local copy, Tessello asks for the folder again: choose the same one to find the same Modules.",
+  copyInstallLink: "Copy the install link",
+  installLinkCopied: "Install link copied",
+  unsupportedTitle: "This browser can't open your Modules folder",
+  unsupportedText:
+    "Tessello keeps your Modules and their data in a folder of your computer. This browser does not let a web page use a folder of your computer, whereas Chrome and Edge on a computer do. Open this page in one of them.",
+  unsupportedLink: (url: Part): Part[] => ["You opened an install link for the Module at ", url, ". Copy the link, then open it in Chrome or Edge on a computer."],
+  pendingInstall: (url: Part): Part[] => ["Once your Modules folder is ready, Tessello downloads the Module at ", url, " and asks you before installing it."],
+  chooseFolderTitle: "Choose your Modules folder",
+  chooseFolder: "Choose a folder…",
+  reconnectTitle: "Reconnect your Modules folder",
+  reconnectText: (folder: string) => `Your browser asks again for permission to use your Modules folder, “${folder}”.`,
+  chooseAnotherFolder: "Choose another folder…",
+  reconnect: (folder: string) => `Reconnect “${folder}”`,
+  modulesFolder: "Modules folder",
+  modulesFolderButton: (folder: string) => `Modules folder: ${folder}`,
+  folderIs: (folder: Part): Part[] => ["Your Modules and their data are in the folder ", folder, "."],
+  folderChange: (tessello: Part): Part[] => [
+    "Choosing another folder copies your Modules and ",
+    tessello,
+    " there, and leaves this one as it is. A folder that already holds a .tessello/ folder is used as it is.",
+  ],
+
+  // Settings.
+  settings: "Settings",
+  theme: "Theme",
+  themeSystem: "Same as the system",
+  themeLight: "Light",
+  themeDark: "Dark",
+  language: "Language",
+  languageNote: "Changing the language restarts Tessello: your Views and Widgets start again in the new language.",
+
+  // Export and import of the space.
+  exportImportTitle: "Export and import",
+  exportExplanation:
+    "Export your whole space in a single .zip file: your Modules, their data, the Permissions you granted and the layout of the Home. Import it in Tessello on another browser or computer to find your space as it was.",
+  importExplanation: "Importing adds the Modules that are not installed here, with their data. A Module already installed is left as it is, with its own data.",
+  importSpace: "Import a space…",
+  exportSpace: "Export your space",
+  spaceFile: "Space file to import",
+  exportedWithoutTitle: "Your space was exported without some Modules",
+  exportedWithoutText: "Their folder is no longer in your Modules folder, so their code could not be exported. Put their folder back and export again to include them:",
+  cantBeImported: (file: string) => `${file} can't be imported`,
+  nothingImported: (problem: string) => `${problem} Nothing was imported.`,
+  alreadyInstalledHere: "Already installed here, left as they are with their own data:",
+  nothingToImport: (file: string) => `Nothing to import from ${file}`,
+  everyModuleInstalled: "Every Module of this space is already installed here.",
+  acceptAndImport: "Accept and import",
+  couldNotImport: (file: string) => `${file} could not be imported`,
+  importFailed: "Something went wrong in your Modules folder. Try again: the Modules already imported are left as they are.",
+  importTitle: (count: number) => (count === 1 ? "Import 1 Module?" : `Import ${count} Modules?`),
+  importFrom: (file: string) => `From ${file}, with their data and their place on the Home. Each one gets the Permissions you had granted it:`,
+  warningsImport: "The Validator has warnings; the Module can still be imported:",
+
+  // Permissions, in plain language (ADR 0008).
+  whatCanDo: (name: string) => `What ${name} can do`,
+  whatCanNowAlsoDo: (name: string) => `What ${name} can now also do`,
+  noNetwork: (name: string) => `No network access: ${name} declares no server, and Tessello blocks the requests it would make.`,
+  limited: "Limited",
+  limitedText: (name: string) => `: ${name} can contact only these servers:`,
+  localNetwork: "Local network",
+  localNetworkText: ": reach these addresses on your computer or your local network, where devices and services a web page usually cannot reach live:",
+  isolated: "Isolated",
+  isolatedText: (name: string) => `: ${name} cannot read your files, Tessello or your other Modules.`,
+  notGuaranteed: "Not guaranteed",
+  notGuaranteedText: (name: string) => `: ${name} can still send what you enter in it elsewhere, for example by opening a link. Install only Modules you trust.`,
+  anySubdomain: (domain: string) => `any subdomain of ${domain}`,
+  liveConnection: (where: string) => `${where} (live connection)`,
+
+  // A View, a Widget, and what replaces them.
+  cantBeFound: (name: string) => `${name} can't be found`,
+  missingFolder: (folder: string | undefined) =>
+    `Its folder${folder ? ` “${folder}”` : ""} is no longer in your Modules folder. Put it back, under any name, to find this Module and its data again.`,
+  noLongerComplies: (name: string) => `${name} no longer complies with the Convention`,
+  folderChangedReports: "Its folder has changed, and it does not run until it is fixed. The Validator reports:",
+  asksNewPermissions: (name: string) => `${name} asks for new Permissions`,
+  newPermissionsText: "Its folder now declares Permissions you have not granted. It does not run until you accept them all.",
+  notResponding: (name: string) => `${name} is not responding`,
+  viewNotResponding: "This Module did not finish starting. It may be broken: try again later, or ask its Creator for a fixed version.",
+  widgetNotResponding: "This Widget did not finish starting.",
+  cantBeShown: (name: string) => `${name} can't be shown`,
+  widgetStartFailed: "Something went wrong while starting it.",
+  widgetMissing: "Its folder is no longer in your Modules folder.",
+  widgetInvalid: "It no longer complies with the Convention: open it from the Launcher to see why.",
+  widgetPermissions: "It asks for new Permissions: open it from the Launcher.",
+  widgetGone: "It no longer has a Widget.",
+  widgetTitle: (name: string) => `${name} widget`,
+  moveEarlier: (name: string) => `Move ${name} earlier`,
+  moveLater: (name: string) => `Move ${name} later`,
+
+  // The Launcher.
+  statusNew: "New, to activate",
+  statusConflict: "Conflict",
+  statusMissing: "Not found",
+  about: "About",
+  aboutTitle: (name: string) => `About ${name}`,
+  userGuide: "User guide",
+  guideTitle: (name: string) => `${name}: User guide`,
+  aboutFolderChanged: (name: string) => `Its folder has changed: open ${name} from the Launcher to see why. Its User guide is shown once it runs again.`,
+  aboutPermissions: "You granted its Permissions when you installed or activated it. Uninstalling it is the only way to withdraw them.",
+  conflictTitle: (folder: string) => `“${folder}” is in conflict`,
+  conflictText: (id: Part, folder: string): Part[] => [
+    "This folder declares the Module ID ",
+    id,
+    `, which the Module in “${folder}” already uses. Only that one runs. Give this one its own Module ID in its Manifest, or remove one of the two folders.`,
+  ],
+
+  // Uninstalling.
+  uninstallEllipsis: "Uninstall…",
+  uninstall: "Uninstall",
+  uninstallTitle: (name: string) => `Uninstall ${name}?`,
+  uninstallMissing: (folder: string) => `Its data is deleted from your Modules folder. Its folder “${folder}” is already gone.`,
+  uninstallDeletes: (folder: string) =>
+    `Its folder “${folder}” and its data are deleted from your Modules folder. This cannot be undone, unless you keep a copy, with git for instance.`,
+  couldNotUninstall: (name: string) => `${name} could not be uninstalled`,
+  folderFailed: "Something went wrong in your Modules folder. Try again.",
+
+  // Installing, activating and updating.
+  error: "Error",
+  warning: "Warning",
+  name: "Name",
+  version: "Version",
+  moduleId: "Module ID",
+  description: "Description",
+  downloadedFrom: "Downloaded from",
+  iconOf: (name: string) => `${name} icon`,
+  theFolder: (folder: string) => `the folder “${folder}”`,
+  cantBeInstalled: (source: string) => `${source} can't be installed`,
+  cantBeActivated: (source: string) => `${source} can't be activated`,
+  notValidInstalled: "This is not a valid Tessello Module. Nothing was installed. The Validator reports:",
+  notValidActivated: "This is not a valid Tessello Module. Nothing was activated. The Validator reports:",
+  validatorReports: "The Validator reports:",
+  alreadyInstalledTitle: (name: string) => `${name} is already installed`,
+  alreadyUsed: (id: Part, folder: string): Part[] => [
+    "Its Module ID ",
+    id,
+    ` is already used by the Module in the folder “${folder}”. Only that one runs. Give this one its own Module ID in its Manifest, or remove one of the two folders.`,
+  ],
+  acceptAndInstall: "Accept and install",
+  acceptAndActivate: "Accept and activate",
+  installTitle: (name: string) => `Install ${name}?`,
+  activateTitle: (name: string) => `Activate ${name}?`,
+  foundIn: (source: string) => `Found in ${source} of your Modules folder.`,
+  warningsInstall: "The Validator has warnings; the Module can still be installed:",
+  acceptAndUpdate: "Accept and update",
+  update: "Update",
+  updateTitle: (name: string) => `Update ${name}?`,
+  couldNotUpdate: (name: string) => `${name} could not be updated`,
+  updateFailed: "Something went wrong in your Modules folder. Open the Module to see which version it runs, and try again.",
+  updateText: (id: Part, folder: string): Part[] => [
+    "A Module with the Module ID ",
+    id,
+    ` is already installed, in the folder “${folder}”. Its code will be replaced, and its data kept.`,
+  ],
+  installed: "Installed",
+  incoming: "Incoming",
+  namesDiffer: "The names differ: make sure this is the same Module, from the same Creator.",
+  updateNewPermissions: "This version asks for new Permissions. Declining them cancels the update, and the installed version stays as it is.",
+  noNewPermission: "It asks for no new Permission.",
+  warningsUpdate: "The Validator has warnings; the Module can still be updated:",
+
+  // Installing from a URL (ADR 0009).
+  installFromUrlTitle: "Install from a URL",
+  installFromUrlText: "Paste the address of a Module's .zip file, as its Creator published it.",
+  urlLabel: "URL of the .zip file",
+  download: "Download",
+  urlRefused: (refusal: UrlRefusal) =>
+    refusal.reason === "not-a-url"
+      ? "This is not a URL. Paste the full address of the .zip file, starting with https://."
+      : refusal.reason === "credentials"
+        ? "This URL contains a user name or password, which Tessello does not send. Use a public URL of the .zip file."
+        : `Tessello downloads Modules only over https:, to be sure the file is the one its server sends. This URL uses ${refusal.protocol}. Only Creators testing on their computer may use http://localhost or http://127.0.0.1.`,
+  downloading: (name: string) => `Downloading ${name}…`,
+  fromUrl: (url: Part): Part[] => ["From ", url],
+  cantBeDownloaded: (name: string) => `${name} can't be downloaded`,
+  unreachable: "The server is unreachable, or it does not allow Tessello to download the file. Nothing was installed.",
+  downloadZip: "Download the .zip file",
+  downloadYourself: (link: Part): Part[] => [link, " yourself, then drop it on Tessello to install it."],
+  httpFailed: (status: number) => `The server answered with the error ${status}. Check the URL, or ask the Module's Creator where it is published.`,
+  tooLarge: "It is too large to be a Tessello Module. Nothing was installed.",
+  installLinkUnusable: "This install link can't be used",
+};
+
+export type Messages = typeof en;
+
+const fr: Messages = {
+  launcher: "Lanceur",
+  widgets: "Widgets",
+  installModule: "Installer un Module…",
+  installFromUrl: "Installer depuis une URL…",
+  homeEmptyTitle: "Votre espace est prêt",
+  homeEmptyText: (zip) => [
+    "Déposez le fichier ",
+    zip,
+    ` d’un Module n’importe où sur cette page pour l’installer, ou placez le dossier d’un Module dans votre Dossier des Modules. Les Widgets de vos Modules s’affichent ici${NBSP}; chaque Module est dans le Lanceur.`,
+  ],
+  arrangeWidgets: "Disposer les widgets",
+  done: "Terminé",
+  close: "Fermer",
+  cancel: "Annuler",
+  back: "Retour",
+  accept: "Accepter",
+  decline: "Refuser",
+  quote: frQuote,
+  issueLine: (severity, message) => `${severity}${NBSP}: ${message}`,
+
+  folderKeeps: (data) => ["Tessello y range chaque Module dans son propre dossier, et les données de vos Modules sous ", data, ". Rien n’en est envoyé nulle part."],
+  folderGit: (data) => [
+    `Vous pouvez versionner ce dossier avec git. Les données d’un Module peuvent contenir des secrets, comme des jetons d’API${NBSP}: excluez `,
+    data,
+    " de git si besoin.",
+  ],
+  folderExisting: "Choisir un dossier qui contient déjà un dossier .tessello/ retrouve ses Modules, ses Permissions et ses données tels qu’ils étaient.",
+  folderAddress: `Votre navigateur retient ce dossier pour cette adresse de Tessello uniquement. Ouvert depuis une autre adresse, comme une copie locale, Tessello redemande le dossier${NBSP}: choisissez le même pour retrouver les mêmes Modules.`,
+  copyInstallLink: "Copier le lien d’installation",
+  installLinkCopied: "Lien d’installation copié",
+  unsupportedTitle: "Ce navigateur ne peut pas ouvrir votre Dossier des Modules",
+  unsupportedText:
+    "Tessello range vos Modules et leurs données dans un dossier de votre ordinateur. Ce navigateur ne permet pas à une page web d’utiliser un dossier de votre ordinateur, contrairement à Chrome et Edge sur ordinateur. Ouvrez cette page dans l’un d’eux.",
+  unsupportedLink: (url) => ["Vous avez ouvert un lien d’installation pour le Module à l’adresse ", url, ". Copiez le lien, puis ouvrez-le dans Chrome ou Edge sur ordinateur."],
+  pendingInstall: (url) => ["Une fois votre Dossier des Modules prêt, Tessello télécharge le Module à l’adresse ", url, " et vous demande votre accord avant de l’installer."],
+  chooseFolderTitle: "Choisissez votre Dossier des Modules",
+  chooseFolder: "Choisir un dossier…",
+  reconnectTitle: "Reconnectez votre Dossier des Modules",
+  reconnectText: (folder) => `Votre navigateur redemande l’autorisation d’utiliser votre Dossier des Modules, ${frQuote(folder)}.`,
+  chooseAnotherFolder: "Choisir un autre dossier…",
+  reconnect: (folder) => `Reconnecter ${frQuote(folder)}`,
+  modulesFolder: "Dossier des Modules",
+  modulesFolderButton: (folder) => `Dossier des Modules${NBSP}: ${folder}`,
+  folderIs: (folder) => ["Vos Modules et leurs données sont dans le dossier ", folder, "."],
+  folderChange: (tessello) => [
+    "Choisir un autre dossier y copie vos Modules et ",
+    tessello,
+    ", et laisse celui-ci tel quel. Un dossier qui contient déjà un dossier .tessello/ est utilisé tel quel.",
+  ],
+
+  settings: "Réglages",
+  theme: "Thème",
+  themeSystem: "Comme le système",
+  themeLight: "Clair",
+  themeDark: "Sombre",
+  language: "Langue",
+  languageNote: `Changer de langue redémarre Tessello${NBSP}: vos Vues et vos Widgets redémarrent dans la nouvelle langue.`,
+
+  exportImportTitle: "Exporter et importer",
+  exportExplanation: `Exportez tout votre espace dans un seul fichier .zip${NBSP}: vos Modules, leurs données, les Permissions accordées et la disposition de l’Accueil. Importez-le dans Tessello sur un autre navigateur ou un autre ordinateur pour retrouver votre espace tel qu’il était.`,
+  importExplanation: "L’import ajoute les Modules qui ne sont pas installés ici, avec leurs données. Un Module déjà installé est laissé tel quel, avec ses propres données.",
+  importSpace: "Importer un espace…",
+  exportSpace: "Exporter votre espace",
+  spaceFile: "Fichier d’espace à importer",
+  exportedWithoutTitle: "Votre espace a été exporté sans certains Modules",
+  exportedWithoutText: `Leur dossier n’est plus dans votre Dossier des Modules, leur code n’a donc pas pu être exporté. Remettez leur dossier en place et exportez à nouveau pour les inclure${NBSP}:`,
+  cantBeImported: (file) => `${file} ne peut pas être importé`,
+  nothingImported: (problem) => `${problem} Rien n’a été importé.`,
+  alreadyInstalledHere: `Déjà installés ici, laissés tels quels avec leurs propres données${NBSP}:`,
+  nothingToImport: (file) => `Rien à importer depuis ${file}`,
+  everyModuleInstalled: "Tous les Modules de cet espace sont déjà installés ici.",
+  acceptAndImport: "Accepter et importer",
+  couldNotImport: (file) => `${file} n’a pas pu être importé`,
+  importFailed: `Un problème est survenu dans votre Dossier des Modules. Réessayez${NBSP}: les Modules déjà importés sont laissés tels quels.`,
+  importTitle: (count) => (count === 1 ? `Importer 1 Module${NBSP}?` : `Importer ${count} Modules${NBSP}?`),
+  importFrom: (file) => `Depuis ${file}, avec leurs données et leur place sur l’Accueil. Chacun reçoit les Permissions que vous lui aviez accordées${NBSP}:`,
+  warningsImport: `Le Validateur a des avertissements${NBSP}; le Module peut quand même être importé${NBSP}:`,
+
+  whatCanDo: (name) => `Ce que ${name} peut faire`,
+  whatCanNowAlsoDo: (name) => `Ce que ${name} peut désormais faire en plus`,
+  noNetwork: (name) => `Aucun accès réseau${NBSP}: ${name} ne déclare aucun serveur, et Tessello bloque les requêtes qu’il ferait.`,
+  limited: "Limité",
+  limitedText: (name) => `${NBSP}: ${name} peut contacter uniquement ces serveurs${NBSP}:`,
+  localNetwork: "Réseau local",
+  localNetworkText: `${NBSP}: joindre ces adresses sur votre ordinateur ou votre réseau local, où vivent des appareils et des services qu’une page web ne peut habituellement pas joindre${NBSP}:`,
+  isolated: "Isolé",
+  isolatedText: (name) => `${NBSP}: ${name} ne peut lire ni vos fichiers, ni Tessello, ni vos autres Modules.`,
+  notGuaranteed: "Non garanti",
+  notGuaranteedText: (name) =>
+    `${NBSP}: ${name} peut toujours envoyer ailleurs ce que vous y saisissez, par exemple en ouvrant un lien. N’installez que des Modules de confiance.`,
+  anySubdomain: (domain) => `tout sous-domaine de ${domain}`,
+  liveConnection: (where) => `${where} (connexion en direct)`,
+
+  cantBeFound: (name) => `${name} est introuvable`,
+  missingFolder: (folder) =>
+    `Son dossier${folder ? ` ${frQuote(folder)}` : ""} n’est plus dans votre Dossier des Modules. Remettez-le, sous n’importe quel nom, pour retrouver ce Module et ses données.`,
+  noLongerComplies: (name) => `${name} ne respecte plus la Convention`,
+  folderChangedReports: `Son dossier a changé, et il ne s’exécute plus tant qu’il n’est pas corrigé. Le Validateur signale${NBSP}:`,
+  asksNewPermissions: (name) => `${name} demande de nouvelles Permissions`,
+  newPermissionsText: "Son dossier déclare désormais des Permissions que vous n’avez pas accordées. Il ne s’exécute pas tant que vous ne les acceptez pas toutes.",
+  notResponding: (name) => `${name} ne répond pas`,
+  viewNotResponding: `Ce Module n’a pas fini de démarrer. Il est peut-être défectueux${NBSP}: réessayez plus tard, ou demandez une version corrigée à son Créateur.`,
+  widgetNotResponding: "Ce Widget n’a pas fini de démarrer.",
+  cantBeShown: (name) => `${name} ne peut pas être affiché`,
+  widgetStartFailed: "Un problème est survenu à son démarrage.",
+  widgetMissing: "Son dossier n’est plus dans votre Dossier des Modules.",
+  widgetInvalid: `Il ne respecte plus la Convention${NBSP}: ouvrez-le depuis le Lanceur pour savoir pourquoi.`,
+  widgetPermissions: `Il demande de nouvelles Permissions${NBSP}: ouvrez-le depuis le Lanceur.`,
+  widgetGone: "Il n’a plus de Widget.",
+  widgetTitle: (name) => `Widget ${name}`,
+  moveEarlier: (name) => `Avancer ${name}`,
+  moveLater: (name) => `Reculer ${name}`,
+
+  statusNew: "Nouveau, à activer",
+  statusConflict: "Conflit",
+  statusMissing: "Introuvable",
+  about: "À propos",
+  aboutTitle: (name) => `À propos de ${name}`,
+  userGuide: "Guide d’utilisation",
+  guideTitle: (name) => `${name}${NBSP}: Guide d’utilisation`,
+  aboutFolderChanged: (name) =>
+    `Son dossier a changé${NBSP}: ouvrez ${name} depuis le Lanceur pour savoir pourquoi. Son Guide d’utilisation s’affiche une fois qu’il s’exécute à nouveau.`,
+  aboutPermissions: "Vous avez accordé ses Permissions en l’installant ou en l’activant. Le désinstaller est le seul moyen de les retirer.",
+  conflictTitle: (folder) => `${frQuote(folder)} est en conflit`,
+  conflictText: (id, folder) => [
+    "Ce dossier déclare l’Identifiant ",
+    id,
+    `, que le Module de ${frQuote(folder)} utilise déjà. Seul celui-ci s’exécute. Donnez à celui-là son propre Identifiant dans son Manifeste, ou supprimez l’un des deux dossiers.`,
+  ],
+
+  uninstallEllipsis: "Désinstaller…",
+  uninstall: "Désinstaller",
+  uninstallTitle: (name) => `Désinstaller ${name}${NBSP}?`,
+  uninstallMissing: (folder) => `Ses données sont supprimées de votre Dossier des Modules. Son dossier ${frQuote(folder)} n’y est déjà plus.`,
+  uninstallDeletes: (folder) =>
+    `Son dossier ${frQuote(folder)} et ses données sont supprimés de votre Dossier des Modules. C’est irréversible, sauf si vous en gardez une copie, avec git par exemple.`,
+  couldNotUninstall: (name) => `${name} n’a pas pu être désinstallé`,
+  folderFailed: "Un problème est survenu dans votre Dossier des Modules. Réessayez.",
+
+  error: "Erreur",
+  warning: "Avertissement",
+  name: "Nom",
+  version: "Version",
+  moduleId: "Identifiant",
+  description: "Description",
+  downloadedFrom: "Téléchargé depuis",
+  iconOf: (name) => `Icône de ${name}`,
+  theFolder: (folder) => `le dossier ${frQuote(folder)}`,
+  cantBeInstalled: (source) => `${source} ne peut pas être installé`,
+  cantBeActivated: (source) => `${source} ne peut pas être activé`,
+  notValidInstalled: `Ce n’est pas un Module Tessello valide. Rien n’a été installé. Le Validateur signale${NBSP}:`,
+  notValidActivated: `Ce n’est pas un Module Tessello valide. Rien n’a été activé. Le Validateur signale${NBSP}:`,
+  validatorReports: `Le Validateur signale${NBSP}:`,
+  alreadyInstalledTitle: (name) => `${name} est déjà installé`,
+  alreadyUsed: (id, folder) => [
+    "Son Identifiant ",
+    id,
+    ` est déjà utilisé par le Module du dossier ${frQuote(folder)}. Seul celui-ci s’exécute. Donnez à celui-là son propre Identifiant dans son Manifeste, ou supprimez l’un des deux dossiers.`,
+  ],
+  acceptAndInstall: "Accepter et installer",
+  acceptAndActivate: "Accepter et activer",
+  installTitle: (name) => `Installer ${name}${NBSP}?`,
+  activateTitle: (name) => `Activer ${name}${NBSP}?`,
+  foundIn: (source) => `Trouvé dans ${source} de votre Dossier des Modules.`,
+  warningsInstall: `Le Validateur a des avertissements${NBSP}; le Module peut quand même être installé${NBSP}:`,
+  acceptAndUpdate: "Accepter et mettre à jour",
+  update: "Mettre à jour",
+  updateTitle: (name) => `Mettre à jour ${name}${NBSP}?`,
+  couldNotUpdate: (name) => `${name} n’a pas pu être mis à jour`,
+  updateFailed: "Un problème est survenu dans votre Dossier des Modules. Ouvrez le Module pour voir quelle version il exécute, et réessayez.",
+  updateText: (id, folder) => [
+    "Un Module d’Identifiant ",
+    id,
+    ` est déjà installé, dans le dossier ${frQuote(folder)}. Son code sera remplacé, et ses données conservées.`,
+  ],
+  installed: "Installé",
+  incoming: "Nouvelle version",
+  namesDiffer: `Les noms diffèrent${NBSP}: assurez-vous qu’il s’agit du même Module, du même Créateur.`,
+  updateNewPermissions: "Cette version demande de nouvelles Permissions. Les refuser annule la mise à jour, et la version installée reste telle quelle.",
+  noNewPermission: "Elle ne demande aucune nouvelle Permission.",
+  warningsUpdate: `Le Validateur a des avertissements${NBSP}; le Module peut quand même être mis à jour${NBSP}:`,
+
+  installFromUrlTitle: "Installer depuis une URL",
+  installFromUrlText: "Collez l’adresse du fichier .zip d’un Module, telle que son Créateur l’a publiée.",
+  urlLabel: "URL du fichier .zip",
+  download: "Télécharger",
+  urlRefused: (refusal) =>
+    refusal.reason === "not-a-url"
+      ? "Ce n’est pas une URL. Collez l’adresse complète du fichier .zip, qui commence par https://."
+      : refusal.reason === "credentials"
+        ? "Cette URL contient un nom d’utilisateur ou un mot de passe, que Tessello n’envoie pas. Utilisez une URL publique du fichier .zip."
+        : `Tessello télécharge les Modules uniquement en https:, pour être sûr que le fichier est celui que son serveur envoie. Cette URL utilise ${refusal.protocol}. Seuls les Créateurs qui testent sur leur ordinateur peuvent utiliser http://localhost ou http://127.0.0.1.`,
+  downloading: (name) => `Téléchargement de ${name}…`,
+  fromUrl: (url) => ["Depuis ", url],
+  cantBeDownloaded: (name) => `${name} ne peut pas être téléchargé`,
+  unreachable: "Le serveur est injoignable, ou il ne permet pas à Tessello de télécharger le fichier. Rien n’a été installé.",
+  downloadZip: "Téléchargez le fichier .zip",
+  downloadYourself: (link) => [link, " vous-même, puis déposez-le sur Tessello pour l’installer."],
+  httpFailed: (status) => `Le serveur a répondu par l’erreur ${status}. Vérifiez l’URL, ou demandez au Créateur du Module où il est publié.`,
+  tooLarge: "Il est trop volumineux pour être un Module Tessello. Rien n’a été installé.",
+  installLinkUnusable: "Ce lien d’installation ne peut pas être utilisé",
+};
+
+export const messagesOf = (language: Language): Messages => (language === "fr" ? fr : en);

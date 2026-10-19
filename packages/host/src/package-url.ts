@@ -3,7 +3,10 @@
 
 import { type Issue, LIMITS } from "@tessello/convention";
 
-export type UrlCheck = { status: "accepted"; url: string } | { status: "refused"; reason: string };
+/** Why a URL is refused, for the interface to explain in the User's language. */
+export type UrlRefusal = { reason: "not-a-url" } | { reason: "credentials" } | { reason: "insecure"; protocol: string };
+
+export type UrlCheck = { status: "accepted"; url: string } | ({ status: "refused" } & UrlRefusal);
 
 /**
  * Hosts a Creator serves their package from, over plain http:, while working on it. Deliberately narrower than the
@@ -17,18 +20,15 @@ export function checkPackageUrl(text: string): UrlCheck {
   try {
     url = new URL(text.trim());
   } catch {
-    return { status: "refused", reason: "This is not a URL. Paste the full address of the .zip file, starting with https://." };
+    return { status: "refused", reason: "not-a-url" };
   }
   if (url.username || url.password) {
-    return { status: "refused", reason: "This URL contains a user name or password, which Tessello does not send. Use a public URL of the .zip file." };
+    return { status: "refused", reason: "credentials" };
   }
   if (url.protocol === "https:" || (url.protocol === "http:" && CREATOR_HOSTS.includes(url.hostname))) {
     return { status: "accepted", url: text.trim() };
   }
-  return {
-    status: "refused",
-    reason: `Tessello downloads Modules only over https:, to be sure the file is the one its server sends. This URL uses ${url.protocol}. Only Creators testing on their computer may use http://localhost or http://127.0.0.1.`,
-  };
+  return { status: "refused", reason: "insecure", protocol: url.protocol };
 }
 
 export type Download =

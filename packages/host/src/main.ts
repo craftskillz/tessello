@@ -1,6 +1,6 @@
 // The Host's interface: the Modules folder, the Launcher, the Home and its Widgets, the View area, installing or
 // updating a Module from a dropped or chosen .zip file, from a URL or an install link, or from a folder placed in the
-// Modules folder, and uninstalling.
+// Modules folder, uninstalling, and the Settings: the theme and the language of the interface.
 
 import type { Issue, Manifest, Permissions } from "@tessello/convention";
 import {
@@ -12,18 +12,37 @@ import {
   type ModuleEntry,
   type MountedSurface,
   type Opening,
-  type Theme,
 } from "@tessello/host-core";
 import { copyModulesFolder, createFolderPersistence } from "./folder-persistence.ts";
 import { GUIDE_SANDBOX, guideDocument } from "./guide.ts";
+import { type Language, languageOf, LANGUAGES, type Messages, messagesOf } from "./i18n.ts";
 import { checkPackageUrl, downloadPackage } from "./package-url.ts";
 import { canUseFolders, hasTesselloFolder, isGranted, pickFolder, reconnect, rememberedFolder, rememberFolder } from "./modules-folder.ts";
 import { buildView, dataUrl, IFRAME_SANDBOX, typeOf, type ViewDocument } from "./srcdoc.ts";
+import { THEME_CHOICES, type ThemeChoice, themeChoiceOf, themeOf } from "./theme.ts";
 
-const THEME: Theme = {
-  mode: "light",
-  colors: { background: "#ffffff", surface: "#f4f5f7", text: "#16181d", textMuted: "#5f6670", accent: "#2f6fec", border: "#d9dce1" },
-};
+// The User's theme and language, kept by this browser for this address of Tessello. Storage may be refused, as in a
+// private window: the choice then lasts until the page is closed.
+const PREFERENCES = { theme: "tessello.theme", language: "tessello.language" };
+
+function readPreference(name: keyof typeof PREFERENCES): string | null {
+  try {
+    return localStorage.getItem(PREFERENCES[name]);
+  } catch {
+    return null;
+  }
+}
+
+function savePreference(name: keyof typeof PREFERENCES, value: string) {
+  try {
+    localStorage.setItem(PREFERENCES[name], value);
+  } catch {
+    // Kept for this page only.
+  }
+}
+
+const language: Language = languageOf(readPreference("language"));
+const t: Messages = messagesOf(language);
 
 const byId = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const gate = byId<HTMLElement>("gate");
@@ -37,6 +56,14 @@ const launcherList = byId<HTMLUListElement>("launcher-modules");
 const folderButton = byId<HTMLButtonElement>("folder-button");
 const dialog = byId<HTMLDialogElement>("dialog");
 const fileInput = byId<HTMLInputElement>("install-file");
+
+document.documentElement.lang = language;
+for (const element of document.querySelectorAll<HTMLElement>("[data-i18n]")) {
+  element.textContent = t[element.dataset.i18n as keyof Messages] as string;
+}
+for (const element of document.querySelectorAll<HTMLElement>("[data-i18n-label]")) {
+  element.setAttribute("aria-label", t[element.dataset.i18nLabel as keyof Messages] as string);
+}
 
 /** Creates an element with properties (or attributes, for names containing "-") and children. */
 function el<K extends keyof HTMLElementTagNameMap>(
@@ -72,26 +99,10 @@ function showGate(...children: Node[]) {
 }
 
 const FOLDER_EXPLANATION = [
-  el(
-    "p",
-    {},
-    "Tessello keeps each Module in its own folder there, and the data of your Modules under ",
-    el("code", {}, ".tessello/data/"),
-    ". Nothing in it is sent anywhere.",
-  ),
-  el(
-    "p",
-    {},
-    "You can version this folder with git. The data of a Module may contain secrets, such as API tokens: exclude ",
-    el("code", {}, ".tessello/data/"),
-    " from git if needed.",
-  ),
-  el("p", {}, "Choosing a folder that already holds a .tessello/ folder finds its Modules, Permissions and data as they were."),
-  el(
-    "p",
-    {},
-    "Your browser remembers this folder for this address of Tessello only. Opened from another address, such as a local copy, Tessello asks for the folder again: choose the same one to find the same Modules.",
-  ),
+  el("p", {}, ...t.folderKeeps(el("code", {}, ".tessello/data/"))),
+  el("p", {}, ...t.folderGit(el("code", {}, ".tessello/data/"))),
+  el("p", {}, t.folderExisting),
+  el("p", {}, t.folderAddress),
 ];
 
 /**
@@ -100,10 +111,10 @@ const FOLDER_EXPLANATION = [
  */
 function showUnsupported(link: InstallLink | null) {
   const copyButton = (link: InstallLink) => {
-    const copy = button("Copy the install link", async () => {
+    const copy = button(t.copyInstallLink, async () => {
       try {
         await navigator.clipboard.writeText(link.href);
-        copy.textContent = "Install link copied";
+        copy.textContent = t.installLinkCopied;
       } catch {
         copy.replaceWith(el("code", {}, link.href));
       }
@@ -111,15 +122,11 @@ function showUnsupported(link: InstallLink | null) {
     return copy;
   };
   showGate(
-    el("h1", {}, "This browser can't open your Modules folder"),
-    el(
-      "p",
-      {},
-      "Tessello keeps your Modules and their data in a folder of your computer. This browser does not let a web page use a folder of your computer, whereas Chrome and Edge on a computer do. Open this page in one of them.",
-    ),
+    el("h1", {}, t.unsupportedTitle),
+    el("p", {}, t.unsupportedText),
     ...(link
       ? [
-          el("p", {}, "You opened an install link for the Module at ", el("code", {}, link.url), ". Copy the link, then open it in Chrome or Edge on a computer."),
+          el("p", {}, ...t.unsupportedLink(el("code", {}, link.url))),
           el("div", { className: "actions" }, copyButton(link)),
         ]
       : []),
@@ -139,26 +146,18 @@ let pendingInstall: string | null = null;
 const pendingNote = () =>
   pendingInstall === null
     ? []
-    : [
-        el(
-          "p",
-          { className: "pending-install" },
-          "Once your Modules folder is ready, Tessello downloads the Module at ",
-          el("code", {}, pendingInstall),
-          " and asks you before installing it.",
-        ),
-      ];
+    : [el("p", { className: "pending-install" }, ...t.pendingInstall(el("code", {}, pendingInstall)))];
 
 function showChooseFolder() {
   showGate(
-    el("h1", {}, "Choose your Modules folder"),
+    el("h1", {}, t.chooseFolderTitle),
     ...pendingNote(),
     ...FOLDER_EXPLANATION,
     el(
       "div",
       { className: "actions" },
       button(
-        "Choose a folder…",
+        t.chooseFolder,
         async () => {
           const folder = await pickFolder();
           if (folder) await useFolder(folder);
@@ -171,18 +170,18 @@ function showChooseFolder() {
 
 function showReconnect(folder: FileSystemDirectoryHandle) {
   showGate(
-    el("h1", {}, "Reconnect your Modules folder"),
-    el("p", {}, `Your browser asks again for permission to use your Modules folder, “${folder.name}”.`),
+    el("h1", {}, t.reconnectTitle),
+    el("p", {}, t.reconnectText(folder.name)),
     ...pendingNote(),
     el(
       "div",
       { className: "actions" },
-      button("Choose another folder…", async () => {
+      button(t.chooseAnotherFolder, async () => {
         const other = await pickFolder();
         if (other) await useFolder(other);
       }),
       button(
-        `Reconnect “${folder.name}”`,
+        t.reconnect(folder.name),
         async () => {
           if (await reconnect(folder)) await start(folder);
         },
@@ -208,34 +207,79 @@ async function changeFolder(from: FileSystemDirectoryHandle) {
 
 function showFolderSettings(folder: FileSystemDirectoryHandle) {
   dialog.replaceChildren(
-    el("h2", { id: "dialog-title" }, "Modules folder"),
-    el("p", {}, "Your Modules and their data are in the folder ", el("strong", {}, `“${folder.name}”`), "."),
-    el(
-      "p",
-      {},
-      "Choosing another folder copies your Modules and ",
-      el("code", {}, ".tessello/"),
-      " there, and leaves this one as it is. A folder that already holds a .tessello/ folder is used as it is.",
-    ),
-    el("div", { className: "actions" }, button("Choose another folder…", () => void changeFolder(folder))),
-    el("h3", {}, "Export and import"),
-    el(
-      "p",
-      {},
-      "Export your whole space in a single .zip file: your Modules, their data, the Permissions you granted and the layout of the Home. Import it in Tessello on another browser or computer to find your space as it was.",
-    ),
-    el(
-      "p",
-      {},
-      "Importing adds the Modules that are not installed here, with their data. A Module already installed is left as it is, with its own data.",
-    ),
+    el("h2", { id: "dialog-title" }, t.modulesFolder),
+    el("p", {}, ...t.folderIs(el("strong", {}, t.quote(folder.name)))),
+    el("p", {}, ...t.folderChange(el("code", {}, ".tessello/"))),
+    el("div", { className: "actions" }, button(t.chooseAnotherFolder, () => void changeFolder(folder))),
+    el("h3", {}, t.exportImportTitle),
+    el("p", {}, t.exportExplanation),
+    el("p", {}, t.importExplanation),
     el(
       "div",
       { className: "actions" },
-      button("Import a space…", () => spaceInput.click()),
-      button("Export your space", () => void exportSpace(), "primary"),
+      button(t.importSpace, () => spaceInput.click()),
+      button(t.exportSpace, () => void exportSpace(), "primary"),
     ),
-    el("div", { className: "actions" }, button("Close", () => dialog.close())),
+    el("div", { className: "actions" }, button(t.close, () => dialog.close())),
+  );
+  dialog.showModal();
+}
+
+
+// ---------------------------------------------------------------------------------------------------------------------
+// The Settings: the theme, given to every View and Widget (CONVENTION.md §6.2), and the language of the interface,
+// given to the Modules in their context (§6.4), which is why changing it restarts the Host.
+
+const systemDark = matchMedia("(prefers-color-scheme: dark)");
+let themeChoice: ThemeChoice = themeChoiceOf(readPreference("theme"));
+let theme = themeOf(themeChoice, systemDark.matches);
+/** Renders again the User guide shown, if any, in the current theme. */
+let renderGuideFrame: (() => void) | null = null;
+
+/** Applies the theme to the interface, the Views and Widgets mounted, and the User guide shown. */
+function applyTheme() {
+  theme = themeOf(themeChoice, systemDark.matches);
+  const root = document.documentElement;
+  const variables = { background: "--background", surface: "--surface", text: "--text", textMuted: "--text-muted", accent: "--accent", border: "--border" };
+  for (const [color, variable] of Object.entries(variables)) root.style.setProperty(variable, theme.colors[color as keyof typeof variables]);
+  root.style.colorScheme = theme.mode;
+  root.dataset.mode = theme.mode;
+  host?.setTheme(theme);
+  renderGuideFrame?.();
+}
+
+systemDark.addEventListener("change", applyTheme);
+
+const THEME_LABELS: Record<ThemeChoice, string> = { system: t.themeSystem, light: t.themeLight, dark: t.themeDark };
+
+function showSettings() {
+  const themes = el(
+    "fieldset",
+    {},
+    el("legend", {}, t.theme),
+    ...THEME_CHOICES.map((choice) => {
+      const input = el("input", { type: "radio", name: "theme", value: choice, checked: choice === themeChoice });
+      input.addEventListener("change", () => {
+        themeChoice = choice;
+        savePreference("theme", choice);
+        applyTheme();
+      });
+      return el("label", {}, input, THEME_LABELS[choice]);
+    }),
+  );
+  const select = el(
+    "select",
+    { name: "language" },
+    ...LANGUAGES.map((option) => el("option", { value: option.language, selected: option.language === language, lang: option.language }, option.name)),
+  );
+  select.addEventListener("change", () => {
+    savePreference("language", select.value);
+    location.reload();
+  });
+  dialog.replaceChildren(
+    el("h2", { id: "dialog-title" }, t.settings),
+    el("div", { className: "settings" }, themes, el("label", { className: "language" }, t.language, select), el("p", { className: "note" }, t.languageNote)),
+    el("div", { className: "actions" }, button(t.close, () => dialog.close(), "primary")),
   );
   dialog.showModal();
 }
@@ -256,8 +300,8 @@ let requested: object | null = null;
 async function start(folder: FileSystemDirectoryHandle) {
   host = createHost({
     persistence: createFolderPersistence(folder),
-    locale: "en",
-    theme: THEME,
+    locale: language,
+    theme,
     openView: ({ module, params }) => {
       // A View of this Module behind the Home has already been given the params.
       if (current?.id === module.id && current.surface && current.element.hidden) bringBackView();
@@ -268,7 +312,7 @@ async function start(folder: FileSystemDirectoryHandle) {
   document.addEventListener("visibilitychange", updateVisibility);
   // A folder may have appeared or changed while the User was in another application.
   window.addEventListener("focus", () => void refresh());
-  folderButton.textContent = `Modules folder: ${folder.name}`;
+  folderButton.textContent = t.modulesFolderButton(folder.name);
   folderButton.addEventListener("click", () => showFolderSettings(folder));
   gate.hidden = true;
   launcher.hidden = stage.hidden = false;
@@ -347,8 +391,8 @@ const nameOf = (id: string) => entries.find((entry) => entry.id === id)?.name ??
 /** A Permission entry in plain language: its host and port, without the scheme. */
 function describeOrigin(origin: string) {
   const [, scheme, server] = /^([a-z]+):\/\/(.*)$/.exec(origin)!;
-  const where = server.startsWith("*.") ? `any subdomain of ${server.slice(2)}` : server;
-  return scheme.startsWith("ws") ? `${where} (live connection)` : where;
+  const where = server.startsWith("*.") ? t.anySubdomain(server.slice(2)) : server;
+  return scheme.startsWith("ws") ? t.liveConnection(where) : where;
 }
 
 const originList = (origins: string[]) => el("ul", { className: "origins" }, ...origins.map((origin) => el("li", {}, describeOrigin(origin))));
@@ -360,7 +404,7 @@ let summaryCount = 0;
  * servers it contacts are limited, its files, the Host and the other Modules are isolated, and what the User enters
  * in it can still leave.
  */
-function permissionSummary(name: string, permissions: Permissions, title = `What ${name} can do`) {
+function permissionSummary(name: string, permissions: Permissions, title = t.whatCanDo(name)) {
   const id = `permission-summary-${++summaryCount}`;
   const network = permissions.network ?? [];
   const local = permissions.localNetwork ?? [];
@@ -368,30 +412,20 @@ function permissionSummary(name: string, permissions: Permissions, title = `What
     "section",
     { className: "permission-summary", "aria-labelledby": id },
     el("h3", { id }, title),
-    ...(network.length + local.length === 0 ? [el("p", {}, `No network access: ${name} declares no server, and Tessello blocks the requests it would make.`)] : []),
-    ...(network.length > 0 ? [el("p", {}, el("strong", {}, "Limited"), `: ${name} can contact only these servers:`), originList(network)] : []),
+    ...(network.length + local.length === 0 ? [el("p", {}, t.noNetwork(name))] : []),
+    ...(network.length > 0 ? [el("p", {}, el("strong", {}, t.limited), t.limitedText(name)), originList(network)] : []),
     ...(local.length > 0
       ? [
           el(
             "div",
             { className: "sensitive" },
-            el(
-              "p",
-              {},
-              el("strong", {}, "Local network"),
-              ": reach these addresses on your computer or your local network, where devices and services a web page usually cannot reach live:",
-            ),
+            el("p", {}, el("strong", {}, t.localNetwork), t.localNetworkText),
             originList(local),
           ),
         ]
       : []),
-    el("p", { className: "limits" }, el("strong", {}, "Isolated"), `: ${name} cannot read your files, Tessello or your other Modules.`),
-    el(
-      "p",
-      { className: "limits" },
-      el("strong", {}, "Not guaranteed"),
-      `: ${name} can still send what you enter in it elsewhere, for example by opening a link. Install only Modules you trust.`,
-    ),
+    el("p", { className: "limits" }, el("strong", {}, t.isolated), t.isolatedText(name)),
+    el("p", { className: "limits" }, el("strong", {}, t.notGuaranteed), t.notGuaranteedText(name)),
   );
 }
 
@@ -401,14 +435,14 @@ async function showView(id: string, params: Record<string, string> = {}) {
   if (requested !== request) return;
   if (opening.status === "missing") {
     await refresh();
-    showInStage(id, el("h2", {}, `${nameOf(id)} can't be found`), missingExplanation(id));
+    showInStage(id, el("h2", {}, t.cantBeFound(nameOf(id))), missingExplanation(id));
     return;
   }
   if (opening.status === "invalid") {
     showInStage(
       id,
-      el("h2", {}, `${nameOf(id)} no longer complies with the Convention`),
-      el("p", {}, "Its folder has changed, and it does not run until it is fixed. The Validator reports:"),
+      el("h2", {}, t.noLongerComplies(nameOf(id))),
+      el("p", {}, t.folderChangedReports),
       errorList(opening.report.issues),
     );
     return;
@@ -417,15 +451,15 @@ async function showView(id: string, params: Record<string, string> = {}) {
     const { name } = opening.manifest;
     showInStage(
       id,
-      el("h2", {}, `${name} asks for new Permissions`),
-      el("p", {}, "Its folder now declares Permissions you have not granted. It does not run until you accept them all."),
-      permissionSummary(name, opening.added, `What ${name} can now also do`),
+      el("h2", {}, t.asksNewPermissions(name)),
+      el("p", {}, t.newPermissionsText),
+      permissionSummary(name, opening.added, t.whatCanNowAlsoDo(name)),
       el(
         "div",
         { className: "actions" },
-        button("Decline", showHome),
+        button(t.decline, showHome),
         button(
-          "Accept",
+          t.accept,
           async () => {
             await opening.accept();
             await showView(id, params);
@@ -456,8 +490,8 @@ async function showView(id: string, params: Record<string, string> = {}) {
       const error = el(
         "section",
         { className: "surface-error", role: "alert" },
-        el("h2", {}, `${manifest.name} is not responding`),
-        el("p", {}, "This Module did not finish starting. It may be broken: try again later, or ask its Creator for a fixed version."),
+        el("h2", {}, t.notResponding(manifest.name)),
+        el("p", {}, t.viewNotResponding),
       );
       iframe.replaceWith(error);
       error.hidden = iframe.hidden;
@@ -471,18 +505,14 @@ async function showView(id: string, params: Record<string, string> = {}) {
 
 const missingExplanation = (id: string) => {
   const folder = entries.find((entry) => entry.id === id)?.folder;
-  return el(
-    "p",
-    {},
-    `Its folder${folder ? ` “${folder}”` : ""} is no longer in your Modules folder. Put it back, under any name, to find this Module and its data again.`,
-  );
+  return el("p", {}, t.missingFolder(folder));
 };
 
 const STATUS_LABELS: Record<ModuleEntry["status"], string> = {
   active: "",
-  new: "New, to activate",
-  conflict: "Conflict",
-  missing: "Not found",
+  new: t.statusNew,
+  conflict: t.statusConflict,
+  missing: t.statusMissing,
 };
 
 function renderLauncher() {
@@ -502,7 +532,7 @@ function renderLauncher() {
       entryButton.addEventListener("click", () => onLauncherClick(entry));
       if (entry.status !== "active") return el("li", {}, entryButton);
       // Named "About" only: "About Notes" would also answer to the name of the Module's own button.
-      const aboutButton = el("button", { type: "button", className: "entry-about", title: `About ${entry.name}`, "aria-label": "About" }, "ⓘ");
+      const aboutButton = el("button", { type: "button", className: "entry-about", title: t.aboutTitle(entry.name), "aria-label": t.about }, "ⓘ");
       aboutButton.addEventListener("click", () => void showAbout(entry));
       return el("li", {}, entryButton, aboutButton);
     }),
@@ -517,38 +547,42 @@ async function showAbout(entry: ModuleEntry) {
   const opening = await host.open(entry.id!);
   dialog.classList.remove("guide");
   showDialog(
-    `About ${entry.name}`,
+    t.aboutTitle(entry.name),
     ...(opening.status === "ready"
       ? [
           moduleSummary(opening.manifest, { path: opening.manifest.icon, bytes: opening.files.get(opening.manifest.icon)! }),
-          el("div", { className: "actions start" }, button("User guide", () => showGuide(entry, opening), "primary")),
+          el("div", { className: "actions start" }, button(t.userGuide, () => showGuide(entry, opening), "primary")),
         ]
-      : [el("p", {}, `Its folder has changed: open ${entry.name} from the Launcher to see why. Its User guide is shown once it runs again.`)]),
-    el("p", {}, "You granted its Permissions when you installed or activated it. Uninstalling it is the only way to withdraw them."),
+      : [el("p", {}, t.aboutFolderChanged(entry.name))]),
+    el("p", {}, t.aboutPermissions),
     permissionSummary(entry.name, entry.permissions ?? {}),
-    el("div", { className: "actions" }, button("Uninstall…", () => confirmUninstall(entry), "danger")),
+    el("div", { className: "actions" }, button(t.uninstallEllipsis, () => confirmUninstall(entry), "danger")),
   );
 }
 
 /** A Module's User guide, in a wide dialog (CONVENTION.md §3.2): the Host renders it, and nothing of the Module runs. */
 function showGuide(entry: ModuleEntry, { manifest, files }: Extract<Opening, { status: "ready" }>) {
-  const title = `${entry.name}: User guide`;
+  const title = t.guideTitle(entry.name);
   const frame = el("iframe", { className: "guide-frame", title, sandbox: GUIDE_SANDBOX });
-  frame.srcdoc = guideDocument({ files, guide: manifest.guide, title, theme: THEME });
+  renderGuideFrame = () => (frame.srcdoc = guideDocument({ files, guide: manifest.guide, title, theme }));
+  renderGuideFrame();
   dialog.classList.add("guide");
   dialog.replaceChildren(
     el("h2", { id: "dialog-title" }, title),
     frame,
-    el("div", { className: "actions" }, button("Back", () => void showAbout(entry)), button("Close", () => dialog.close(), "primary")),
+    el("div", { className: "actions" }, button(t.back, () => void showAbout(entry)), button(t.close, () => dialog.close(), "primary")),
   );
 }
 
-dialog.addEventListener("close", () => dialog.classList.remove("guide"));
+dialog.addEventListener("close", () => {
+  dialog.classList.remove("guide");
+  renderGuideFrame = null;
+});
 
 /** Uninstalls a Module once the User confirms: its folder and its data are removed (CONVENTION.md §8). */
 function confirmUninstall(entry: ModuleEntry) {
   const id = entry.id!;
-  const confirm = el("button", { type: "button", className: "danger" }, "Uninstall");
+  const confirm = el("button", { type: "button", className: "danger" }, t.uninstall);
   confirm.addEventListener("click", async () => {
     confirm.disabled = true;
     // Stopped first, so that no View or Widget writes to the storage being removed.
@@ -559,20 +593,14 @@ function confirmUninstall(entry: ModuleEntry) {
       dialog.close();
     } catch (error) {
       console.error(`${entry.name} could not be uninstalled:`, error);
-      showDialog(`${entry.name} could not be uninstalled`, el("p", {}, "Something went wrong in your Modules folder. Try again."));
+      showDialog(t.couldNotUninstall(entry.name), el("p", {}, t.folderFailed));
     }
     await refresh();
   });
   dialog.replaceChildren(
-    el("h2", { id: "dialog-title" }, `Uninstall ${entry.name}?`),
-    el(
-      "p",
-      {},
-      entry.status === "missing"
-        ? `Its data is deleted from your Modules folder. Its folder “${entry.folder}” is already gone.`
-        : `Its folder “${entry.folder}” and its data are deleted from your Modules folder. This cannot be undone, unless you keep a copy, with git for instance.`,
-    ),
-    el("div", { className: "actions" }, button("Cancel", () => dialog.close()), confirm),
+    el("h2", { id: "dialog-title" }, t.uninstallTitle(entry.name)),
+    el("p", {}, entry.status === "missing" ? t.uninstallMissing(entry.folder) : t.uninstallDeletes(entry.folder)),
+    el("div", { className: "actions" }, button(t.cancel, () => dialog.close()), confirm),
   );
   dialog.showModal();
 }
@@ -594,24 +622,15 @@ function dropSurfaces(id: string): boolean {
 
 function onLauncherClick(entry: ModuleEntry) {
   if (entry.status === "active") void showView(entry.id!);
-  else if (entry.status === "new") void showInspection(`the folder “${entry.folder}”`, host.inspectFolder(entry.folder), "folder");
+  else if (entry.status === "new") void showInspection(t.theFolder(entry.folder), host.inspectFolder(entry.folder), "folder");
   else if (entry.status === "conflict") {
     const registered = entries.find((other) => other.status !== "conflict" && other.id === entry.id);
-    showDialog(
-      `“${entry.folder}” is in conflict`,
-      el(
-        "p",
-        {},
-        `This folder declares the Module ID `,
-        el("code", {}, entry.id!),
-        `, which the Module in “${registered?.folder}” already uses. Only that one runs. Give this one its own Module ID in its Manifest, or remove one of the two folders.`,
-      ),
-    );
+    showDialog(t.conflictTitle(entry.folder), el("p", {}, ...t.conflictText(el("code", {}, entry.id!), registered?.folder ?? "")));
   } else {
     showDialog(
-      `${entry.name} can't be found`,
+      t.cantBeFound(entry.name),
       missingExplanation(entry.id!),
-      el("div", { className: "actions" }, button("Uninstall…", () => confirmUninstall(entry), "danger")),
+      el("div", { className: "actions" }, button(t.uninstallEllipsis, () => confirmUninstall(entry), "danger")),
     );
   }
 }
@@ -681,8 +700,8 @@ function createCell(widget: HomeWidget): WidgetCell {
     ),
   );
   const [earlier, later] = element.querySelectorAll<HTMLButtonElement>(".move");
-  earlier.setAttribute("aria-label", `Move ${widget.name} earlier`);
-  later.setAttribute("aria-label", `Move ${widget.name} later`);
+  earlier.setAttribute("aria-label", t.moveEarlier(widget.name));
+  later.setAttribute("aria-label", t.moveLater(widget.name));
   element.dataset.id = widget.id;
   element.addEventListener("dragstart", (event) => {
     event.dataTransfer!.setData(WIDGET_DRAG, widget.id);
@@ -735,7 +754,7 @@ async function mountWidget(cell: WidgetCell) {
     await startWidget(cell);
   } catch (error) {
     console.error(`The Widget of ${cell.widget.id} could not be shown:`, error);
-    if (cells.get(cell.widget.id) === cell) showWidgetError(cell, `${cell.widget.name} can't be shown`, "Something went wrong while starting it.");
+    if (cells.get(cell.widget.id) === cell) showWidgetError(cell, t.cantBeShown(cell.widget.name), t.widgetStartFailed);
   }
 }
 
@@ -745,17 +764,17 @@ async function startWidget(cell: WidgetCell) {
   if (cells.get(id) !== cell) return;
   if (opening.status !== "ready" || !opening.manifest.widget) {
     const reasons: Record<Exclude<typeof opening.status, "ready">, string> = {
-      missing: "Its folder is no longer in your Modules folder.",
-      invalid: "It no longer complies with the Convention: open it from the Launcher to see why.",
-      permissions: "It asks for new Permissions: open it from the Launcher.",
+      missing: t.widgetMissing,
+      invalid: t.widgetInvalid,
+      permissions: t.widgetPermissions,
     };
-    showWidgetError(cell, `${name} can't be shown`, opening.status === "ready" ? "It no longer has a Widget." : reasons[opening.status]);
+    showWidgetError(cell, t.cantBeShown(name), opening.status === "ready" ? t.widgetGone : reasons[opening.status]);
     return;
   }
   const { manifest, files, permissions } = opening;
   const document = await buildView({ files, entry: manifest.widget!.entry, permissions });
   if (cells.get(id) !== cell) return;
-  const iframe = el("iframe", { className: "widget-frame", title: `${manifest.name} widget`, sandbox: IFRAME_SANDBOX });
+  const iframe = el("iframe", { className: "widget-frame", title: t.widgetTitle(manifest.name), sandbox: IFRAME_SANDBOX });
   iframe.srcdoc = document.srcdoc;
   cell.body.replaceChildren(iframe);
   const surface = host.mountSurface({
@@ -766,7 +785,7 @@ async function startWidget(cell: WidgetCell) {
       if (cell.surface !== surface) return;
       surface.unmount();
       cell.surface = undefined;
-      showWidgetError(cell, `${manifest.name} is not responding`, "This Widget did not finish starting.");
+      showWidgetError(cell, t.notResponding(manifest.name), t.widgetNotResponding);
     },
   });
   cell.surface = surface;
@@ -799,7 +818,7 @@ function move(id: string, offset: number) {
 function toggleArranging() {
   arranging = !arranging;
   home.classList.toggle("arranging", arranging);
-  arrangeButton.textContent = arranging ? "Done" : "Arrange widgets";
+  arrangeButton.textContent = arranging ? t.done : t.arrangeWidgets;
   for (const cell of cells.values()) cell.element.draggable = arranging;
 }
 
@@ -808,7 +827,7 @@ arrangeButton.addEventListener("click", toggleArranging);
 // ---------------------------------------------------------------------------------------------------------------------
 // Export and import of the space in a single file (ADR 0002).
 
-const spaceInput = el("input", { type: "file", accept: ".zip,application/zip", hidden: true, "aria-label": "Space file to import" });
+const spaceInput = el("input", { type: "file", accept: ".zip,application/zip", hidden: true, "aria-label": t.spaceFile });
 document.body.append(spaceInput);
 spaceInput.addEventListener("change", () => {
   const file = spaceInput.files?.[0];
@@ -824,8 +843,8 @@ async function exportSpace() {
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
   if (missing.length > 0) {
     showDialog(
-      "Your space was exported without some Modules",
-      el("p", {}, "Their folder is no longer in your Modules folder, so their code could not be exported. Put their folder back and export again to include them:"),
+      t.exportedWithoutTitle,
+      el("p", {}, t.exportedWithoutText),
       el("ul", {}, ...missing.map((id) => el("li", {}, nameOf(id), " ", el("code", {}, id)))),
     );
   }
@@ -839,9 +858,9 @@ async function importSpace(file: File) {
   const inspection = await host.inspectSpace(new Uint8Array(await file.arrayBuffer()));
   if (inspection.status === "invalid") {
     showDialog(
-      `${file.name} can't be imported`,
-      el("p", {}, `${inspection.problem} Nothing was imported.`),
-      ...(inspection.report ? [el("p", {}, "The Validator reports:"), errorList(inspection.report.issues)] : []),
+      t.cantBeImported(file.name),
+      el("p", {}, t.nothingImported(inspection.problem)),
+      ...(inspection.report ? [el("p", {}, t.validatorReports), errorList(inspection.report.issues)] : []),
     );
     return;
   }
@@ -849,16 +868,16 @@ async function importSpace(file: File) {
   const installed = inspection.modules.filter((module) => module.installed);
   const installedList = installed.length > 0
     ? [
-        el("p", {}, "Already installed here, left as they are with their own data:"),
+        el("p", {}, t.alreadyInstalledHere),
         el("ul", {}, ...installed.map(({ manifest }) => el("li", {}, `${manifest.name} `, el("code", {}, manifest.id)))),
       ]
     : [];
   if (incoming.length === 0) {
-    showDialog(`Nothing to import from ${file.name}`, el("p", {}, "Every Module of this space is already installed here."), ...installedList);
+    showDialog(t.nothingToImport(file.name), el("p", {}, t.everyModuleInstalled), ...installedList);
     return;
   }
   // Every Permission or none (ADR 0004): accepting them all, or cancelling, are the only choices.
-  const confirm = el("button", { type: "button", className: "primary" }, "Accept and import");
+  const confirm = el("button", { type: "button", className: "primary" }, t.acceptAndImport);
   confirm.addEventListener("click", async () => {
     confirm.disabled = true;
     try {
@@ -866,24 +885,24 @@ async function importSpace(file: File) {
       dialog.close();
     } catch (error) {
       console.error(`${file.name} could not be imported:`, error);
-      showDialog(`${file.name} could not be imported`, el("p", {}, "Something went wrong in your Modules folder. Try again: the Modules already imported are left as they are."));
+      showDialog(t.couldNotImport(file.name), el("p", {}, t.importFailed));
     }
     await refresh();
     showHome();
   });
   dialog.replaceChildren(
-    el("h2", { id: "dialog-title" }, `Import ${incoming.length === 1 ? "1 Module" : `${incoming.length} Modules`}?`),
-    el("p", {}, `From ${file.name}, with their data and their place on the Home. Each one gets the Permissions you had granted it:`),
+    el("h2", { id: "dialog-title" }, t.importTitle(incoming.length)),
+    el("p", {}, t.importFrom(file.name)),
     ...incoming.flatMap(({ manifest, icon, permissions, report }) => {
       const warnings = report.issues.filter((issue) => issue.severity === "warning");
       return [
         moduleSummary(manifest, icon),
         permissionSummary(manifest.name, permissions),
-        ...(warnings.length > 0 ? [el("p", {}, "The Validator has warnings; the Module can still be imported:"), issueList(warnings)] : []),
+        ...(warnings.length > 0 ? [el("p", {}, t.warningsImport), issueList(warnings)] : []),
       ];
     }),
     ...installedList,
-    el("div", { className: "actions" }, button("Cancel", () => dialog.close()), confirm),
+    el("div", { className: "actions" }, button(t.cancel, () => dialog.close()), confirm),
   );
   dialog.showModal();
 }
@@ -895,7 +914,7 @@ function showDialog(title: string, ...children: (Node | string)[]) {
   dialog.replaceChildren(
     el("h2", { id: "dialog-title" }, title),
     ...children,
-    el("div", { className: "actions" }, button("Close", () => dialog.close(), "primary")),
+    el("div", { className: "actions" }, button(t.close, () => dialog.close(), "primary")),
   );
   dialog.showModal();
 }
@@ -905,7 +924,7 @@ function issueList(issues: Issue[]) {
     "ul",
     { className: "issues" },
     ...issues.map((issue) =>
-      el("li", { className: issue.severity }, `${issue.severity === "error" ? "Error" : "Warning"}: ${issue.message} `, el("code", {}, `[${issue.code}]`)),
+      el("li", { className: issue.severity }, `${t.issueLine(issue.severity === "error" ? t.error : t.warning, issue.message)} `, el("code", {}, `[${issue.code}]`)),
     ),
   );
 }
@@ -914,24 +933,24 @@ const errorList = (issues: Issue[]) => issueList(issues.filter((issue) => issue.
 
 /** The row naming the URL a package was downloaded from, if any. */
 const downloadedFromRow = (downloadedFrom?: string) =>
-  downloadedFrom ? [el("dt", {}, "Downloaded from"), el("dd", {}, el("code", {}, downloadedFrom))] : [];
+  downloadedFrom ? [el("dt", {}, t.downloadedFrom), el("dd", {}, el("code", {}, downloadedFrom))] : [];
 
 /** The Module's name, version, Module ID and description, then the URL it was downloaded from, if any. */
 function moduleSummary(manifest: Manifest, icon: Icon, downloadedFrom?: string) {
   return el(
     "div",
     { className: "module-summary" },
-    el("img", { src: iconUrl(icon), alt: `${manifest.name} icon` }),
+    el("img", { src: iconUrl(icon), alt: t.iconOf(manifest.name) }),
     el(
       "dl",
       {},
-      el("dt", {}, "Name"),
+      el("dt", {}, t.name),
       el("dd", {}, manifest.name),
-      el("dt", {}, "Version"),
+      el("dt", {}, t.version),
       el("dd", {}, manifest.version),
-      el("dt", {}, "Module ID"),
+      el("dt", {}, t.moduleId),
       el("dd", {}, el("code", {}, manifest.id)),
-      ...(manifest.description ? [el("dt", {}, "Description"), el("dd", {}, manifest.description)] : []),
+      ...(manifest.description ? [el("dt", {}, t.description), el("dd", {}, manifest.description)] : []),
       ...downloadedFromRow(downloadedFrom),
     ),
   );
@@ -945,22 +964,16 @@ async function showInspection(source: string, pending: Promise<Inspection>, kind
   const inspection = await pending;
   if (inspection.status === "invalid") {
     showDialog(
-      kind === "zip" ? `${source} can't be installed` : `${source} can't be activated`,
-      el("p", {}, `This is not a valid Tessello Module. Nothing was ${kind === "zip" ? "installed" : "activated"}. The Validator reports:`),
+      kind === "zip" ? t.cantBeInstalled(source) : t.cantBeActivated(source),
+      el("p", {}, kind === "zip" ? t.notValidInstalled : t.notValidActivated),
       errorList(inspection.report.issues),
     );
     return;
   }
   if (inspection.status === "conflict") {
     showDialog(
-      `${inspection.manifest.name} is already installed`,
-      el(
-        "p",
-        {},
-        "Its Module ID ",
-        el("code", {}, inspection.manifest.id),
-        ` is already used by the Module in the folder “${inspection.folder}”. Only that one runs. Give this one its own Module ID in its Manifest, or remove one of the two folders.`,
-      ),
+      t.alreadyInstalledTitle(inspection.manifest.name),
+      el("p", {}, ...t.alreadyUsed(el("code", {}, inspection.manifest.id), inspection.folder)),
     );
     return;
   }
@@ -972,7 +985,7 @@ async function showInspection(source: string, pending: Promise<Inspection>, kind
   const { manifest, icon, report } = inspection;
   const warnings = report.issues.filter((issue) => issue.severity === "warning");
   // Every Permission or none (ADR 0004): accepting them all, or cancelling, are the only choices.
-  const confirm = el("button", { type: "button", className: "primary" }, kind === "zip" ? "Accept and install" : "Accept and activate");
+  const confirm = el("button", { type: "button", className: "primary" }, kind === "zip" ? t.acceptAndInstall : t.acceptAndActivate);
   confirm.addEventListener("click", async () => {
     confirm.disabled = true;
     await inspection.install();
@@ -981,12 +994,12 @@ async function showInspection(source: string, pending: Promise<Inspection>, kind
     await showView(manifest.id);
   });
   dialog.replaceChildren(
-    el("h2", { id: "dialog-title" }, kind === "zip" ? `Install ${manifest.name}?` : `Activate ${manifest.name}?`),
-    ...(kind === "folder" ? [el("p", {}, `Found in ${source} of your Modules folder.`)] : []),
+    el("h2", { id: "dialog-title" }, kind === "zip" ? t.installTitle(manifest.name) : t.activateTitle(manifest.name)),
+    ...(kind === "folder" ? [el("p", {}, t.foundIn(source))] : []),
     moduleSummary(manifest, icon, downloadedFrom),
     permissionSummary(manifest.name, manifest.permissions ?? {}),
-    ...(warnings.length > 0 ? [el("p", {}, "The Validator has warnings; the Module can still be installed:"), issueList(warnings)] : []),
-    el("div", { className: "actions" }, button("Cancel", () => dialog.close()), confirm),
+    ...(warnings.length > 0 ? [el("p", {}, t.warningsInstall), issueList(warnings)] : []),
+    el("div", { className: "actions" }, button(t.cancel, () => dialog.close()), confirm),
   );
   dialog.showModal();
 }
@@ -999,7 +1012,7 @@ function showUpdate(inspection: Extract<Inspection, { status: "update" }>, downl
   const { manifest, installed, added, report } = inspection;
   const warnings = report.issues.filter((issue) => issue.severity === "warning");
   const hasAdded = Object.keys(added).length > 0;
-  const confirm = el("button", { type: "button", className: "primary" }, hasAdded ? "Accept and update" : "Update");
+  const confirm = el("button", { type: "button", className: "primary" }, hasAdded ? t.acceptAndUpdate : t.update);
   confirm.addEventListener("click", async () => {
     confirm.disabled = true;
     try {
@@ -1007,39 +1020,30 @@ function showUpdate(inspection: Extract<Inspection, { status: "update" }>, downl
       dialog.close();
     } catch (error) {
       console.error(`${installed.name} could not be updated:`, error);
-      showDialog(`${installed.name} could not be updated`, el("p", {}, "Something went wrong in your Modules folder. Open the Module to see which version it runs, and try again."));
+      showDialog(t.couldNotUpdate(installed.name), el("p", {}, t.updateFailed));
     }
     const wasShown = dropSurfaces(manifest.id);
     await refresh();
     if (wasShown) await showView(manifest.id);
   });
   dialog.replaceChildren(
-    el("h2", { id: "dialog-title" }, `Update ${installed.name}?`),
-    el(
-      "p",
-      {},
-      "A Module with the Module ID ",
-      el("code", {}, manifest.id),
-      ` is already installed, in the folder “${installed.folder}”. Its code will be replaced, and its data kept.`,
-    ),
+    el("h2", { id: "dialog-title" }, t.updateTitle(installed.name)),
+    el("p", {}, ...t.updateText(el("code", {}, manifest.id), installed.folder)),
     el(
       "dl",
       { className: "versions" },
-      el("dt", {}, "Installed"),
+      el("dt", {}, t.installed),
       el("dd", {}, `${installed.name} ${installed.version}`),
-      el("dt", {}, "Incoming"),
+      el("dt", {}, t.incoming),
       el("dd", {}, `${manifest.name} ${manifest.version}`),
       ...downloadedFromRow(downloadedFrom),
     ),
-    ...(installed.name !== manifest.name ? [el("p", { className: "warning" }, "The names differ: make sure this is the same Module, from the same Creator.")] : []),
+    ...(installed.name !== manifest.name ? [el("p", { className: "warning" }, t.namesDiffer)] : []),
     ...(hasAdded
-      ? [
-          el("p", {}, "This version asks for new Permissions. Declining them cancels the update, and the installed version stays as it is."),
-          permissionSummary(manifest.name, added, `What ${manifest.name} can now also do`),
-        ]
-      : [el("p", {}, "It asks for no new Permission.")]),
-    ...(warnings.length > 0 ? [el("p", {}, "The Validator has warnings; the Module can still be updated:"), issueList(warnings)] : []),
-    el("div", { className: "actions" }, button("Cancel", () => dialog.close()), confirm),
+      ? [el("p", {}, t.updateNewPermissions), permissionSummary(manifest.name, added, t.whatCanNowAlsoDo(manifest.name))]
+      : [el("p", {}, t.noNewPermission)]),
+    ...(warnings.length > 0 ? [el("p", {}, t.warningsUpdate), issueList(warnings)] : []),
+    el("div", { className: "actions" }, button(t.cancel, () => dialog.close()), confirm),
   );
   dialog.showModal();
 }
@@ -1064,23 +1068,23 @@ function showUrlForm() {
   const form = el(
     "form",
     { className: "url-form", noValidate: true },
-    el("label", {}, "URL of the .zip file", input),
+    el("label", {}, t.urlLabel, input),
     problem,
-    el("div", { className: "actions" }, button("Cancel", () => dialog.close()), el("button", { type: "submit", className: "primary" }, "Download")),
+    el("div", { className: "actions" }, button(t.cancel, () => dialog.close()), el("button", { type: "submit", className: "primary" }, t.download)),
   );
   form.addEventListener("submit", (event) => {
     event.preventDefault();
     const check = checkPackageUrl(input.value);
     if (check.status === "refused") {
-      problem.textContent = check.reason;
+      problem.textContent = t.urlRefused(check);
       problem.hidden = false;
       return;
     }
     void installFromUrl(check.url);
   });
   dialog.replaceChildren(
-    el("h2", { id: "dialog-title" }, "Install from a URL"),
-    el("p", {}, "Paste the address of a Module's .zip file, as its Creator published it."),
+    el("h2", { id: "dialog-title" }, t.installFromUrlTitle),
+    el("p", {}, t.installFromUrlText),
     form,
   );
   dialog.showModal();
@@ -1097,9 +1101,9 @@ async function installFromUrl(url: string) {
   const { signal } = stop;
   dialog.addEventListener("close", () => stop.abort(), { signal });
   dialog.replaceChildren(
-    el("h2", { id: "dialog-title" }, `Downloading ${name}…`),
-    el("p", {}, "From ", el("code", {}, url)),
-    el("div", { className: "actions" }, button("Cancel", () => dialog.close())),
+    el("h2", { id: "dialog-title" }, t.downloading(name)),
+    el("p", {}, ...t.fromUrl(el("code", {}, url))),
+    el("div", { className: "actions" }, button(t.cancel, () => dialog.close())),
   );
   dialog.showModal();
   let download;
@@ -1113,17 +1117,14 @@ async function installFromUrl(url: string) {
   stop.abort();
   if (download.status === "unreachable") {
     showDialog(
-      `${name} can't be downloaded`,
-      el("p", {}, "The server is unreachable, or it does not allow Tessello to download the file. Nothing was installed."),
-      el("p", {}, el("a", { href: url, download: "" }, "Download the .zip file"), " yourself, then drop it on Tessello to install it."),
+      t.cantBeDownloaded(name),
+      el("p", {}, t.unreachable),
+      el("p", {}, ...t.downloadYourself(el("a", { href: url, download: "" }, t.downloadZip))),
     );
   } else if (download.status === "failed") {
-    showDialog(
-      `${name} can't be downloaded`,
-      el("p", {}, `The server answered with the error ${download.httpStatus}. Check the URL, or ask the Module's Creator where it is published.`),
-    );
+    showDialog(t.cantBeDownloaded(name), el("p", {}, t.httpFailed(download.httpStatus)));
   } else if (download.status === "too-large") {
-    showDialog(`${name} can't be installed`, el("p", {}, "It is too large to be a Tessello Module. Nothing was installed."), errorList([download.issue]));
+    showDialog(t.cantBeInstalled(name), el("p", {}, t.tooLarge), errorList([download.issue]));
   } else {
     await showInspection(name, host.inspectZip(download.bytes), "zip", url);
   }
@@ -1132,7 +1133,7 @@ async function installFromUrl(url: string) {
 /** The Module of an install link: downloaded, then installed only once the User accepts, as from the field. */
 function installLinked(url: string) {
   const check = checkPackageUrl(url);
-  if (check.status === "refused") showDialog("This install link can't be used", el("p", {}, check.reason));
+  if (check.status === "refused") showDialog(t.installLinkUnusable, el("p", {}, t.urlRefused(check)));
   else void installFromUrl(check.url);
 }
 
@@ -1173,6 +1174,8 @@ fileInput.addEventListener("change", () => {
 });
 byId<HTMLButtonElement>("install-url-button").addEventListener("click", showUrlForm);
 byId<HTMLButtonElement>("home-button").addEventListener("click", showHome);
+byId<HTMLButtonElement>("settings-button").addEventListener("click", showSettings);
+byId<HTMLElement>("home-empty-text").replaceChildren(...t.homeEmptyText(el("code", {}, ".zip")));
 // An install link opened in a tab where the Host already runs only changes the fragment.
 window.addEventListener("hashchange", () => {
   const url = takeInstallLink();
@@ -1180,6 +1183,8 @@ window.addEventListener("hashchange", () => {
   if (host) installLinked(url);
   else pendingInstall = url;
 });
+
+applyTheme();
 
 // Kept whole before the link is removed from the address, to be copied on the page of an unsupported browser.
 const installLinkHref = location.href;

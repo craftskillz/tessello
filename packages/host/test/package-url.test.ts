@@ -10,7 +10,7 @@ describe("which URLs the Host downloads a package from", () => {
     }
   });
 
-  test("any other scheme, or http: elsewhere, is refused with an explanation", () => {
+  test("any other scheme, or http: elsewhere, is refused as insecure, naming its scheme", () => {
     for (const url of [
       "http://example.com/notes.zip",
       "http://192.168.1.10/notes.zip",
@@ -20,20 +20,17 @@ describe("which URLs the Host downloads a package from", () => {
       "ftp://example.com/notes.zip",
     ]) {
       const check = checkPackageUrl(url);
-      assert.equal(check.status, "refused", url);
-      assert.match(check.status === "refused" ? check.reason : "", /https:/, url);
+      assert.deepEqual(check, { status: "refused", reason: "insecure", protocol: new URL(url).protocol }, url);
     }
   });
 
   test("text that is not a URL is refused", () => {
     const check = checkPackageUrl("notes.zip");
-    assert.deepEqual(check, { status: "refused", reason: "This is not a URL. Paste the full address of the .zip file, starting with https://." });
+    assert.deepEqual(check, { status: "refused", reason: "not-a-url" });
   });
 
   test("a URL carrying a user name or password is refused, since the browser would not send the request", () => {
-    const check = checkPackageUrl("https://me:secret@example.com/notes.zip");
-    assert.equal(check.status, "refused");
-    assert.match(check.status === "refused" ? check.reason : "", /user name or password/);
+    assert.deepEqual(checkPackageUrl("https://me:secret@example.com/notes.zip"), { status: "refused", reason: "credentials" });
   });
 
   test("spaces around a pasted URL are ignored", () => {
