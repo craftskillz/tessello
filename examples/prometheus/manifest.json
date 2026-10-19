@@ -1,0 +1,19 @@
+{
+  "convention": 1,
+  "id": "@tessello/prometheus",
+  "name": "Local Prometheus",
+  "version": "1.0.0",
+  "description": "The state of the Prometheus that runs on your computer: its targets and its firing alerts.",
+  "icon": "icon.svg",
+  "view": {
+    "entry": "view/index.html"
+  },
+  "guide": "guide.md",
+  "widget": {
+    "entry": "widget/index.html",
+    "size": "S"
+  },
+  "permissions": {
+    "localNetwork": ["http://localhost:9090"]
+  }
+}

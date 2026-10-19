@@ -29,8 +29,17 @@ export interface PageOptions {
   hash?: string;
 }
 
+export interface HostOptions {
+  /**
+   * Chromium treats the Host as a public site, as it is once deployed, rather than as one of the User's computer: it
+   * then applies Local Network Access, and asks the User before a Module reaches the local network. Headless, it
+   * refuses unless the test grants "local-network-access".
+   */
+  public?: boolean;
+}
+
 /** Starts the Host and a browser for the tests of the calling file; `newPage()` opens a fresh, empty Host. */
-export function useHost() {
+export function useHost({ public: publicSite = false }: HostOptions = {}) {
   let browser: Browser;
   let close: () => void;
   const state = { url: "" };
@@ -38,7 +47,8 @@ export function useHost() {
     const { server, url } = await serveHost();
     state.url = url;
     close = () => server.close();
-    browser = await chromium.launch();
+    const { host } = new URL(url);
+    browser = await chromium.launch({ args: publicSite ? [`--ip-address-space-overrides=${host}=public`] : [] });
   });
   after(async () => {
     await browser?.close();

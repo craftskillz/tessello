@@ -15,7 +15,7 @@ async function passesTheValidator(path: string) {
   assert.match(out.join("\n"), /✓ 0 warnings: this Module is installable\./);
 }
 
-for (const name of ["notes", "meteo"]) {
+for (const name of ["notes", "meteo", "prometheus"]) {
   test(`the example Module "${name}" passes the Validator without error or warning`, () => passesTheValidator(at(`examples/${name}`)));
 }
 

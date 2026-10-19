@@ -46,6 +46,15 @@ const TYPES: Record<string, string> = {
 /** The `sandbox` attribute of every Module iframe (CONVENTION.md §4): never `allow-same-origin`. */
 export const IFRAME_SANDBOX = "allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox";
 
+/**
+ * The `allow` attribute of a Module iframe: Chrome and Edge ask the User before a public site reaches the local network,
+ * and only for a frame the page delegates it to (ADR 0012). Delegated only to a Module that declares `localNetwork`.
+ * `local-network-access` is the name of Chrome 142, split since into `local-network` and `loopback-network`.
+ */
+export function iframeAllow(permissions: Permissions = {}): string {
+  return (permissions.localNetwork ?? []).length > 0 ? "local-network-access; local-network; loopback-network" : "";
+}
+
 /** The CSP of a View or Widget: only its declared origins, and no URL of the Host. */
 export function cspFor(permissions: Permissions = {}): string {
   const origins = [...(permissions.network ?? []), ...(permissions.localNetwork ?? [])].join(" ");
@@ -76,6 +85,8 @@ export interface ViewDocument {
   /** Post it to the iframe once, when it has loaded: `postMessage(message, "*", transfer)`. */
   message: LoaderMessage;
   transfer: ArrayBuffer[];
+  /** The `allow` attribute of the iframe, set before it is in the page. */
+  allow: string;
 }
 
 interface LoaderMessage {
@@ -211,7 +222,7 @@ export async function buildView(options: { files: PackageFiles; entry: string; p
     message.files.push({ path, url: packageUrl(path), type, bytes: content.slice().buffer });
   }
   const srcdoc = `<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="${csp}"><script>${loader()}</script></head></html>`;
-  return { srcdoc, message, transfer: message.files.map((file) => file.bytes) };
+  return { srcdoc, message, transfer: message.files.map((file) => file.bytes), allow: iframeAllow(options.permissions) };
 }
 
 /**

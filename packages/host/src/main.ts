@@ -475,7 +475,7 @@ async function showView(id: string, params: Record<string, string> = {}) {
   const view = await buildView({ files, entry: manifest.view.entry, permissions });
   if (requested !== request) return;
   clearStage();
-  const iframe = el("iframe", { className: "view-frame", title: manifest.name, sandbox: IFRAME_SANDBOX });
+  const iframe = el("iframe", { className: "view-frame", title: manifest.name, sandbox: IFRAME_SANDBOX, allow: view.allow });
   iframe.srcdoc = view.srcdoc;
   stage.append(iframe);
   const surface = host.mountSurface({
@@ -774,7 +774,7 @@ async function startWidget(cell: WidgetCell) {
   const { manifest, files, permissions } = opening;
   const document = await buildView({ files, entry: manifest.widget!.entry, permissions });
   if (cells.get(id) !== cell) return;
-  const iframe = el("iframe", { className: "widget-frame", title: t.widgetTitle(manifest.name), sandbox: IFRAME_SANDBOX });
+  const iframe = el("iframe", { className: "widget-frame", title: t.widgetTitle(manifest.name), sandbox: IFRAME_SANDBOX, allow: document.allow });
   iframe.srcdoc = document.srcdoc;
   cell.body.replaceChildren(iframe);
   const surface = host.mountSurface({

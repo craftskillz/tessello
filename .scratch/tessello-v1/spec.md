@@ -129,7 +129,7 @@ Déjà livré : la Convention (version 1, avec Permissions), le Validateur et la
 
 - **Comment l'Hôte sert les fichiers d'un Module à une iframe d'origine opaque**, avec la politique de sécurité de contenu dérivée des Permissions. Deux pistes : un service worker, ou une origine dédiée au contenu des Modules. Il faut vérifier quelle approche permet réellement d'appliquer la politique aux requêtes de l'iframe. C'est à investiguer avant de construire l'affichage des Modules.
 - ~~**Comment `tessello install` transmet un zip local à l'Hôte** dans le navigateur.~~ Sans objet : `tessello install` est retiré de la V1 (ticket 08).
-- **Le comportement réel de Chrome et Edge** face aux requêtes `localNetwork` d'une iframe sandbox servie depuis un site public.
+- **Le comportement réel de Chrome et Edge** face aux requêtes `localNetwork` d'une iframe sandbox servie depuis un site public. Tranché par le ticket 11 : l'Hôte délègue l'accès au réseau local aux seuls Modules qui déclarent `localNetwork` (ADR 0012).
 
 ## Testing Decisions
 

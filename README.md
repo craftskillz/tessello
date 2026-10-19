@@ -12,7 +12,7 @@ A composable web app: the User builds their space from Modules, each one a sandb
 | `packages/sdk` | `@tessello/sdk`: talks to the Host from a Module. |
 | `packages/host-core` | The Host's protocol, storage and Module registry, without a browser. |
 | `packages/host` | The Host: the static web app (`src/`), its build and dev server (`scripts/`), its browser tests (`e2e/`). |
-| `examples/` | Example Modules written by hand (`notes`, `meteo`): the folder *is* the package. |
+| `examples/` | Example Modules written by hand (`notes`, `meteo`, `prometheus`): the folder *is* the package. |
 | `sample-modules/` | Sample Modules built from sources (`survival-kit`, in Svelte): the package is written to `dist/`. |
 | `.scratch/` | Spec and tickets (see `docs/agents/issue-tracker.md`). |
 
@@ -54,6 +54,8 @@ The folder is the package:
 ```sh
 cd examples/notes && zip -r ../../notes.zip . && cd -
 ```
+
+**Local Prometheus** (`examples/prometheus`) shows the state of a Prometheus running at `http://localhost:9090` (`prometheus --config.file=prometheus.yml`; its default CORS setting accepts Tessello). Served from `127.0.0.1`, the Host is itself local, so the browser does not ask before reaching the local network; deployed, Chrome and Edge ask once (Convention §3.1, ADR 0012).
 
 ### The Survival Kit (`sample-modules/survival-kit`)
 

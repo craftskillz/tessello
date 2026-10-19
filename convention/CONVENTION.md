@@ -115,6 +115,15 @@ Rules for every entry:
 
 Browsers still apply their own rules on top of the Permissions: an API MUST accept cross-origin requests (CORS) from origin `null`, and a browser MAY ask the User before letting a page reach the local network. A future, optional **Bridge** (a local program run by the User) will lift these limits and add further Permissions, such as running declared commands; it is not part of Convention 1.
 
+#### Reaching the local network (non-normative)
+
+What browsers do with a `localNetwork` request, as measured in October 2026 in Chrome, Firefox and WebKit (ADR 0012; Edge shares Chrome's engine); the example Module `examples/prometheus` follows this advice:
+
+- **Chrome and Edge** ask the User, the first time a Module requests the local network, whether Tessello may reach devices on the local network or apps on this device. The question is about Tessello, not about your Module: the answer applies to every Module, and a refusal is undone only in the browser's site settings. The Host lets only a Module that declares `localNetwork` trigger this question.
+- **A blocked request looks like a service that is down**: `fetch` rejects with a `TypeError` in both cases. To tell them apart, read `navigator.permissions.query({ name: "local-network-access" })`: `"denied"` means the browser blocks the request. Only Chrome and Edge know this name; Firefox rejects it, and answers `"denied"` to the newer names (`loopback-network`, `local-network`) even when it allows the request, so do not rely on those. Tell the User what to check in either case.
+- **CORS**: the service must answer the origin `null` (`Access-Control-Allow-Origin: *` or `null`). Prometheus does by default (`--web.cors.origin=".*"`); many local tools do not, and need an option. No `Access-Control-Request-Private-Network` preflight is sent any more.
+- **HTTP from the Host in HTTPS**: Chrome and Edge allow `http://` to the addresses `localNetwork` accepts (`localhost`, loopback, private IPv4, `.local`). Firefox allows only `localhost` and loopback addresses, and blocks `http://` to a private address or a `.local` name as mixed content. Prefer `https://` for a device of the local network.
+
 ### 3.2 User guide
 
 Every Module MUST come with a **User guide**: a Markdown file of the package, named by `guide`, that tells the User how to use the Module. The Host shows it from the Launcher, next to the Module's Permissions. The guide is written for Users, not for Creators: it is not a developer README.
@@ -137,7 +146,7 @@ Screenshots help: take them in the Host, and keep them small, since they count i
 
 ## 4. Runtime environment
 
-Each View and Widget is loaded in an `<iframe>` with the `sandbox` attribute. A Module runs in an **opaque origin** (its origin is `"null"`).
+Each View and Widget is loaded in an `<iframe>` with the `sandbox` attribute. A Module runs in an **opaque origin** (its origin is `"null"`). The iframe of a Module that declares `localNetwork` also delegates to it the browser's access to the local network (`allow="local-network-access; local-network; loopback-network"`, §3.1).
 
 A Module CAN rely on:
 
