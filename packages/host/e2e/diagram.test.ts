@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 import type { Page } from "playwright";
-import { dropFile, readFolder, useHost, zipSample } from "./browser.ts";
+import { dropFile, readFolder, useHost, writeFolder, zipSample } from "./browser.ts";
 
 const host = useHost();
 
@@ -93,20 +93,39 @@ async function dragHandle(page: Page, name: string, dx: number, dy: number) {
   await drag(page, from, { x: from.x + dx, y: from.y + dy });
 }
 
-/** The open diagram as the Host wrote it, under the key `diagram:<id>`. */
-async function storedDiagram(page: Page): Promise<{ shapes: Record<string, number & string>[] }> {
+const DATA = "modules/.tessello/data/@tessello/diagram";
+
+type StoredEnd = { shapeId?: string; port?: string | null; x?: number; y?: number };
+type StoredDiagram = { shapes: Record<string, number & string>[]; arrows: { id: string; from: StoredEnd; to: StoredEnd; route: string; label: string }[] };
+
+/** The file of the open diagram as the Host wrote it, under the key `diagram:<id>`. */
+async function diagramFile(page: Page): Promise<{ name: string; file: { key: string; value: StoredDiagram } }> {
   for (let tries = 0; ; tries++) {
     try {
-      const files = await readFolder(page, "modules/.tessello/data/@tessello/diagram");
-      const entry = Object.values(files)
-        .map((file) => JSON.parse(file))
-        .find((file) => String(file.key).startsWith("diagram:"));
-      return entry.value;
+      const [name, file] = Object.entries(await readFolder(page, DATA))
+        .map(([name, file]) => [name, JSON.parse(file)] as const)
+        .find(([, file]) => String(file.key).startsWith("diagram:"))!;
+      return { name, file };
     } catch (error) {
       if (tries === 10) throw error;
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
   }
+}
+
+/** The open diagram as the Host wrote it. */
+const storedDiagram = async (page: Page) => (await diagramFile(page)).file.value;
+
+/**
+ * Changes the stored diagram as a User would by hand, for what the View cannot set yet (the route and the label of an
+ * arrow come with tickets 04 and 05), then reloads the Host and opens the View again.
+ */
+async function editStored(page: Page, change: (diagram: StoredDiagram) => void) {
+  const { name, file } = await diagramFile(page);
+  change(file.value);
+  await writeFolder(page, DATA, { [name]: file });
+  await page.reload();
+  await openFromLauncher(page);
 }
 
 async function drag(page: Page, from: { x: number; y: number }, to: { x: number; y: number }) {
@@ -119,8 +138,8 @@ async function drag(page: Page, from: { x: number; y: number }, to: { x: number;
 /** Where the arrow starts and where its tip is, in the coordinates of the drawing. */
 async function arrowEnds(page: Page, name: string) {
   const arrow = view(page).getByRole("img", { name });
-  const line = arrow.locator(".dg-arrow-line");
-  const start = { x: Number(await line.getAttribute("x1")), y: Number(await line.getAttribute("y1")) };
+  const [x1, y1] = (await arrow.locator(".dg-arrow-line").getAttribute("d"))!.slice(1).split(/[ ,LC]/).map(Number);
+  const start = { x: x1, y: y1 };
   const [x, y] = (await arrow.locator(".dg-arrow-head").getAttribute("points"))!.split(" ")[0].split(",").map(Number);
   return { start, tip: { x, y } };
 }
@@ -128,6 +147,28 @@ async function arrowEnds(page: Page, name: string) {
 /** Within a pixel: a point of the page and a point of the drawing may differ by half a pixel. */
 function near(actual: { x: number; y: number }, expected: { x: number; y: number }) {
   assert.ok(Math.abs(actual.x - expected.x) <= 1 && Math.abs(actual.y - expected.y) <= 1, `${JSON.stringify(actual)} is not near ${JSON.stringify(expected)}`);
+}
+
+/** A point of the drawn line of an arrow, at a part of its length, in the coordinates of the page. */
+async function pointOn(page: Page, name: string, part: number) {
+  const point = await view(page)
+    .getByRole("img", { name, exact: true })
+    .locator(".dg-arrow-line")
+    .evaluate((path: SVGPathElement, part) => {
+      const { x, y } = path.getPointAtLength(path.getTotalLength() * part);
+      return { x, y };
+    }, part);
+  return at(page, point.x, point.y);
+}
+
+async function isSelected(page: Page, name: string) {
+  return /\bselected\b/.test((await view(page).getByRole("img", { name, exact: true }).getAttribute("class"))!);
+}
+
+/** Clicks the drawing at a point given in its coordinates. */
+async function clickAt(page: Page, x: number, y: number) {
+  const point = await at(page, x, y);
+  await page.mouse.click(point.x, point.y);
 }
 
 async function newDiagram(page: Page, title: string) {
@@ -268,6 +309,129 @@ describe("the Diagram sample Module", () => {
     for (let turn = 0; turn < 9; turn++) await saved(page, () => view(page).getByRole("button", { name: "Rotate right by 10°" }).click());
     ends = await arrowEnds(page, arrow);
     near(ends.start, { x: -170, y: 0 });
+  });
+
+  test("three arrows A→B, A→B and B→A are all visible with their labels, and each is selected by a click on its own line", async () => {
+    const page = await host.newPage();
+    await install(page);
+    await newDiagram(page, "Parallel");
+    await addRectangle(page, -200, 0, "A");
+    await addRectangle(page, 200, 0, "B");
+    await tool(page, "Arrow (F)");
+    for (const [from, to] of [[-200, 200], [-200, 200], [200, -200]]) await saved(page, async () => drag(page, await at(page, from, 0), await at(page, to, 0)));
+    await editStored(page, (diagram) => diagram.arrows.forEach((arrow, index) => (arrow.label = ["one", "two", "back"][index])));
+
+    const names = ["Arrow “one” from Rectangle A to Rectangle B", "Arrow “two” from Rectangle A to Rectangle B", "Arrow “back” from Rectangle B to Rectangle A"];
+    await view(page).getByRole("img", { name: names[0], exact: true }).waitFor();
+    // Each label shows, apart from the others.
+    const labels = await Promise.all(["one", "two", "back"].map((label) => view(page).getByText(label, { exact: true }).boundingBox()));
+    for (const [index, box] of labels.entries()) {
+      for (const other of labels.slice(index + 1)) assert.ok(box!.y + box!.height <= other!.y || other!.y + other!.height <= box!.y, "two labels overlap");
+    }
+    for (const name of names) {
+      const middle = await pointOn(page, name, 0.5);
+      await page.mouse.click(middle.x, middle.y);
+      for (const other of names) assert.equal(await isSelected(page, other), other === name, `after a click on ${name}`);
+    }
+  });
+
+  test("a curved arrow between the north ports of two shapes is selected by a click anywhere on its visible line", async () => {
+    const page = await host.newPage();
+    await install(page);
+    await newDiagram(page, "Curve");
+    await addRectangle(page, -200, 0, "A");
+    await addRectangle(page, 200, 200, "B");
+    // The rectangles are 120 × 60: their north ports are the middles of their top sides.
+    await tool(page, "Arrow (F)");
+    await saved(page, async () => drag(page, await at(page, -200, -30), await at(page, 200, 170)));
+    const [arrow] = (await storedDiagram(page)).arrows;
+    assert.deepEqual([arrow.from, arrow.to], [{ shapeId: arrow.from.shapeId, port: "N" }, { shapeId: arrow.to.shapeId, port: "N" }]);
+    await editStored(page, (diagram) => (diagram.arrows[0].route = "curved"));
+
+    const name = "Arrow from Rectangle A at N to Rectangle B at N";
+    await view(page).getByRole("img", { name, exact: true }).waitFor();
+    await tool(page, "Select (S)");
+    for (const part of [0.1, 0.5, 0.9]) {
+      await clickAt(page, 0, 300);
+      assert.equal(await isSelected(page, name), false);
+      const point = await pointOn(page, name, part);
+      await page.mouse.click(point.x, point.y);
+      assert.equal(await isSelected(page, name), true, `a click at ${part} of the line`);
+    }
+  });
+
+  test("a drag on the empty canvas draws a free arrow, which moves by its body and is taken by a selection rectangle", async () => {
+    const page = await host.newPage();
+    await install(page);
+    await newDiagram(page, "Free");
+    await tool(page, "Arrow (F)");
+    await saved(page, async () => drag(page, await at(page, -150, -100), await at(page, 150, -100)));
+    await view(page).getByRole("img", { name: "Arrow from (-150, -100) to (150, -100)" }).waitFor();
+    // A click without a drag draws nothing.
+    await clickAt(page, 0, 100);
+    // With Shift, the arrow turns by steps of 45°: drawn a little below the level, it stays level.
+    await page.keyboard.down("Shift");
+    await saved(page, async () => drag(page, await at(page, -150, 100), await at(page, 100, 130)));
+    await page.keyboard.up("Shift");
+    const arrows = (await storedDiagram(page)).arrows;
+    assert.equal(arrows.length, 2);
+    assert.ok(Math.abs(arrows[1].to.y! - arrows[1].from.y!) < 1e-6, JSON.stringify(arrows[1]));
+
+    await tool(page, "Select (S)");
+    await saved(page, async () => drag(page, await at(page, 0, -100), await at(page, 0, -60)));
+    await view(page).getByRole("img", { name: "Arrow from (-150, -60) to (150, -60)" }).waitFor();
+
+    await clickAt(page, 0, 250);
+    await drag(page, await at(page, -200, -90), await at(page, 200, -30));
+    assert.equal(await isSelected(page, "Arrow from (-150, -60) to (150, -60)"), true);
+    // The arrow drawn with Shift is outside the rectangle.
+    assert.doesNotMatch((await view(page).getByRole("img", { name: /^Arrow from \(-150, 100\)/ }).getAttribute("class"))!, /\bselected\b/);
+  });
+
+  test("an end attached to the north-east port follows the shape turned by 90°, until its ends are detached", async () => {
+    const page = await host.newPage();
+    await install(page);
+    await newDiagram(page, "Ports");
+    await addRectangle(page, 200, 0, "B");
+    // While the arrow is drawn, the shape shows its ports; the north-east one is the top-right corner, at (260, −30).
+    await tool(page, "Arrow (F)");
+    await saved(page, async () => drag(page, await at(page, -100, 0), await at(page, 260, -30)));
+    const name = "Arrow from (-100, 0) to Rectangle B at NE";
+    near((await arrowEnds(page, name)).tip, { x: 260, y: -30 });
+
+    await tool(page, "Select (S)");
+    await view(page).getByRole("img", { name: "Rectangle B", exact: true }).click();
+    for (let turn = 0; turn < 9; turn++) await saved(page, () => view(page).getByRole("button", { name: "Rotate right by 10°" }).click());
+    // Turned a quarter turn clockwise, the top-right corner of B is at its bottom-right, at (230, 60).
+    near((await arrowEnds(page, name)).tip, { x: 230, y: 60 });
+
+    const point = await pointOn(page, name, 0.5);
+    await page.mouse.click(point.x, point.y);
+    await saved(page, () => view(page).getByRole("button", { name: "Detach ends" }).click());
+    assert.deepEqual((await storedDiagram(page)).arrows[0].to.port, null);
+    await view(page).getByRole("img", { name: "Arrow from (-100, 0) to Rectangle B", exact: true }).waitFor();
+  });
+
+  test("deleting a shape frees the ends of its arrows, where they were; Ctrl+Delete deletes its arrows too", async () => {
+    const page = await host.newPage();
+    await install(page);
+    await newDiagram(page, "Delete");
+    await addRectangle(page, -200, 0, "A");
+    await addRectangle(page, 200, 0, "B");
+    await tool(page, "Arrow (F)");
+    await saved(page, async () => drag(page, await at(page, -200, 0), await at(page, 200, 0)));
+
+    await tool(page, "Select (S)");
+    await view(page).getByRole("img", { name: "Rectangle B", exact: true }).click();
+    await saved(page, () => page.keyboard.press("Delete"));
+    // The end stays where it was drawn, on the left side of B; a point of the page may be half a pixel off the drawing.
+    await view(page).getByRole("img", { name: /^Arrow from Rectangle A to \(140, -?[01]\)$/ }).waitFor();
+    near((await storedDiagram(page)).arrows[0].to as { x: number; y: number }, { x: 140, y: 0 });
+
+    await view(page).getByRole("img", { name: "Rectangle A", exact: true }).click();
+    await saved(page, () => page.keyboard.press("Control+Delete"));
+    assert.equal((await storedDiagram(page)).arrows.length, 0);
+    assert.equal(await view(page).getByRole("img", { name: /^Arrow/ }).count(), 0);
   });
 
   test("deletes a diagram after a confirmation, then opens the first remaining one, or shows the empty state", async () => {
