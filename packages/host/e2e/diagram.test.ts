@@ -152,6 +152,22 @@ async function linkStored(page: Page, id: string, link: unknown) {
   assert.fail("the Host did not write the link");
 }
 
+type StoredDefaults = { arrows: { dashed: boolean }; shapes: Record<string, { color: string }> };
+
+/** Waits until the creation defaults the Host wrote, under the key `defaults`, pass `written`. */
+async function storedDefaults(page: Page, written: (defaults: StoredDefaults | undefined) => boolean) {
+  for (let tries = 0; tries < 50; tries++) {
+    try {
+      const file = (await readFolder(page, DATA))["defaults.json"];
+      if (written(file ? JSON.parse(file).value : undefined)) return;
+    } catch {
+      // A file read while the Host writes it: read again.
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  assert.fail("the Host did not write the defaults");
+}
+
 /** The open diagram as the Host wrote it. */
 const storedDiagram = async (page: Page) => (await diagramFile(page)).file.value;
 
@@ -1191,6 +1207,60 @@ describe("the Diagram sample Module", () => {
     await page.mouse.click(point.x, point.y);
     await page.keyboard.up("Shift");
     assert.equal((await popup).url(), "https://example.com/wiki");
+  });
+
+  test("new rectangles take the default color set in Diagram defaults, after a reload too; a size out of bounds is refused, and existing shapes are unchanged", async () => {
+    const page = await host.newPage();
+    await install(page);
+    await newDiagram(page, "Styles");
+    await addRectangle(page, -200, 0, "Before");
+
+    await view(page).getByRole("button", { name: "Defaults" }).click();
+    const dialog = view(page).getByRole("dialog", { name: "Diagram defaults" });
+    await dialog.getByRole("combobox", { name: "Rectangle · Color" }).selectOption({ label: "Blue" });
+    const width = dialog.getByRole("spinbutton", { name: "Rectangle · Width" });
+    await width.fill("5");
+    await dialog.getByRole("button", { name: "Save" }).click();
+    await dialog.getByRole("alert").getByText("Correct the values out of their bounds before saving.").waitFor();
+    assert.equal(await width.getAttribute("aria-invalid"), "true");
+    await width.fill("200");
+    assert.equal(await width.getAttribute("aria-invalid"), "false");
+    await dialog.getByRole("button", { name: "Save" }).click();
+    await dialog.waitFor({ state: "detached" });
+    await storedDefaults(page, (defaults) => defaults?.shapes.rect.color === "c-blue");
+    await addRectangle(page, 200, 0, "After");
+
+    await page.reload();
+    await openFromLauncher(page);
+    await view(page).getByRole("img", { name: "Rectangle After", exact: true }).waitFor();
+    await addRectangle(page, 0, 200, "Again");
+    const [before, after, again] = (await storedDiagram(page)).shapes;
+    assert.deepEqual([before.color, before.w], ["c-gray", 120]);
+    assert.deepEqual([after.color, after.w, after.h], ["c-blue", 200, 60]);
+    assert.deepEqual([again.color, again.w], ["c-blue", 200]);
+  });
+
+  test("Save as default for this shape type, and for arrows, make the style of the selection that of the next ones", async () => {
+    const page = await host.newPage();
+    await install(page);
+    await newDiagram(page, "From selection");
+    await addShape(page, "Ellipse (E)", -200, 0, "Source");
+    await saved(page, () => view(page).getByRole("button", { name: "Green", exact: true }).click());
+    await view(page).getByRole("button", { name: "Save as default for this shape type" }).click();
+    await view(page).getByRole("status").getByText("Saved: new Ellipse shapes take this style.").waitFor();
+    await storedDefaults(page, (defaults) => defaults?.shapes.ellipse.color === "c-green");
+
+    await addShape(page, "Ellipse (E)", 200, 0, "Next");
+    await tool(page, "Arrow (F)");
+    await saved(page, async () => drag(page, await at(page, -200, 0), await at(page, 200, 0)));
+    await saved(page, () => view(page).getByRole("button", { name: "Dashed" }).click());
+    await view(page).getByRole("button", { name: "Save as default for arrows" }).click();
+    await storedDefaults(page, (defaults) => defaults?.arrows.dashed === true);
+    await saved(page, async () => drag(page, await at(page, -200, 100), await at(page, 200, 100)));
+
+    const diagram = await storedDiagram(page);
+    assert.equal(diagram.shapes[1].color, "c-green");
+    assert.deepEqual(diagram.arrows.map((arrow) => arrow.dashed), [true, true]);
   });
 
   test("an image missing from the storage shows a missing image frame", async () => {
