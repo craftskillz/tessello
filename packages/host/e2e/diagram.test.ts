@@ -550,6 +550,147 @@ describe("the Diagram sample Module", () => {
     assert.equal(await view(page).getByRole("img", { name: /^Arrow/ }).count(), 0);
   });
 
+  test("a group is selected by a click on a member, moves as one block, and Alt+click selects a member alone", async () => {
+    const page = await host.newPage();
+    await install(page);
+    await newDiagram(page, "Groups");
+    await addRectangle(page, -100, 0, "A");
+    await addRectangle(page, 100, 0, "B");
+    await tool(page, "Select (S)");
+    await view(page).getByRole("img", { name: "Rectangle A", exact: true }).click();
+    await view(page).getByRole("img", { name: "Rectangle B", exact: true }).click({ modifiers: ["ControlOrMeta"] });
+    await saved(page, () => view(page).getByRole("button", { name: "Group selection" }).click());
+
+    await clickAt(page, 0, 200);
+    await view(page).getByRole("img", { name: "Rectangle A", exact: true }).click();
+    assert.ok(await isSelected(page, "Rectangle B"));
+    assert.equal(await view(page).locator(".dg-group-outline").count(), 1);
+
+    // The grid takes the center of A to (−100, 100).
+    await saved(page, async () => drag(page, await at(page, -100, 0), await at(page, -97, 103)));
+    const [a, b] = (await storedDiagram(page)).shapes;
+    assert.deepEqual([a.x, a.y, b.x, b.y], [-100, 100, 100, 100]);
+    assert.ok(a.groupId && a.groupId === b.groupId);
+
+    await view(page).getByRole("img", { name: "Rectangle B", exact: true }).click({ modifiers: ["Alt"] });
+    assert.ok(await isSelected(page, "Rectangle B"));
+    assert.ok(!(await isSelected(page, "Rectangle A")));
+
+    await saved(page, () => view(page).getByRole("button", { name: "Ungroup" }).click());
+    assert.deepEqual((await storedDiagram(page)).shapes.map((shape) => shape.groupId), [null, null]);
+  });
+
+  test("a locked shape is selected with a padlock, but neither moved, deleted nor taken by Ctrl+A, until it is unlocked", async () => {
+    const page = await host.newPage();
+    await install(page);
+    await newDiagram(page, "Locks");
+    await addRectangle(page, 0, 0, "A");
+    await tool(page, "Select (S)");
+    await view(page).getByRole("img", { name: "Rectangle A", exact: true }).click();
+    await saved(page, () => view(page).getByRole("button", { name: "Lock", exact: true }).click());
+    const panel = view(page).getByRole("complementary", { name: "Locked" });
+    await panel.getByRole("button", { name: "Unlock" }).waitFor();
+    assert.equal(await panel.getByRole("button").count(), 1);
+    await view(page).getByRole("img", { name: "Locked" }).waitFor();
+
+    await page.keyboard.press("Delete");
+    await drag(page, await at(page, 0, 0), await at(page, 200, 100));
+    await clickAt(page, 0, 200);
+    await page.keyboard.press("ControlOrMeta+a");
+    assert.ok(!(await isSelected(page, "Rectangle A")));
+    // A point of the page may be half a pixel off the drawing.
+    const [shape] = (await storedDiagram(page)).shapes;
+    near({ x: shape.x, y: shape.y }, { x: 0, y: 0 });
+    assert.equal(shape.locked, true);
+
+    await view(page).getByRole("img", { name: "Rectangle A", exact: true }).click();
+    await saved(page, () => panel.getByRole("button", { name: "Unlock" }).click());
+    await saved(page, () => page.keyboard.press("Delete"));
+    assert.equal((await storedDiagram(page)).shapes.length, 0);
+  });
+
+  test("copies a group joined by an arrow and pastes it twice, 40 further each time, as new groups", async () => {
+    const page = await host.newPage();
+    await install(page);
+    await newDiagram(page, "Copies");
+    await addRectangle(page, -100, 0, "A");
+    await addRectangle(page, 100, 0, "B");
+    await tool(page, "Arrow (F)");
+    await saved(page, async () => drag(page, await at(page, -100, 0), await at(page, 100, 0)));
+    await tool(page, "Select (S)");
+    await view(page).getByRole("img", { name: "Rectangle A", exact: true }).click();
+    await view(page).getByRole("img", { name: "Rectangle B", exact: true }).click({ modifiers: ["ControlOrMeta"] });
+    await saved(page, () => view(page).getByRole("button", { name: "Group selection" }).click());
+
+    await page.keyboard.press("ControlOrMeta+c");
+    await saved(page, () => page.keyboard.press("ControlOrMeta+v"));
+    await saved(page, () => page.keyboard.press("ControlOrMeta+v"));
+    const { shapes, arrows } = await storedDiagram(page);
+    // A point of the page may be half a pixel off the drawing: each copy lands exactly 40 further than the last.
+    assert.deepEqual(shapes.map((shape) => shape.text), ["A", "B", "A", "B", "A", "B"]);
+    near({ x: shapes[0].x, y: shapes[0].y }, { x: -100, y: 0 });
+    for (let index = 2; index < 6; index++) assert.deepEqual([shapes[index].x, shapes[index].y], [shapes[index - 2].x + 40, shapes[index - 2].y + 40]);
+    const groups = shapes.map((shape) => shape.groupId);
+    assert.equal(new Set(groups).size, 3);
+    assert.deepEqual([groups[2] === groups[3], groups[4] === groups[5]], [true, true]);
+    assert.equal(arrows.length, 3);
+    assert.deepEqual([arrows[1].from.shapeId, arrows[1].to.shapeId], [shapes[2].id, shapes[3].id]);
+    // The last paste is selected.
+    assert.equal(await view(page).locator(".dg-shape.selected").count(), 2);
+  });
+
+  test("copies the style of a shape onto another, with its size when asked", async () => {
+    const page = await host.newPage();
+    await install(page);
+    await newDiagram(page, "Styles");
+    await addRectangle(page, -100, 0, "A");
+    await saved(page, () => view(page).getByRole("button", { name: "Blue" }).click());
+    await addShape(page, "Ellipse (E)", 100, 0, "B");
+    await tool(page, "Select (S)");
+
+    await view(page).getByRole("img", { name: "Rectangle A", exact: true }).click();
+    await dragHandle(page, "Resize from the bottom-right corner", 40, 20);
+    await view(page).getByRole("button", { name: "Copy style" }).click();
+    await view(page).getByRole("img", { name: "Ellipse B", exact: true }).click();
+    await saved(page, () => view(page).getByRole("button", { name: "Paste style" }).click());
+    let b = (await storedDiagram(page)).shapes[1];
+    assert.deepEqual([b.color, b.w, b.h], ["c-blue", 120, 60]);
+
+    await view(page).getByRole("img", { name: "Rectangle A", exact: true }).click();
+    await view(page).getByRole("checkbox", { name: "with size" }).check();
+    // The shortcuts are those of the canvas, not of the checkbox.
+    await view(page).getByRole("img", { name: "Rectangle A", exact: true }).click();
+    await page.keyboard.press("ControlOrMeta+Alt+c");
+    await view(page).getByRole("img", { name: "Ellipse B", exact: true }).click();
+    await saved(page, () => page.keyboard.press("ControlOrMeta+Alt+v"));
+    b = (await storedDiagram(page)).shapes[1];
+    assert.deepEqual([b.color, b.w, b.h], ["c-blue", 160, 80]);
+  });
+
+  test("the grid and the guides are saved with the diagram, and the zoom fits the drawing", async () => {
+    const page = await host.newPage();
+    await install(page);
+    await newDiagram(page, "View");
+    await addRectangle(page, 0, 0, "A");
+    await tool(page, "Select (S)");
+    assert.equal(await view(page).getByRole("button", { name: "Grid (G)" }).getAttribute("aria-pressed"), "true");
+    await clickAt(page, 0, 200);
+    await saved(page, () => page.keyboard.press("g"));
+    await saved(page, () => view(page).getByRole("button", { name: "Guides" }).click());
+    const { grid, guides } = (await storedDiagram(page)) as unknown as { grid: boolean; guides: boolean };
+    assert.deepEqual([grid, guides], [false, false]);
+
+    const zoom = view(page).getByRole("group", { name: "Zoom" });
+    await zoom.getByRole("button", { name: "Zoom in" }).click();
+    await zoom.getByText("125%").waitFor();
+    await zoom.getByRole("button", { name: "Zoom out" }).click();
+    await zoom.getByRole("button", { name: "Zoom out" }).click();
+    await zoom.getByText("80%").waitFor();
+    // A single rectangle is shown at its real size, in the middle of the canvas.
+    await zoom.getByRole("button", { name: "Fit" }).click();
+    await zoom.getByText("100%").waitFor();
+  });
+
   test("deletes a diagram after a confirmation, then opens the first remaining one, or shows the empty state", async () => {
     const page = await host.newPage();
     await install(page);
