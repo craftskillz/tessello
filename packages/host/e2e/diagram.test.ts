@@ -18,6 +18,8 @@ before(async () => {
 const view = (page: Page) => page.frameLocator("iframe[title='Diagram']");
 const canvas = (page: Page) => view(page).getByRole("application", { name: "Canvas" });
 const sidebar = (page: Page) => view(page).getByRole("navigation", { name: "Diagrams" });
+const widget = (page: Page) => page.frameLocator("iframe[title='Diagram widget']");
+const goHome = (page: Page) => page.getByRole("button", { name: "Tessello" }).click();
 const openFromLauncher = (page: Page) => page.getByRole("navigation", { name: "Launcher" }).getByRole("button", { name: "Diagram" }).click();
 
 /** Installs the Diagram Module from its .zip; the Host then shows its View, with no diagram yet. */
@@ -229,6 +231,16 @@ async function setPageVisible(page: Page, visible: boolean) {
     Object.defineProperty(document, "visibilityState", { configurable: true, get: () => (visible ? "visible" : "hidden") });
     document.dispatchEvent(new Event("visibilitychange"));
   }, visible);
+}
+
+/** Waits until the View shows the diagram titled `title`. */
+async function opened(page: Page, title: string) {
+  const field = view(page).getByRole("textbox", { name: "Diagram title" });
+  for (let tries = 0; tries < 50; tries++) {
+    if ((await field.inputValue()) === title) return;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  assert.fail(`the View did not open “${title}”`);
 }
 
 async function newDiagram(page: Page, title: string) {
@@ -1031,8 +1043,9 @@ describe("the Diagram sample Module", () => {
     await install(page);
     await newDiagram(page, "Pictures");
     const base64 = noise.toString("base64");
+    const frame = (await (await page.locator("iframe[title='Diagram']").elementHandle())!.contentFrame())!;
     await saved(page, () =>
-      page.frames().find((frame) => frame.parentFrame() === page.mainFrame())!.evaluate((base64) => {
+      frame.evaluate((base64) => {
         const bytes = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
         const data = new DataTransfer();
         data.items.add(new File([bytes], "image.png", { type: "image/png" }));
@@ -1273,5 +1286,56 @@ describe("the Diagram sample Module", () => {
       (diagram.shapes.find((shape) => shape.type === "image") as Record<string, unknown>).imageKey = `image:${"0".repeat(64)}`;
     });
     await view(page).getByRole("img", { name: "Image", exact: true }).getByText("missing image").waitFor();
+  });
+
+  test("the Widget lists the diagrams created in the View, the most recent first, and opens the View on the one clicked", async () => {
+    const page = await host.newPage();
+    await install(page);
+    await newDiagram(page, "Checkout");
+    await newDiagram(page, "Billing");
+    await goHome(page);
+
+    const recent = widget(page).getByRole("list", { name: "Recent diagrams" });
+    await recent.getByRole("button", { name: /^Billing/ }).waitFor();
+    assert.deepEqual(
+      (await recent.getByRole("listitem").allInnerTexts()).map((text) => text.replace(/\s+/g, " ").trim()),
+      ["Billing just now", "Checkout just now"],
+    );
+
+    // The View is loaded behind the Home: it gets the id as an event.
+    await recent.getByRole("button", { name: /^Checkout/ }).click();
+    await page.locator("iframe[title='Diagram']").waitFor({ state: "visible" });
+    await opened(page, "Checkout");
+
+    // The View is not loaded: it gets the id in its handshake.
+    await page.reload();
+    await widget(page).getByRole("button", { name: /^Checkout/ }).click();
+    await opened(page, "Checkout");
+  });
+
+  test("an empty Widget says so, and its “+ New” opens the View on a new diagram, which the Widget then lists", async () => {
+    const page = await host.newPage();
+    await install(page);
+    await goHome(page);
+    await widget(page).getByText("No diagrams yet").waitFor();
+
+    await saved(page, () => widget(page).getByRole("button", { name: "+ New" }).click());
+    await page.locator("iframe[title='Diagram']").waitFor({ state: "visible" });
+    const field = view(page).getByRole("textbox", { name: "Diagram title" });
+    assert.equal(await field.inputValue(), "New diagram");
+    await field.fill("Onboarding");
+    await saved(page, () => field.press("Enter"));
+
+    // The Widget, hidden behind the View, reads the diagrams again when the Home comes back.
+    await goHome(page);
+    await widget(page).getByRole("button", { name: /^Onboarding/ }).waitFor();
+    assert.equal(await widget(page).getByText("No diagrams yet").count(), 0);
+    assert.equal((await storedIndex(page)).length, 1, "a single diagram is created");
+
+    // The View is not loaded: it gets `new` in its handshake.
+    await page.reload();
+    await saved(page, () => widget(page).getByRole("button", { name: "+ New" }).click());
+    await opened(page, "New diagram");
+    assert.equal((await storedIndex(page)).length, 2);
   });
 });
