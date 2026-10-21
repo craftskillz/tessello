@@ -183,6 +183,14 @@ async function clickAt(page: Page, x: number, y: number) {
   await page.mouse.click(point.x, point.y);
 }
 
+/** Hides or shows the page of the Host, as when the User switches to another tab and back. */
+async function setPageVisible(page: Page, visible: boolean) {
+  await page.evaluate((visible) => {
+    Object.defineProperty(document, "visibilityState", { configurable: true, get: () => (visible ? "visible" : "hidden") });
+    document.dispatchEvent(new Event("visibilitychange"));
+  }, visible);
+}
+
 async function newDiagram(page: Page, title: string) {
   await saved(page, () => sidebar(page).getByRole("button", { name: "+ New" }).click());
   const field = view(page).getByRole("textbox", { name: "Diagram title" });
@@ -689,6 +697,82 @@ describe("the Diagram sample Module", () => {
     // A single rectangle is shown at its real size, in the middle of the canvas.
     await zoom.getByRole("button", { name: "Fit" }).click();
     await zoom.getByText("100%").waitFor();
+  });
+
+  test("undoes a move, a waypoint and a rename one by one, redoes them all, and finds them after a reload", async () => {
+    const page = await host.newPage();
+    await install(page);
+    await newDiagram(page, "Plan");
+    await addRectangle(page, -200, 0, "A");
+    await addRectangle(page, 200, 0, "B");
+    await tool(page, "Arrow (F)");
+    await saved(page, async () => drag(page, await at(page, -200, 0), await at(page, 200, 0)));
+    // The history starts over when the diagram is opened: what was drawn before is not undone.
+    await page.reload();
+    await openFromLauncher(page);
+    const name = "Arrow from Rectangle A to Rectangle B";
+    await view(page).getByRole("img", { name, exact: true }).waitFor();
+
+    const state = async () => {
+      const diagram = await storedDiagram(page);
+      const a = diagram.shapes.find((shape) => shape.text === "A")!;
+      return { a: [a.x, a.y], waypoints: diagram.arrows[0].waypoints.length, title: (await storedIndex(page))[0].title };
+    };
+    const undone = await state();
+
+    await tool(page, "Select (S)");
+    await saved(page, async () => drag(page, await at(page, -200, 0), await at(page, -200, 100)));
+    const middle = await pointOn(page, name, 0.5);
+    await page.mouse.click(middle.x, middle.y);
+    await saved(page, () => dragHandle(page, "Drag to add a waypoint", 0, -80));
+    const field = view(page).getByRole("textbox", { name: "Diagram title" });
+    await field.fill("Renamed");
+    await saved(page, () => field.press("Enter"));
+    await clickAt(page, 0, 300);
+
+    const done = { a: [-200, 100], waypoints: 1, title: "Renamed" };
+    assert.deepEqual(await state(), done);
+
+    await saved(page, () => page.keyboard.press("ControlOrMeta+z"));
+    assert.deepEqual(await state(), { ...done, title: undone.title });
+    await saved(page, () => page.keyboard.press("ControlOrMeta+z"));
+    assert.deepEqual(await state(), { ...done, waypoints: undone.waypoints, title: undone.title });
+    await saved(page, () => page.keyboard.press("ControlOrMeta+z"));
+    assert.deepEqual(await state(), undone);
+    assert.equal(await field.inputValue(), "Plan");
+    // There is nothing more to undo.
+    await page.keyboard.press("ControlOrMeta+z");
+    assert.deepEqual(await state(), undone);
+
+    for (let step = 0; step < 3; step++) await saved(page, () => page.keyboard.press("ControlOrMeta+Shift+z"));
+    assert.deepEqual(await state(), done);
+
+    // Shown again after the page was hidden, the View reads the diagram again: unchanged, it keeps its history.
+    await setPageVisible(page, false);
+    await setPageVisible(page, true);
+    await clickAt(page, 0, 300);
+    await saved(page, () => page.keyboard.press("ControlOrMeta+z"));
+    assert.deepEqual(await state(), { ...done, title: undone.title });
+    await saved(page, () => page.keyboard.press("ControlOrMeta+Shift+z"));
+
+    await page.reload();
+    await openFromLauncher(page);
+    await view(page).getByRole("img", { name, exact: true }).waitFor();
+    assert.deepEqual(await state(), done);
+    assert.equal(await field.inputValue(), "Renamed");
+  });
+
+  test("Ctrl+Z in the title field undoes the typing, not the diagram", async () => {
+    const page = await host.newPage();
+    await install(page);
+    await newDiagram(page, "Plan");
+    await addRectangle(page, 0, 0, "A");
+    const field = view(page).getByRole("textbox", { name: "Diagram title" });
+    await field.click();
+    await field.pressSequentially("X");
+    await field.press("ControlOrMeta+z");
+    assert.equal(await field.inputValue(), "Plan");
+    await view(page).getByRole("img", { name: "Rectangle A", exact: true }).waitFor();
   });
 
   test("deletes a diagram after a confirmation, then opens the first remaining one, or shows the empty state", async () => {
