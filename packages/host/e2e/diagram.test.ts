@@ -6,8 +6,13 @@ import { dropFile, readFolder, useHost, writeFolder, zipSample } from "./browser
 const host = useHost();
 
 let diagram: Uint8Array;
+/** A small opaque picture. */
+let noise: Buffer;
 before(async () => {
   diagram = await zipSample("diagram");
+  const page = await host.newPage();
+  noise = await noisePng(page, 200, 150);
+  await page.close();
 });
 
 const view = (page: Page) => page.frameLocator("iframe[title='Diagram']");
@@ -197,6 +202,53 @@ async function newDiagram(page: Page, title: string) {
   await field.fill(title);
   await saved(page, () => field.press("Enter"));
   await sidebar(page).getByRole("button", { name: title, exact: true }).waitFor();
+}
+
+/** A PNG made by the browser: opaque noise, which compresses badly, so that its size grows with its pixels. */
+async function noisePng(page: Page, w: number, h: number): Promise<Buffer> {
+  const base64 = await page.evaluate(
+    async ([w, h]) => {
+      const canvas = new OffscreenCanvas(w, h);
+      const context = canvas.getContext("2d")!;
+      const pixels = context.createImageData(w, h);
+      for (let index = 0; index < pixels.data.length; index++) pixels.data[index] = index % 4 === 3 ? 255 : Math.floor(Math.random() * 256);
+      context.putImageData(pixels, 0, 0);
+      const bytes = new Uint8Array(await (await canvas.convertToBlob({ type: "image/png" })).arrayBuffer());
+      let binary = "";
+      for (const byte of bytes) binary += String.fromCharCode(byte);
+      return btoa(binary);
+    },
+    [w, h],
+  );
+  return Buffer.from(base64, "base64");
+}
+
+/** The images the Host stored, by key. */
+async function storedImages(page: Page): Promise<Record<string, string>> {
+  const files = Object.values(await readFolder(page, DATA)).map((file) => JSON.parse(file) as { key: string; value: string });
+  return Object.fromEntries(files.filter((file) => file.key.startsWith("image:")).map((file) => [file.key, file.value]));
+}
+
+/** Waits until the images the Host stored pass `written`. */
+async function imagesStored(page: Page, written: (keys: string[]) => boolean) {
+  for (let tries = 0; tries < 50; tries++) {
+    try {
+      if (written(Object.keys(await storedImages(page)))) return;
+    } catch {
+      // A file read while the Host writes it: read again.
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  assert.fail("the Host did not store the images");
+}
+
+/** Chooses a picture with the Image tool, by a double-click on a point of the drawing. */
+async function chooseImage(page: Page, x: number, y: number, name: string, buffer: Buffer) {
+  await view(page).getByRole("button", { name: "Image (I)" }).click();
+  const chooser = page.waitForEvent("filechooser");
+  const point = await at(page, x, y);
+  await page.mouse.dblclick(point.x, point.y);
+  await (await chooser).setFiles({ name, mimeType: "image/png", buffer });
 }
 
 describe("the Diagram sample Module", () => {
@@ -822,5 +874,150 @@ describe("the Diagram sample Module", () => {
     await view(page).getByRole("alert").getByText(/Your last change could not be saved: the storage of the Diagram Module is full/).waitFor();
     await view(page).getByRole("status").getByText("Save failed").waitFor();
     await view(page).getByRole("img", { name: /^Rectangle x+$/ }).waitFor();
+  });
+
+  test("inserts a chosen image with its caption as a group, finds it after a reload, and removes it from the storage once deleted for good", async () => {
+    const page = await host.newPage();
+    await install(page);
+    await newDiagram(page, "Pictures");
+    const gauge = view(page).getByRole("navigation", { name: "Diagrams" }).getByText(/^Storage: \d+\.\d MB \/ 5 MB$/);
+    await gauge.waitFor();
+    const usageBefore = Number(await view(page).getByRole("meter").getAttribute("value"));
+
+    await saved(page, () => chooseImage(page, 0, 0, "logo.final.png", noise));
+    const image = view(page).getByRole("img", { name: "Image", exact: true });
+    await image.waitFor();
+    await view(page).getByRole("img", { name: "Free text logo.final", exact: true }).waitFor();
+    const [key] = Object.keys(await storedImages(page));
+    assert.match(key, /^image:[0-9a-f]{64}$/);
+    // Opaque, it is stored in WebP; the image and its caption are one group.
+    assert.match((await storedImages(page))[key], /^data:image\/webp;base64,/);
+    const shapes = (await storedDiagram(page)).shapes;
+    const picture = shapes.find((shape) => shape.type === "image")!;
+    assert.equal(picture.imageKey, key);
+    assert.ok(picture.groupId);
+    assert.equal(shapes.find((shape) => shape.type === "text")!.groupId, picture.groupId);
+    const usage = async () => Number(await view(page).getByRole("meter").getAttribute("value"));
+    for (let tries = 0; tries < 50 && (await usage()) <= usageBefore; tries++) await new Promise((resolve) => setTimeout(resolve, 100));
+    assert.ok((await usage()) > usageBefore, "the gauge counts the image");
+
+    // The same picture again is not stored twice.
+    await saved(page, () => chooseImage(page, 0, -220, "copy.png", noise));
+    await view(page).getByRole("img", { name: "Free text copy", exact: true }).waitFor();
+    assert.equal(Object.keys(await storedImages(page)).length, 1);
+
+    await page.reload();
+    await openFromLauncher(page);
+    await view(page).getByRole("img", { name: "Free text copy", exact: true }).waitFor();
+    assert.match((await image.first().locator("image").getAttribute("href"))!, /^data:image\/webp;base64,/);
+
+    // Deleting one of the two leaves the picture. Deleting the other keeps it while an undo can bring it back.
+    await tool(page, "Select (S)");
+    await saved(page, async () => {
+      await image.first().click();
+      await page.keyboard.press("Delete");
+    });
+    assert.equal(await image.count(), 1);
+    await saved(page, async () => {
+      await image.click();
+      await page.keyboard.press("Delete");
+    });
+    assert.equal(await view(page).getByRole("img", { name: /^Free text/ }).count(), 0);
+    await saved(page, () => page.keyboard.press("ControlOrMeta+z"));
+    assert.match((await image.locator("image").getAttribute("href"))!, /^data:image\/webp;base64,/);
+    await saved(page, () => page.keyboard.press("ControlOrMeta+Shift+z"));
+    assert.equal(Object.keys(await storedImages(page)).length, 1);
+    // Once the history is gone, nothing uses it: it is removed from the storage.
+    await page.reload();
+    await openFromLauncher(page);
+    await view(page).getByRole("textbox", { name: "Diagram title" }).waitFor();
+    await imagesStored(page, (keys) => keys.length === 0);
+  });
+
+  test("stores a picture with transparency in PNG, and an SVG as it is", async () => {
+    const page = await host.newPage();
+    await install(page);
+    await newDiagram(page, "Pictures");
+    const transparent = Buffer.from(
+      await page.evaluate(async () => {
+        const canvas = new OffscreenCanvas(40, 40);
+        canvas.getContext("2d")!.fillRect(0, 0, 20, 40);
+        const bytes = new Uint8Array(await (await canvas.convertToBlob({ type: "image/png" })).arrayBuffer());
+        return btoa(String.fromCharCode(...bytes));
+      }),
+      "base64",
+    );
+    await saved(page, () => chooseImage(page, 0, 0, "half.png", transparent));
+    await view(page).getByRole("img", { name: "Free text half", exact: true }).waitFor();
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="80" height="40"><rect width="80" height="40" fill="teal"/></svg>';
+    await view(page).getByRole("button", { name: "Image (I)" }).click();
+    const chooser = page.waitForEvent("filechooser");
+    const point = await at(page, 0, -200);
+    await page.mouse.dblclick(point.x, point.y);
+    await saved(page, async () => (await chooser).setFiles({ name: "badge.svg", mimeType: "image/svg+xml", buffer: Buffer.from(svg) }));
+    await view(page).getByRole("img", { name: "Free text badge", exact: true }).waitFor();
+    const values = Object.values(await storedImages(page)).sort();
+    assert.equal(values.length, 2);
+    assert.match(values[0], /^data:image\/png;base64,/);
+    assert.equal(values[1], `data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`);
+    // The SVG keeps its proportions.
+    const badge = (await storedDiagram(page)).shapes.find((shape) => shape.type === "image" && shape.y < -100)!;
+    assert.deepEqual([badge.w, badge.h], [80, 40]);
+  });
+
+  test("deleting the diagram that shows an image removes the image from the storage", async () => {
+    const page = await host.newPage();
+    await install(page);
+    await newDiagram(page, "Kept");
+    await newDiagram(page, "Pictures");
+    await saved(page, () => chooseImage(page, 0, 0, "logo.png", noise));
+    await view(page).getByRole("img", { name: "Free text logo", exact: true }).waitFor();
+    await imagesStored(page, (keys) => keys.length === 1);
+    await sidebar(page).getByRole("button", { name: "Delete Pictures" }).click();
+    await view(page).getByRole("dialog", { name: "Delete this diagram?" }).getByRole("button", { name: "Delete" }).click();
+    await imagesStored(page, (keys) => keys.length === 0);
+  });
+
+  test("refuses an image too heavy, with a message, and places nothing", async () => {
+    const page = await host.newPage();
+    await install(page);
+    await newDiagram(page, "Pictures");
+    await chooseImage(page, 0, 0, "huge.png", await noisePng(page, 1600, 1600));
+    await view(page).getByRole("alert").getByText(/This image is too large: \d+ KB once reduced, more than the 900 KB/).waitFor();
+    assert.equal(await view(page).getByRole("img", { name: "Image", exact: true }).count(), 0);
+    assert.equal((await storedDiagram(page)).shapes.length, 0);
+    assert.deepEqual(await storedImages(page), {});
+    await view(page).getByRole("button", { name: "Close" }).click();
+    assert.equal(await view(page).getByRole("alert").count(), 0);
+  });
+
+  test("pastes an image of the system clipboard in the middle of the view, captioned image", async () => {
+    const page = await host.newPage();
+    await install(page);
+    await newDiagram(page, "Pictures");
+    const base64 = noise.toString("base64");
+    await saved(page, () =>
+      page.frames().find((frame) => frame.parentFrame() === page.mainFrame())!.evaluate((base64) => {
+        const bytes = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
+        const data = new DataTransfer();
+        data.items.add(new File([bytes], "image.png", { type: "image/png" }));
+        document.body.dispatchEvent(new ClipboardEvent("paste", { clipboardData: data, bubbles: true }));
+      }, base64),
+    );
+    await view(page).getByRole("img", { name: "Free text image", exact: true }).waitFor();
+    const picture = (await storedDiagram(page)).shapes.find((shape) => shape.type === "image")!;
+    assert.deepEqual([picture.x, picture.y], [0, 0]);
+  });
+
+  test("an image missing from the storage shows a missing image frame", async () => {
+    const page = await host.newPage();
+    await install(page);
+    await newDiagram(page, "Pictures");
+    await saved(page, () => chooseImage(page, 0, 0, "logo.png", noise));
+    await view(page).getByRole("img", { name: "Image", exact: true }).waitFor();
+    await editStored(page, (diagram) => {
+      (diagram.shapes.find((shape) => shape.type === "image") as Record<string, unknown>).imageKey = `image:${"0".repeat(64)}`;
+    });
+    await view(page).getByRole("img", { name: "Image", exact: true }).getByText("missing image").waitFor();
   });
 });
