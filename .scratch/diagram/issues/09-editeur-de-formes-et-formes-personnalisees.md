@@ -6,34 +6,44 @@ Spec parente : `.scratch/diagram/spec.md`. Vocabulaire : `GLOSSARY.md`. Contrat 
 
 **Blocked by:** 03 (Connexions), 08 (Images)
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 ### Éditeur
 
-- [ ] Le bouton « Shapes » de la barre d'outils ouvre l'éditeur, et « ← Back to diagram » ramène au diagramme ouvert. La navigation reste interne à la Vue, sans historique du navigateur.
-- [ ] Bibliothèques : sélecteur, « + » pour créer (« New library »), renommage (un nom vide garde l'ancien). Il n'y a pas de suppression de bibliothèque.
-- [ ] Forme :
+- [x] Le bouton « Shapes » de la barre d'outils ouvre l'éditeur, et « ← Back to diagram » ramène au diagramme ouvert. La navigation reste interne à la Vue, sans historique du navigateur.
+- [x] Bibliothèques : sélecteur, « + » pour créer (« New library »), renommage (un nom vide garde l'ancien). Il n'y a pas de suppression de bibliothèque.
+- [x] Forme :
   - nom (« New shape » par défaut, « Untitled shape » si vide, 120 caractères au plus) ;
   - image (rangée comme au ticket 08) ;
   - largeur et hauteur, de 16 à 1200 (65 par défaut) ;
   - placement du texte (dessous, dessus, à droite, à gauche, centré) ;
   - « Show in diagram palette ».
-- [ ] Points d'attache :
+- [x] Points d'attache :
   - un clic sur l'aperçu ajoute un point, que l'on peut glisser, renommer ou retirer ;
   - « Use 8 default anchors » remet les 8 points par défaut ;
   - « Clear anchors » signifie **aucun point** : les flèches ne s'attachent alors qu'en automatique (Q-012) ;
   - les identifiants en double sont rendus uniques automatiquement.
-- [ ] Enregistrement automatique dans la clé `shapes`, comme pour les diagrammes, avec le même indicateur (Q-008, Q-009). Une forme sans image ne peut pas être enregistrée, et un message l'indique.
-- [ ] La suppression d'une forme demande une confirmation, qui indique combien de diagrammes s'en servent (Q-010).
+- [x] Enregistrement automatique dans la clé `shapes`, comme pour les diagrammes, avec le même indicateur (Q-008, Q-009). Une forme sans image ne peut pas être enregistrée, et un message l'indique.
+- [x] La suppression d'une forme demande une confirmation, qui indique combien de diagrammes s'en servent (Q-010).
 
 ### Dans les diagrammes
 
-- [ ] Une palette de vignettes en bas du canevas présente les formes visibles. Le survol affiche « bibliothèque · forme », et une palette vide est masquée.
-- [ ] Une forme personnalisée est posée à **ses** dimensions et avec son nom comme texte (Q-016). Son texte se place selon le placement choisi, qui peut être changé pour chaque instance.
-- [ ] Ses points d'attache sont ceux de sa définition, et ils suivent la rotation et le redimensionnement. Une modification de la définition se répercute sur les instances existantes.
-- [ ] Une forme dont la définition a été supprimée s'affiche comme un cadre en pointillé portant son nom, et ses flèches restent attachées.
+- [x] Une palette de vignettes en bas du canevas présente les formes visibles. Le survol affiche « bibliothèque · forme », et une palette vide est masquée.
+- [x] Une forme personnalisée est posée à **ses** dimensions et avec son nom comme texte (Q-016). Son texte se place selon le placement choisi, qui peut être changé pour chaque instance.
+- [x] Ses points d'attache sont ceux de sa définition, et ils suivent la rotation et le redimensionnement. Une modification de la définition se répercute sur les instances existantes.
+- [x] Une forme dont la définition a été supprimée s'affiche comme un cadre en pointillé portant son nom, et ses flèches restent attachées.
 
 ### Tests
 
-- [ ] Tests unitaires : nettoyage d'une bibliothèque lue (bornes, identifiants uniques) et points d'attache d'une forme personnalisée en rotation.
-- [ ] Test navigateur : créer une bibliothèque et une forme avec deux points d'attache, la poser dans un diagramme, y attacher une flèche au second point, puis masquer la forme de la palette ; l'instance existante reste intacte.
+- [x] Tests unitaires : nettoyage d'une bibliothèque lue (bornes, identifiants uniques) et points d'attache d'une forme personnalisée en rotation.
+- [x] Test navigateur : créer une bibliothèque et une forme avec deux points d'attache, la poser dans un diagramme, y attacher une flèche au second point, puis masquer la forme de la palette ; l'instance existante reste intacte.
+
+## Comments
+
+**Implémentation (2026-10-21).**
+
+- Les bibliothèques sont rangées sous `shapes`, comme une liste `[{ id, name, shapes: [{ id, name, imageKey, width, height, labelPlacement, showInDiagram, anchors: [{ id, x, y }] }] }]`. Les points d'attache sont exprimés en fractions de 0 à 1.
+- Une instance porte `customShapeRef: { libraryId, shapeId, name }` et son `labelPlacement`. Le nom sert au cadre en pointillé quand la définition est supprimée.
+- Une modification de la définition se répercute sur l'image et les points d'attache des instances. La taille et le placement du texte ne sont copiés qu'à la pose, puisqu'ils se règlent ensuite sur chaque instance.
+- Une extrémité attachée à un point d'attache que la forme n'a plus (définition supprimée, point retiré ou renommé) est dessinée en automatique. Elle reste attachée, et retrouve son point s'il revient.
+- À l'ouverture, sans bibliothèque, « My shapes » est proposée. Elle n'est écrite qu'à la première modification.
