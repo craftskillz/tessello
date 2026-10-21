@@ -98,7 +98,19 @@ const DATA = "modules/.tessello/data/@tessello/diagram";
 type StoredEnd = { shapeId?: string; port?: string | null; x?: number; y?: number };
 type StoredDiagram = {
   shapes: Record<string, number & string>[];
-  arrows: { id: string; from: StoredEnd; to: StoredEnd; route: string; waypoints: { x: number; y: number }[]; label: string }[];
+  arrows: {
+    id: string;
+    from: StoredEnd;
+    to: StoredEnd;
+    route: string;
+    waypoints: { x: number; y: number }[];
+    heads: string;
+    dashed: boolean;
+    width: number;
+    label: string;
+    labelAt: number;
+    labelOffset: number;
+  }[];
 };
 
 /** The file of the open diagram as the Host wrote it, under the key `diagram:<id>`. */
@@ -119,10 +131,7 @@ async function diagramFile(page: Page): Promise<{ name: string; file: { key: str
 /** The open diagram as the Host wrote it. */
 const storedDiagram = async (page: Page) => (await diagramFile(page)).file.value;
 
-/**
- * Changes the stored diagram as a User would by hand, for what the View cannot set yet (the label of an arrow comes with
- * ticket 05), then reloads the Host and opens the View again.
- */
+/** Changes the stored diagram as a User would by hand, to set up a test quickly, then reloads the Host and opens the View again. */
 async function editStored(page: Page, change: (diagram: StoredDiagram) => void) {
   const { name, file } = await diagramFile(page);
   change(file.value);
@@ -403,6 +412,68 @@ describe("the Diagram sample Module", () => {
     assert.equal(await isSelected(page, name), false);
     await clickAt(page, 200, 225);
     assert.equal(await isSelected(page, name), true);
+  });
+
+  test("a dashed arrow with heads at both ends, 3 wide, with its label dragged along it and aside, is found after a reload", async () => {
+    const page = await host.newPage();
+    await install(page);
+    await newDiagram(page, "Styles");
+    await addRectangle(page, -200, 0, "A");
+    await addRectangle(page, 200, 0, "B");
+    await tool(page, "Arrow (F)");
+    await saved(page, async () => drag(page, await at(page, -200, 0), await at(page, 200, 0)));
+    await tool(page, "Select (S)");
+    await clickAt(page, 0, 0);
+    const panel = view(page).getByRole("complementary", { name: "Arrow" });
+    await saved(page, () => panel.getByRole("button", { name: "Dashed" }).click());
+    await saved(page, () => panel.getByRole("button", { name: "Arrowheads at both ends" }).click());
+    await panel.getByRole("spinbutton", { name: "Line width" }).fill("3");
+    await saved(page, () => panel.getByRole("spinbutton", { name: "Line width" }).press("Enter"));
+
+    // A double-click on the line edits its label, which shows in the middle of the line.
+    const point = await at(page, 0, 0);
+    await page.mouse.dblclick(point.x, point.y);
+    await view(page).getByRole("textbox", { name: "Label of the arrow" }).fill("calls");
+    await saved(page, () => view(page).getByRole("textbox", { name: "Label of the arrow" }).press("Enter"));
+    const name = "Arrow “calls” from Rectangle A to Rectangle B";
+    const label = view(page).getByRole("img", { name, exact: true }).getByRole("button", { name: /^Label:/ });
+    near(await middleOf(label), await at(page, 0, 0));
+
+    // The line goes from (−140, 0) to (140, 0): 70 to the right is three quarters of the way, and 30 up is 30 aside. The
+    // label is taken by its left part, beside the handle of the segment, which is in the middle of the line.
+    const box = (await label.boundingBox())!;
+    const from = { x: box.x + 4, y: box.y + box.height / 2 };
+    await saved(page, () => drag(page, from, { x: from.x + 70, y: from.y - 30 }));
+    const [arrow] = (await storedDiagram(page)).arrows;
+    assert.deepEqual({ dashed: arrow.dashed, heads: arrow.heads, width: arrow.width, label: arrow.label }, { dashed: true, heads: "both", width: 3, label: "calls" });
+    assert.ok(Math.abs(arrow.labelAt - 0.75) < 0.01 && Math.abs(arrow.labelOffset + 30) < 1, JSON.stringify(arrow));
+
+    await page.reload();
+    await openFromLauncher(page);
+    const drawn = view(page).getByRole("img", { name, exact: true });
+    await drawn.waitFor();
+    assert.equal(await drawn.locator(".dg-arrow-head").count(), 2);
+    assert.equal(await drawn.locator(".dg-arrow-line").getAttribute("stroke-width"), "3");
+    assert.equal(await drawn.locator(".dg-arrow-line").getAttribute("stroke-dasharray"), "12 9");
+    near(await middleOf(label), await at(page, 70, -30));
+
+    // A double-click on the label, away from the line, edits it.
+    const aside = await middleOf(label);
+    await page.mouse.dblclick(aside.x, aside.y);
+    assert.equal(await view(page).getByRole("textbox", { name: "Label of the arrow" }).inputValue(), "calls");
+    await view(page).getByRole("textbox", { name: "Label of the arrow" }).press("Escape");
+
+    // A click on the label selects the arrow, and "Reset label" brings the label back to the middle of the line.
+    await page.mouse.click((await middleOf(label)).x, (await middleOf(label)).y);
+    assert.equal(await isSelected(page, name), true);
+    await saved(page, () => panel.getByRole("button", { name: "Reset label" }).click());
+    near(await middleOf(label), await at(page, 0, 0));
+
+    // The handle on the right edge of the label widens it on both sides, around its center.
+    const automatic = (await label.boundingBox())!.width;
+    await saved(page, () => dragHandle(page, "Drag to change the width of the label", 30, 0));
+    assert.ok(Math.abs((await label.boundingBox())!.width - automatic - 60) < 2);
+    near(await middleOf(label), await at(page, 0, 0));
   });
 
   test("a drag on the empty canvas draws a free arrow, which moves by its body and is taken by a selection rectangle", async () => {
