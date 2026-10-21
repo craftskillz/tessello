@@ -20,7 +20,7 @@ describe("installing a Module", () => {
     await launcher.getByRole("button", { name: "Notes" }).click();
 
     const iframe = page.locator("iframe[title='Notes']");
-    assert.equal(await iframe.getAttribute("sandbox"), "allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox");
+    assert.equal(await iframe.getAttribute("sandbox"), "allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads");
     await page.frameLocator("iframe[title='Notes']").getByRole("heading", { name: "Notes" }).waitFor();
     await page.frameLocator("iframe[title='Notes']").getByText("No notes yet.").waitFor();
   });

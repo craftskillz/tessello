@@ -43,8 +43,11 @@ const TYPES: Record<string, string> = {
   wasm: "application/wasm",
 };
 
-/** The `sandbox` attribute of every Module iframe (CONVENTION.md §4): never `allow-same-origin`. */
-export const IFRAME_SANDBOX = "allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox";
+/** The `sandbox` attribute of a Widget iframe (CONVENTION.md §4): never `allow-same-origin`. */
+export const WIDGET_SANDBOX = "allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox";
+
+/** The `sandbox` attribute of a View iframe: a Widget's, plus downloads, which come from a gesture in the View (ADR 0013). */
+export const VIEW_SANDBOX = `${WIDGET_SANDBOX} allow-downloads`;
 
 /**
  * The `allow` attribute of a Module iframe: Chrome and Edge ask the User before a public site reaches the local network,

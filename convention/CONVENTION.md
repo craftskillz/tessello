@@ -146,13 +146,14 @@ Screenshots help: take them in the Host, and keep them small, since they count i
 
 ## 4. Runtime environment
 
-Each View and Widget is loaded in an `<iframe>` with the `sandbox` attribute. A Module runs in an **opaque origin** (its origin is `"null"`). The iframe of a Module that declares `localNetwork` also delegates to it the browser's access to the local network (`allow="local-network-access; local-network; loopback-network"`, §3.1).
+Each View and Widget is loaded in an `<iframe>` with the `sandbox` attribute; only a View's allows downloads. A Module runs in an **opaque origin** (its origin is `"null"`). The iframe of a Module that declares `localNetwork` also delegates to it the browser's access to the local network (`allow="local-network-access; local-network; loopback-network"`, §3.1).
 
 A Module CAN rely on:
 
 - running JavaScript, including ES modules and Web Workers;
 - HTML forms;
 - opening links in a new tab (`<a href="https://…" target="_blank">`);
+- in a View only, handing the User a file to download, following a gesture of theirs (a click on an export button, for instance): a link with the `download` attribute to a `blob:` or `data:` URL the Module made (`URL.createObjectURL(blob)`). No Permission is needed;
 - network requests (`fetch`, `XMLHttpRequest`, WebSocket, `EventSource`) and remote resources (scripts, styles, images, fonts, media) from the origins declared in its Permissions (§3.1), subject to each endpoint's CORS policy.
 
 A Module MUST NOT rely on:
@@ -163,6 +164,7 @@ A Module MUST NOT rely on:
 - navigating its own iframe to another URL, including another page of its package: each View and each Widget is a single page, so a Module navigates within that page by changing `location.hash` (hash-based routing);
 - changing the page URL with `history.pushState` or `history.replaceState`: passing a URL, even a fragment, throws a `SecurityError` in an opaque origin, so history-based routers do not work;
 - `alert`, `confirm`, `prompt`;
+- downloading a file from a Widget: a Widget is a preview, and the Host blocks its downloads. The Widget opens its View instead (§6.3), where the User asks for the file;
 - credentials-based requests (cookies sent to third-party APIs): requests come from origin `null`;
 - any network access to an origin not declared in its Permissions: the Host blocks it.
 
@@ -417,6 +419,6 @@ These limits are deliberately conservative. They MAY be **raised** in a minor re
 
 ## 12. Versioning of this Convention
 
-- Adding optional Manifest fields, request types, event types or Permissions, or **raising a limit** (§11), is a **minor revision**: it keeps `convention: 1`, and existing Modules keep working (Modules ignore unknown events, Hosts ignore unknown Manifest fields).
+- Adding optional Manifest fields, request types, event types, Permissions or capabilities of the runtime environment (§4), or **raising a limit** (§11), is a **minor revision**: it keeps `convention: 1`, and existing Modules keep working (Modules ignore unknown events, Hosts ignore unknown Manifest fields).
 - Any change that could break an existing Module (removing or renaming a field, a message type or a capability, adding a required field, tightening a limit) requires a new Convention version (`convention: 2`). A Host states which Convention versions it supports and refuses the others with a clear message.
 - While this Convention is a **draft**, nothing has been published under it yet, so it MAY still change without a new version. The required `guide` field (§3.2) was added this way.

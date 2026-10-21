@@ -18,7 +18,7 @@ import { GUIDE_SANDBOX, guideDocument } from "./guide.ts";
 import { type Language, languageOf, LANGUAGES, type Messages, messagesOf } from "./i18n.ts";
 import { checkPackageUrl, downloadPackage } from "./package-url.ts";
 import { canUseFolders, hasTesselloFolder, isGranted, pickFolder, reconnect, rememberedFolder, rememberFolder } from "./modules-folder.ts";
-import { buildView, dataUrl, IFRAME_SANDBOX, typeOf, type ViewDocument } from "./srcdoc.ts";
+import { buildView, dataUrl, typeOf, type ViewDocument, VIEW_SANDBOX, WIDGET_SANDBOX } from "./srcdoc.ts";
 import { THEME_CHOICES, type ThemeChoice, themeChoiceOf, themeOf } from "./theme.ts";
 
 // The User's theme and language, kept by this browser for this address of Tessello. Storage may be refused, as in a
@@ -475,7 +475,7 @@ async function showView(id: string, params: Record<string, string> = {}) {
   const view = await buildView({ files, entry: manifest.view.entry, permissions });
   if (requested !== request) return;
   clearStage();
-  const iframe = el("iframe", { className: "view-frame", title: manifest.name, sandbox: IFRAME_SANDBOX, allow: view.allow });
+  const iframe = el("iframe", { className: "view-frame", title: manifest.name, sandbox: VIEW_SANDBOX, allow: view.allow });
   iframe.srcdoc = view.srcdoc;
   stage.append(iframe);
   const surface = host.mountSurface({
@@ -774,7 +774,7 @@ async function startWidget(cell: WidgetCell) {
   const { manifest, files, permissions } = opening;
   const document = await buildView({ files, entry: manifest.widget!.entry, permissions });
   if (cells.get(id) !== cell) return;
-  const iframe = el("iframe", { className: "widget-frame", title: t.widgetTitle(manifest.name), sandbox: IFRAME_SANDBOX, allow: document.allow });
+  const iframe = el("iframe", { className: "widget-frame", title: t.widgetTitle(manifest.name), sandbox: WIDGET_SANDBOX, allow: document.allow });
   iframe.srcdoc = document.srcdoc;
   cell.body.replaceChildren(iframe);
   const surface = host.mountSurface({
