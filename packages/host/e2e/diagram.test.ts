@@ -96,7 +96,10 @@ async function dragHandle(page: Page, name: string, dx: number, dy: number) {
 const DATA = "modules/.tessello/data/@tessello/diagram";
 
 type StoredEnd = { shapeId?: string; port?: string | null; x?: number; y?: number };
-type StoredDiagram = { shapes: Record<string, number & string>[]; arrows: { id: string; from: StoredEnd; to: StoredEnd; route: string; label: string }[] };
+type StoredDiagram = {
+  shapes: Record<string, number & string>[];
+  arrows: { id: string; from: StoredEnd; to: StoredEnd; route: string; waypoints: { x: number; y: number }[]; label: string }[];
+};
 
 /** The file of the open diagram as the Host wrote it, under the key `diagram:<id>`. */
 async function diagramFile(page: Page): Promise<{ name: string; file: { key: string; value: StoredDiagram } }> {
@@ -117,8 +120,8 @@ async function diagramFile(page: Page): Promise<{ name: string; file: { key: str
 const storedDiagram = async (page: Page) => (await diagramFile(page)).file.value;
 
 /**
- * Changes the stored diagram as a User would by hand, for what the View cannot set yet (the route and the label of an
- * arrow come with tickets 04 and 05), then reloads the Host and opens the View again.
+ * Changes the stored diagram as a User would by hand, for what the View cannot set yet (the label of an arrow comes with
+ * ticket 05), then reloads the Host and opens the View again.
  */
 async function editStored(page: Page, change: (diagram: StoredDiagram) => void) {
   const { name, file } = await diagramFile(page);
@@ -346,10 +349,11 @@ describe("the Diagram sample Module", () => {
     await saved(page, async () => drag(page, await at(page, -200, -30), await at(page, 200, 170)));
     const [arrow] = (await storedDiagram(page)).arrows;
     assert.deepEqual([arrow.from, arrow.to], [{ shapeId: arrow.from.shapeId, port: "N" }, { shapeId: arrow.to.shapeId, port: "N" }]);
-    await editStored(page, (diagram) => (diagram.arrows[0].route = "curved"));
+    // The new arrow is selected: its panel sets its route.
+    await saved(page, () => view(page).getByRole("button", { name: "Curved" }).click());
+    assert.equal((await storedDiagram(page)).arrows[0].route, "curved");
 
     const name = "Arrow from Rectangle A at N to Rectangle B at N";
-    await view(page).getByRole("img", { name, exact: true }).waitFor();
     await tool(page, "Select (S)");
     for (const part of [0.1, 0.5, 0.9]) {
       await clickAt(page, 0, 300);
@@ -358,6 +362,47 @@ describe("the Diagram sample Module", () => {
       await page.mouse.click(point.x, point.y);
       assert.equal(await isSelected(page, name), true, `a click at ${part} of the line`);
     }
+  });
+
+  test("an elbow made by a drag is found after a reload, keeps its waypoints when its shape moves, and is selected by a click on its last segment", async () => {
+    const page = await host.newPage();
+    await install(page);
+    await newDiagram(page, "Corners");
+    await addRectangle(page, -200, 0, "A");
+    await addRectangle(page, 200, 200, "B");
+    await tool(page, "Arrow (F)");
+    await saved(page, async () => drag(page, await at(page, -200, 0), await at(page, 200, 200)));
+    const name = "Arrow from Rectangle A to Rectangle B";
+    await tool(page, "Select (S)");
+    const middle = await pointOn(page, name, 0.5);
+    await page.mouse.click(middle.x, middle.y);
+    await saved(page, () => view(page).getByRole("button", { name: "Elbow" }).click());
+    // Out of the right side of A, down halfway, and into the left side of B: the middle segment is at x = 0.
+    near((await arrowEnds(page, name)).start, { x: -140, y: 0 });
+    near((await arrowEnds(page, name)).tip, { x: 140, y: 200 });
+
+    // Dragging the middle segment 60 to the right makes its two corners the waypoints of the arrow.
+    await saved(page, async () => drag(page, await at(page, 0, 100), await at(page, 60, 100)));
+    const corners = (await storedDiagram(page)).arrows[0].waypoints;
+    assert.equal(corners.length, 2);
+    near(corners[0], { x: 60, y: 0 });
+    near(corners[1], { x: 60, y: 200 });
+
+    await page.reload();
+    await openFromLauncher(page);
+    await view(page).getByRole("img", { name, exact: true }).waitFor();
+    assert.deepEqual((await storedDiagram(page)).arrows[0].waypoints, corners);
+    near((await arrowEnds(page, name)).start, { x: -140, y: 0 });
+
+    // B moves down: the waypoints stay, and the last segments follow it, down from the second corner into its top side.
+    await saved(page, async () => drag(page, await at(page, 200, 200), await at(page, 200, 300)));
+    assert.deepEqual((await storedDiagram(page)).arrows[0].waypoints, corners);
+    near((await arrowEnds(page, name)).tip, { x: 200, y: 270 });
+
+    await clickAt(page, 0, -200);
+    assert.equal(await isSelected(page, name), false);
+    await clickAt(page, 200, 225);
+    assert.equal(await isSelected(page, name), true);
   });
 
   test("a drag on the empty canvas draws a free arrow, which moves by its body and is taken by a selection rectangle", async () => {
