@@ -133,6 +133,25 @@ async function diagramFile(page: Page): Promise<{ name: string; file: { key: str
   }
 }
 
+/** A diagram as the Host wrote it, under the key `diagram:<id>`. */
+async function storedFile(page: Page, id: string): Promise<StoredDiagram> {
+  const files = Object.values(await readFolder(page, DATA)).map((file) => JSON.parse(file) as { key: string; value: StoredDiagram });
+  return files.find((file) => file.key === `diagram:${id}`)!.value;
+}
+
+/** Waits until the first shape of a diagram, as the Host wrote it, has a link. */
+async function linkStored(page: Page, id: string, link: unknown) {
+  for (let tries = 0; tries < 50; tries++) {
+    try {
+      if (JSON.stringify((await storedFile(page, id)).shapes[0].link) === JSON.stringify(link)) return;
+    } catch {
+      // A file read while the Host writes it: read again.
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  assert.fail("the Host did not write the link");
+}
+
 /** The open diagram as the Host wrote it. */
 const storedDiagram = async (page: Page) => (await diagramFile(page)).file.value;
 
@@ -1094,6 +1113,84 @@ describe("the Diagram sample Module", () => {
     assert.deepEqual((await storedDiagram(page)).arrows[0].from, { shapeId: placed.id, port: "p2" });
     // Without its anchor, the arrow leaves the frame toward the rectangle, from its right side.
     near((await arrowEnds(page, name0)).start, { x: placed.x + 50, y: placed.y });
+  });
+
+  test("links a shape to a new diagram, follows it with Shift+click and comes back; a link to a deleted diagram says so and can be removed", async () => {
+    const page = await host.newPage();
+    await install(page);
+    await newDiagram(page, "Overview");
+    await addRectangle(page, 0, 0, "Billing");
+
+    // A new diagram needs a title.
+    await view(page).getByRole("button", { name: "Link…" }).click();
+    const dialog = view(page).getByRole("dialog", { name: "Link on this shape" });
+    await dialog.getByRole("radio", { name: "New diagram" }).check();
+    await dialog.getByRole("button", { name: "Save" }).click();
+    await dialog.getByText("Enter a title for the new diagram.").waitFor();
+    await dialog.getByRole("textbox", { name: "Title of the new diagram" }).fill("Billing details");
+    await saved(page, () => dialog.getByRole("button", { name: "Save" }).click());
+    await sidebar(page).getByRole("button", { name: "Billing details", exact: true }).waitFor();
+    const billing = view(page).getByRole("img", { name: "Rectangle Billing" });
+    await billing.locator(".dg-link[data-link='diagram']").waitFor();
+    const target = (await storedIndex(page)).find((entry) => entry.title === "Billing details")!;
+    const overview = (await storedIndex(page)).find((entry) => entry.title === "Overview")!;
+    // The new diagram is written before the shape that leads to it.
+    await linkStored(page, overview.id, { type: "diagram", value: target.id });
+
+    // Shift+click follows the link, and "← Back" returns.
+    const title = view(page).getByRole("textbox", { name: "Diagram title" });
+    const shiftClick = async () => {
+      const point = await middleOf(billing);
+      await page.keyboard.down("Shift");
+      await page.mouse.click(point.x, point.y);
+      await page.keyboard.up("Shift");
+    };
+    await shiftClick();
+    await view(page).getByRole("button", { name: "← Back to “Overview”" }).click();
+    await billing.waitFor();
+    assert.equal(await title.inputValue(), "Overview");
+    assert.equal(await view(page).getByRole("button", { name: /^← Back to/ }).count(), 0);
+
+    // Opening a diagram from the list forgets the way back.
+    await shiftClick();
+    await view(page).getByRole("button", { name: "← Back to “Overview”" }).waitFor();
+    assert.equal(await title.inputValue(), "Billing details");
+    await sidebar(page).getByRole("button", { name: "Overview", exact: true }).click();
+    await billing.waitFor();
+    assert.equal(await view(page).getByRole("button", { name: /^← Back to/ }).count(), 0);
+
+    // The target deleted, the link says so, and is removed.
+    await sidebar(page).getByRole("button", { name: "Delete Billing details" }).click();
+    await view(page).getByRole("dialog", { name: "Delete this diagram?" }).getByRole("button", { name: "Delete" }).click();
+    await stored(page, (index) => index.every((entry) => entry.title !== "Billing details"));
+    await shiftClick();
+    const notice = view(page).getByRole("alert").filter({ hasText: "Diagram not found" });
+    await notice.waitFor();
+    assert.equal(await title.inputValue(), "Overview");
+    await saved(page, () => notice.getByRole("button", { name: "Remove link" }).click());
+    assert.equal(await billing.locator(".dg-link").count(), 0);
+    await linkStored(page, overview.id, null);
+  });
+
+  test("a link to an external URL gets https:// and opens in a new tab", async () => {
+    const page = await host.newPage();
+    await install(page);
+    await newDiagram(page, "Docs");
+    await addRectangle(page, 0, 0, "Wiki");
+    await view(page).getByRole("button", { name: "Link…" }).click();
+    const dialog = view(page).getByRole("dialog", { name: "Link on this shape" });
+    await dialog.getByRole("textbox", { name: "URL" }).fill("example.com/wiki");
+    await saved(page, () => dialog.getByRole("button", { name: "Save" }).click());
+    const wiki = view(page).getByRole("img", { name: "Rectangle Wiki" });
+    await wiki.locator(".dg-link[data-link='url']").waitFor();
+    assert.deepEqual((await storedDiagram(page)).shapes[0].link, { type: "url", value: "https://example.com/wiki" });
+
+    const point = await middleOf(wiki);
+    const popup = page.context().waitForEvent("page");
+    await page.keyboard.down("Shift");
+    await page.mouse.click(point.x, point.y);
+    await page.keyboard.up("Shift");
+    assert.equal((await popup).url(), "https://example.com/wiki");
   });
 
   test("an image missing from the storage shows a missing image frame", async () => {
