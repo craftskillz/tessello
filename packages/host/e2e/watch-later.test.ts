@@ -16,6 +16,8 @@ const dot = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR
 
 const view = (page: Page) => page.frameLocator("iframe[title='Watch Later']");
 const field = (page: Page) => view(page).getByRole("textbox", { name: "Paste a YouTube URL" });
+const widget = (page: Page) => page.frameLocator("iframe[title='Watch Later widget']");
+const goHome = (page: Page) => page.getByRole("button", { name: "Tessello" }).click();
 const openFromLauncher = (page: Page) => page.getByRole("navigation", { name: "Launcher" }).getByRole("button", { name: "Watch Later" }).click();
 
 /**
@@ -335,5 +337,39 @@ describe("the Watch Later sample Module", () => {
     await row("No tag").locator(`[data-video-id="${ID}"]`).waitFor();
     assert.equal(await row("80s").count(), 0);
     await stored(page, (videos) => videos.find((video) => video.videoId === ID)?.tags.length === 0);
+  });
+
+  test("the Widget shows a video added in the View until it is marked as watched, and opens the View", async () => {
+    const page = await host.newPage();
+    await fakeYouTube(page);
+    await install(page);
+    await goHome(page);
+    await widget(page).getByText("Nothing left to watch").waitFor();
+    await widget(page).getByRole("button", { name: "+ Add" }).click();
+    await page.locator("iframe[title='Watch Later']").waitFor({ state: "visible" });
+
+    await addByField(page, `https://www.youtube.com/watch?v=${ID}&t=42`);
+    await stored(page, (videos) => videos[0]?.metaStatus === "ok");
+    // The Widget, hidden behind the View, reads the videos again when the Home comes back.
+    await goHome(page);
+    await widget(page).getByText("1 to watch").waitFor();
+    const link = widget(page).getByRole("link", { name: "Never Gonna Give You Up" });
+    assert.equal(await link.getAttribute("href"), `https://www.youtube.com/watch?v=${ID}&t=42s`);
+    assert.equal(await link.getAttribute("target"), "_blank");
+    assert.equal(await widget(page).locator("img").getAttribute("src"), `https://i.ytimg.com/vi/${ID}/mqdefault.jpg`);
+    assert.ok(
+      await widget(page)
+        .locator("body")
+        .evaluate((body) => body.scrollHeight <= innerHeight && body.scrollWidth <= innerWidth),
+      "the Widget does not scroll",
+    );
+
+    await widget(page).getByRole("button", { name: "Open ↗" }).click();
+    await page.locator("iframe[title='Watch Later']").waitFor({ state: "visible" });
+    await view(page).getByRole("article").getByRole("button", { name: "Watched" }).click();
+    await stored(page, (videos) => videos[0]?.watched === true);
+    await goHome(page);
+    await widget(page).getByText("Nothing left to watch").waitFor();
+    assert.equal(await widget(page).getByRole("link").count(), 0);
   });
 });
