@@ -29,7 +29,7 @@ async function fakeYouTube(page: Page, online = { value: true }, title = "Never 
     requests.oembed++;
     if (!online.value) return route.abort("internetdisconnected");
     const url = new URL(route.request().url());
-    assert.equal(url.searchParams.get("url"), `https://www.youtube.com/watch?v=${ID}`);
+    assert.match(url.searchParams.get("url") ?? "", /^https:\/\/www\.youtube\.com\/watch\?v=[\w-]{11}$/);
     assert.equal(url.searchParams.get("format"), "json");
     return route.fulfill({
       headers: { "Access-Control-Allow-Origin": "null" },
@@ -118,6 +118,57 @@ describe("the Watch Later sample Module", () => {
     assert.equal(await field(page).inputValue(), "");
     await stored(page, (videos) => videos.length === 1 && videos[0].metaStatus === "ok");
     assert.equal(await view(page).getByRole("article").count(), 1);
+  });
+
+  test("a dropped link adds the video, a second drop of it adds nothing and shows it, and what is not a video is refused", async () => {
+    const page = await host.newPage();
+    await fakeYouTube(page);
+    await install(page);
+    /** Drags data over the View and, unless `release` is false, drops it, as dragging a link from a tab does. */
+    const drop = (data: Record<string, string>, release = true) =>
+      view(page)
+        .locator("body")
+        .evaluate(
+          (body, { data, release }) => {
+            const dataTransfer = new DataTransfer();
+            for (const [type, value] of Object.entries(data)) dataTransfer.setData(type, value);
+            const fire = (type: string) => body.dispatchEvent(new DragEvent(type, { dataTransfer, bubbles: true, cancelable: true }));
+            fire("dragenter");
+            fire("dragover");
+            if (release) fire("drop");
+          },
+          { data, release },
+        );
+
+    await drop({ "text/uri-list": `https://www.youtube.com/watch?v=${ID}` }, false);
+    const zone = view(page).getByText("Drop to add");
+    await zone.waitFor();
+    // Escape, or leaving the View, ends the drag.
+    await view(page)
+      .locator("body")
+      .evaluate((body) => {
+        const dataTransfer = new DataTransfer();
+        dataTransfer.setData("text/uri-list", "https://example.com");
+        body.dispatchEvent(new DragEvent("dragleave", { dataTransfer, bubbles: true }));
+      });
+    await zone.waitFor({ state: "hidden" });
+
+    await drop({ "text/uri-list": `# Never Gonna Give You Up\nhttps://www.youtube.com/watch?v=${ID}`, "text/plain": "Never Gonna Give You Up" });
+    await view(page).getByRole("link", { name: "Never Gonna Give You Up", exact: true }).waitFor();
+    assert.equal(await zone.count(), 0, "the drop zone is gone once dropped");
+    await stored(page, (videos) => videos.length === 1 && videos[0].metaStatus === "ok");
+
+    // Another form of the same video, at another start.
+    await drop({ "text/plain": `https://youtu.be/${ID}?t=42` });
+    await view(page).getByRole("status").getByText("This video is already in your list").waitFor();
+    assert.equal(await view(page).getByRole("article").count(), 1);
+
+    await drop({ "text/plain": "https://example.com/not-a-video" });
+    await view(page).getByRole("status").getByText("This is not a YouTube video").waitFor();
+
+    await drop({ "text/plain": `youtu.be/${ID}\nhttps://youtu.be/aaaaaaaaaaa\nnot a video` });
+    await view(page).getByRole("status").getByText("1 added, 1 already there, 1 ignored").waitFor();
+    await stored(page, (videos) => videos.length === 2);
   });
 
   test("a video whose title cannot be read is still added, with its URL as title, and Retry reads it", async () => {

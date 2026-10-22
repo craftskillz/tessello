@@ -6,11 +6,11 @@ Spec parente : `.scratch/watch-later/spec.md`. Vocabulaire : `GLOSSARY.md`. Cont
 
 **Blocked by:** 01 (Squelette)
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] Glisser un lien au-dessus de la Vue montre une zone de dépôt (« Déposer pour ajouter »). Le dépôt lit `text/uri-list`, puis `text/plain`.
-- [ ] Un collage ou un dépôt de plusieurs lignes ajoute chaque URL reconnue, et indique combien ont été ajoutées, combien étaient déjà là et combien ont été ignorées.
-- [ ] Une vidéo déjà présente (même `videoId`, même avec un autre timestamp ou une autre forme d'URL) n'est pas ajoutée : la Vue fait défiler jusqu'à sa carte et la met en évidence un instant.
-- [ ] Un texte qui n'est pas une URL YouTube affiche un message bref (« Ce n'est pas une vidéo YouTube »), sans boîte de dialogue bloquante.
-- [ ] Tests unitaires : lecture d'un dépôt de plusieurs lignes, ajout sans doublon.
-- [ ] Test navigateur : un dépôt simulé ajoute une vidéo, et un deuxième dépôt de la même vidéo ne crée pas de doublon.
+- [x] Glisser un lien au-dessus de la Vue montre une zone de dépôt (« Déposer pour ajouter »). Le dépôt lit `text/uri-list`, puis `text/plain`.
+- [x] Un collage ou un dépôt de plusieurs lignes ajoute chaque URL reconnue, et indique combien ont été ajoutées, combien étaient déjà là et combien ont été ignorées.
+- [x] Une vidéo déjà présente (même `videoId`, même avec un autre timestamp ou une autre forme d'URL) n'est pas ajoutée : la Vue fait défiler jusqu'à sa carte et la met en évidence un instant.
+- [x] Un texte qui n'est pas une URL YouTube affiche un message bref (« Ce n'est pas une vidéo YouTube »), sans boîte de dialogue bloquante.
+- [x] Tests unitaires : lecture d'un dépôt de plusieurs lignes, ajout sans doublon.
+- [x] Test navigateur : un dépôt simulé ajoute une vidéo, et un deuxième dépôt de la même vidéo ne crée pas de doublon.
