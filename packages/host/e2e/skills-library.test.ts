@@ -1122,4 +1122,42 @@ describe("the Skills Library sample Module", () => {
     await view(page).getByText("1 Recommended", { exact: true }).waitFor();
     await view(page).getByText("1 Try", { exact: true }).waitFor();
   });
+
+  test("the post of a set of three skills has their table, the cards of the skills with notes, and the tooltip of its dot", async () => {
+    const page = await host.newPage();
+    await install(page);
+    await addByHand(page, "Bundle", "https://example.com/bundle", "A bundle of skills");
+    const panel = panelOf(page, "Bundle");
+    await panel.getByRole("radio", { name: "Recommended" }).check();
+    await addSkill(page, panel, "Alpha skill", "https://example.com/alpha", "The first");
+    await section(panel, "Alpha skill").getByRole("radio", { name: "4 out of 5" }).check({ force: true });
+    await section(panel, "Alpha skill").getByLabel("Notes").fill("#### À quoi ça sert\n\nIt grills plans.");
+    await addSkill(page, panel, "Beta skill", "", "The second");
+    await section(panel, "Beta skill").getByRole("radio", { name: "2 out of 5" }).check({ force: true });
+    await addSkill(page, panel, "Gamma skill");
+    await stored(page, ([set]) => set?.skills.length === 3 && set.skills[0].notes.includes("grills") && set.skills[1].score === 2);
+    await panel.getByRole("button", { name: "Close" }).click();
+
+    await radarTab(page);
+    const title = await dots(page).first().locator("title").textContent();
+    assert.equal(title, "1. Bundle — Recommended\nAlpha skill ★★★★☆\nBeta skill ★★☆☆☆\nGamma skill (not evaluated)");
+    assert.equal(await dots(page).first().getAttribute("data-number"), "1");
+
+    await publishEdition(page, 1, "Sets");
+    await view(page).getByRole("tab", { name: "Editions" }).click();
+    const file = await downloaded(page, () => view(page).getByRole("button", { name: "Download edition 1 as .zip" }).click());
+    const post = matter(strFromU8(unzipSync(new Uint8Array(file.bytes))["_posts/skills-radar-edition-1.md"])).content;
+    assert.match(post, /1\. Bundle — Recommandé \(3 skills\)/);
+    assert.match(post, /### 1\. Bundle\n/);
+    assert.ok(post.includes("| [Alpha skill](https://example.com/alpha) | ★★★★☆ | The first |"));
+    assert.ok(post.includes("| Beta skill | ★★☆☆☆ | The second |"));
+    assert.ok(post.includes("| Gamma skill | *Pas encore évaluée* |"));
+    // Only the skill whose notes say more than the template has its card, its headings under its own.
+    assert.match(post, /#### Alpha skill\n\n##### À quoi ça sert\n\nIt grills plans\./);
+    assert.doesNotMatch(post, /#### Beta skill|#### Gamma skill/);
+    const svg = post.split("\n").find((line) => line.includes("<svg"))!;
+    assert.ok(svg.includes("</svg>"), "the SVG is on one line");
+    assert.ok(svg.includes(`data-number="1"`));
+    assert.ok(svg.includes("<title>1. Bundle — Recommandé&#10;Alpha skill ★★★★☆&#10;Beta skill ★★☆☆☆&#10;Gamma skill (pas encore évaluée)</title>"));
+  });
 });
