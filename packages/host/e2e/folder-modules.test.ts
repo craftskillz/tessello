@@ -1,11 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import type { Page } from "playwright";
-import { dropFile, exampleFiles, readFolder, removeFolder, useHost, writeFolder, zip, zipExample } from "./browser.ts";
+import { dropFile, exampleFiles, readFolder, removeFolder, showLauncher, useHost, writeFolder, zip, zipExample } from "./browser.ts";
 
 const host = useHost();
 
-const launcher = (page: Page) => page.getByRole("navigation", { name: "Launcher" });
 const notes = (page: Page) => page.frameLocator("iframe[title='Notes']");
 const registry = async (page: Page) => JSON.parse((await readFolder(page, "modules/.tessello"))["modules.json"]);
 
@@ -13,7 +12,7 @@ const registry = async (page: Page) => JSON.parse((await readFolder(page, "modul
 async function activateNotes(page: Page) {
   await writeFolder(page, "modules/notes", await exampleFiles("notes"));
   await page.reload();
-  await launcher(page).getByRole("button", { name: "Notes New, to activate" }).click();
+  await (await showLauncher(page)).getByRole("button", { name: "Notes New, to activate" }).click();
   await page.getByRole("dialog", { name: "Activate Notes?" }).getByRole("button", { name: "Accept and activate" }).click();
   await notes(page).getByText("No notes yet.").waitFor();
 }
@@ -47,7 +46,7 @@ describe("Modules in the Modules folder", () => {
     const page = await host.newPage();
     await writeFolder(page, "modules/notes", await exampleFiles("notes"));
     await page.reload();
-    await launcher(page).getByRole("button", { name: "Notes New, to activate" }).click();
+    await (await showLauncher(page)).getByRole("button", { name: "Notes New, to activate" }).click();
     const preview = page.getByRole("dialog", { name: "Activate Notes?" });
     assert.match(await preview.innerText(), /Notes[\s\S]*1\.1\.0[\s\S]*@tessello\/notes/);
     assert.equal(await page.locator("iframe").count(), 0, "nothing runs before the User activates it");
@@ -61,7 +60,7 @@ describe("Modules in the Modules folder", () => {
     const page = await host.newPage();
     await writeFolder(page, "modules/broken", { "manifest.json": { convention: 1, id: "Broken", name: "Broken" } });
     await page.reload();
-    await launcher(page).getByRole("button", { name: "Broken New, to activate" }).click();
+    await (await showLauncher(page)).getByRole("button", { name: "Broken New, to activate" }).click();
     const report = page.getByRole("dialog", { name: "the folder “broken” can't be activated" });
     assert.match(await report.innerText(), /\[manifest\/invalid-id\]/);
     assert.deepEqual(await readFolder(page, "modules/.tessello"), {});
@@ -73,7 +72,7 @@ describe("Modules in the Modules folder", () => {
     await writeFolder(page, "modules/notes-copy", await exampleFiles("notes"));
     await page.reload();
 
-    await launcher(page).getByRole("button", { name: "Notes Conflict" }).click();
+    await (await showLauncher(page)).getByRole("button", { name: "Notes Conflict" }).click();
     const explanation = page.getByRole("dialog", { name: "“notes-copy” is in conflict" });
     assert.match(await explanation.innerText(), /@tessello\/notes[\s\S]*“notes”/);
     await page.locator("iframe[title='Notes widget']").waitFor({ state: "attached" });
@@ -88,8 +87,8 @@ describe("Modules in the Modules folder", () => {
     assert.match(html, /My notes/);
     await writeFolder(page, "modules/notes", { "view/index.html": html });
 
-    await page.getByRole("button", { name: "Tessello" }).click();
-    await launcher(page).getByRole("button", { name: "Notes", exact: true }).click();
+    await (await showLauncher(page)).getByRole("button", { name: "Tessello" }).click();
+    await (await showLauncher(page)).getByRole("button", { name: "Notes", exact: true }).click();
     await notes(page).getByRole("heading", { name: "My notes" }).waitFor();
   });
 
@@ -98,8 +97,8 @@ describe("Modules in the Modules folder", () => {
     await activateNotes(page);
     await writeFolder(page, "modules/notes", { "manifest.json": await manifest({ view: { entry: "view/missing.html" } }) });
 
-    await page.getByRole("button", { name: "Tessello" }).click();
-    await launcher(page).getByRole("button", { name: "Notes", exact: true }).click();
+    await (await showLauncher(page)).getByRole("button", { name: "Tessello" }).click();
+    await (await showLauncher(page)).getByRole("button", { name: "Notes", exact: true }).click();
     const report = page.getByRole("alert");
     await report.getByText("Notes no longer complies with the Convention").waitFor();
     assert.match(await report.innerText(), /\[manifest\/file-not-found\]/);
@@ -115,8 +114,8 @@ describe("Modules in the Modules folder", () => {
     await writeFolder(page, "modules/notes", { "manifest.json": await manifest({ permissions: { network: ["https://api.example.com"] } }) });
 
     const open = async () => {
-      await page.getByRole("button", { name: "Tessello" }).click();
-      await launcher(page).getByRole("button", { name: "Notes", exact: true }).click();
+      await (await showLauncher(page)).getByRole("button", { name: "Tessello" }).click();
+      await (await showLauncher(page)).getByRole("button", { name: "Notes", exact: true }).click();
     };
     await open();
     const request = page.getByRole("alert");
@@ -145,13 +144,13 @@ describe("Modules in the Modules folder", () => {
     await removeFolder(page, "modules/notes");
 
     await page.reload();
-    await launcher(page).getByRole("button", { name: "@tessello/notes Not found" }).click();
+    await (await showLauncher(page)).getByRole("button", { name: "@tessello/notes Not found" }).click();
     await page.getByRole("dialog", { name: "@tessello/notes can't be found" }).getByRole("button", { name: "Close" }).click();
     await page.getByRole("heading", { name: "Your space is ready" }).waitFor();
 
     await writeFolder(page, "modules/renamed-notes", files);
     await page.reload();
-    await launcher(page).getByRole("button", { name: "Notes", exact: true }).click();
+    await (await showLauncher(page)).getByRole("button", { name: "Notes", exact: true }).click();
     await notes(page).getByText("Buy oat milk").waitFor();
     assert.equal((await registry(page)).modules[0].folder, "renamed-notes");
   });

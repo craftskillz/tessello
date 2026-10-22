@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { before, describe, test } from "node:test";
 import type { Page } from "playwright";
-import { dropFile, readFolder, useHost, writeFolder, zipSample } from "./browser.ts";
+import { dropFile, readFolder, showLauncher, useHost, writeFolder, zipSample } from "./browser.ts";
 
 const host = useHost();
 
@@ -20,8 +20,8 @@ const view = (page: Page) => page.frameLocator("iframe[title='Diagram']");
 const canvas = (page: Page) => view(page).getByRole("application", { name: "Canvas" });
 const sidebar = (page: Page) => view(page).getByRole("navigation", { name: "Diagrams" });
 const widget = (page: Page) => page.frameLocator("iframe[title='Diagram widget']");
-const goHome = (page: Page) => page.getByRole("button", { name: "Tessello" }).click();
-const openFromLauncher = (page: Page) => page.getByRole("navigation", { name: "Launcher" }).getByRole("button", { name: "Diagram" }).click();
+const goHome = async (page: Page) => (await showLauncher(page)).getByRole("button", { name: "Tessello" }).click();
+const openFromLauncher = async (page: Page) => (await showLauncher(page)).getByRole("button", { name: "Diagram" }).click();
 
 /** Installs the Diagram Module from its .zip; the Host then shows its View, with no diagram yet. */
 async function install(page: Page) {
@@ -1523,7 +1523,7 @@ describe("the Diagram sample Module", () => {
   test("its User guide opens from the Launcher, with its screenshots", async () => {
     const page = await host.newPage();
     await install(page);
-    const launcher = page.getByRole("navigation", { name: "Launcher" });
+    const launcher = await showLauncher(page);
     await launcher.getByRole("listitem").filter({ hasText: "Diagram" }).getByRole("button", { name: "About" }).click();
     await page.getByRole("dialog", { name: "About Diagram" }).getByRole("button", { name: "User guide" }).click();
     const guide = page.frameLocator("iframe[title='Diagram: User guide']");

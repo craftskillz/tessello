@@ -11,7 +11,7 @@ import { join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { after, before } from "node:test";
 import { strToU8, zipSync } from "fflate";
-import { type Browser, chromium, type Page } from "playwright";
+import { type Browser, chromium, type Locator, type Page } from "playwright";
 import { serveHost } from "../scripts/serve.ts";
 
 /** The folder `showDirectoryPicker` returns: `window.tesselloPick` under the OPFS root, "modules" by default. */
@@ -48,7 +48,13 @@ export function useHost({ public: publicSite = false }: HostOptions = {}) {
     state.url = url;
     close = () => server.close();
     const { host } = new URL(url);
-    browser = await chromium.launch({ args: publicSite ? [`--ip-address-space-overrides=${host}=public`] : [] });
+    // HEADED=1 shows the browser, slowed down, to watch the tests run.
+    const headed = process.env.HEADED === "1";
+    browser = await chromium.launch({
+      headless: !headed,
+      slowMo: headed ? 200 : 0,
+      args: publicSite ? [`--ip-address-space-overrides=${host}=public`] : [],
+    });
   });
   after(async () => {
     await browser?.close();
@@ -73,6 +79,12 @@ export function useHost({ public: publicSite = false }: HostOptions = {}) {
 export async function chooseFolder(page: Page): Promise<void> {
   await page.getByRole("button", { name: "Choose a folder…" }).click();
   await page.getByRole("navigation", { name: "Launcher" }).waitFor();
+}
+
+/** The Launcher, once the pointer is near the left edge of the page: behind a View, it is a drawer hidden there. */
+export async function showLauncher(page: Page): Promise<Locator> {
+  await page.mouse.move(0, 300);
+  return page.getByRole("navigation", { name: "Launcher" });
 }
 
 type Files = Record<string, string | Uint8Array | object>;

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { describe, test } from "node:test";
-import { dropFile, useHost, zip } from "./browser.ts";
+import { dropFile, showLauncher, useHost, zip } from "./browser.ts";
 
 const host = useHost();
 
@@ -59,7 +59,7 @@ describe("downloads", () => {
     const page = await host.newPage();
     await dropFile(page, "downloader.zip", DOWNLOADER);
     await page.getByRole("dialog", { name: "Install Downloader?" }).getByRole("button", { name: "Accept and install" }).click();
-    await page.getByRole("button", { name: "Tessello" }).click();
+    await (await showLauncher(page)).getByRole("button", { name: "Tessello" }).click();
 
     const downloads: string[] = [];
     page.on("download", (download) => downloads.push(download.suggestedFilename()));

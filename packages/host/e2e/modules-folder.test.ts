@@ -1,11 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import type { Page } from "playwright";
-import { chooseFolder, dropFile, readFolder, useHost, zipExample } from "./browser.ts";
+import { chooseFolder, dropFile, readFolder, showLauncher, useHost, zipExample } from "./browser.ts";
 
 const host = useHost();
 
-const launcher = (page: Page) => page.getByRole("navigation", { name: "Launcher" });
 const notes = (page: Page) => page.frameLocator("iframe[title='Notes']");
 
 /** Installs Notes from its .zip and adds a note. */
@@ -22,14 +21,14 @@ describe("the Modules folder", () => {
     const page = await host.newPage({ unsupported: true });
     await page.getByRole("heading", { name: "This browser can't open your Modules folder" }).waitFor();
     assert.match(await page.locator("#gate").innerText(), /does not let a web page use a folder of your computer/);
-    assert.equal(await launcher(page).isVisible(), false);
+    assert.equal(await (await showLauncher(page)).isVisible(), false);
     assert.equal(await page.getByRole("button").count(), 0);
   });
 
   test("on the first launch, the User chooses the folder before anything else, told where data goes and about git", async () => {
     const page = await host.newPage({ choose: false });
     await page.getByRole("heading", { name: "Choose your Modules folder" }).waitFor();
-    assert.equal(await launcher(page).isVisible(), false);
+    assert.equal(await (await showLauncher(page)).isVisible(), false);
     const text = await page.locator("#gate").innerText();
     assert.match(text, /\.tessello\/data\//);
     assert.match(text, /secrets/);
@@ -50,9 +49,9 @@ describe("the Modules folder", () => {
 
     await page.reload();
     await page.getByRole("heading", { name: "Reconnect your Modules folder" }).waitFor();
-    assert.equal(await launcher(page).isVisible(), false);
+    assert.equal(await (await showLauncher(page)).isVisible(), false);
     await page.getByRole("button", { name: "Reconnect “modules”" }).click();
-    await launcher(page).getByRole("button", { name: "Notes" }).click();
+    await (await showLauncher(page)).getByRole("button", { name: "Notes" }).click();
     await notes(page).getByText("Buy oat milk").waitFor();
   });
 
@@ -64,7 +63,7 @@ describe("the Modules folder", () => {
 
     await page.reload();
     await chooseFolder(page);
-    await launcher(page).getByRole("button", { name: "Notes" }).click();
+    await (await showLauncher(page)).getByRole("button", { name: "Notes" }).click();
     await notes(page).getByText("Buy oat milk").waitFor();
   });
 
@@ -73,14 +72,14 @@ describe("the Modules folder", () => {
     await installNotesWithANote(page, "Buy oat milk");
     const before = await readFolder(page, "modules");
 
-    await launcher(page).getByRole("button", { name: "Modules folder: modules" }).click();
+    await (await showLauncher(page)).getByRole("button", { name: "Modules folder: modules" }).click();
     const settings = page.getByRole("dialog", { name: "Modules folder" });
     assert.match(await settings.innerText(), /“modules”/);
     await page.evaluate(() => Object.assign(window, { tesselloPick: "elsewhere" }));
     await settings.getByRole("button", { name: "Choose another folder…" }).click();
 
-    await launcher(page).getByRole("button", { name: "Modules folder: elsewhere" }).waitFor();
-    await launcher(page).getByRole("button", { name: "Notes" }).click();
+    await (await showLauncher(page)).getByRole("button", { name: "Modules folder: elsewhere" }).waitFor();
+    await (await showLauncher(page)).getByRole("button", { name: "Notes" }).click();
     await notes(page).getByText("Buy oat milk").waitFor();
     assert.deepEqual(await readFolder(page, "elsewhere"), before);
     assert.deepEqual(await readFolder(page, "modules"), before);

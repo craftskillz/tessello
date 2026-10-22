@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { dropFile, readFolder, useHost, zip } from "./browser.ts";
+import { dropFile, readFolder, showLauncher, useHost, zip } from "./browser.ts";
 
 const host = useHost();
 
@@ -53,7 +53,7 @@ test("a Module's storage is one indented JSON file per key under .tessello/data/
   assert.equal(files["notes.json"], `{\n  "key": "notes",\n  "value": [\n    {\n      "id": 1,\n      "text": "Buy oat milk"\n    }\n  ]\n}\n`);
 
   await page.reload();
-  await page.getByRole("navigation", { name: "Launcher" }).getByRole("button", { name: "Keys" }).click();
+  await (await showLauncher(page)).getByRole("button", { name: "Keys" }).click();
   await results.filter({ hasText: "{" }).waitFor();
   const sorted = Object.fromEntries(Object.keys(VALUES).sort().map((key) => [key, VALUES[key]]));
   assert.deepEqual(JSON.parse(await results.innerText()), sorted);

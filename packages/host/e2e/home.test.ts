@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import type { Page } from "playwright";
-import { dropFile, exampleFiles, removeFolder, useHost, writeFolder, zip, zipExample } from "./browser.ts";
+import { dropFile, exampleFiles, removeFolder, showLauncher, useHost, writeFolder, zip, zipExample } from "./browser.ts";
 
 const host = useHost();
 
@@ -10,7 +10,7 @@ async function install(page: Page, name: string, bytes: Uint8Array) {
   await dropFile(page, `${name}.zip`, bytes);
   await page.getByRole("dialog", { name: `Install ${name}?` }).getByRole("button", { name: "Accept and install" }).click();
   await page.locator(`iframe[title='${name}']`).waitFor();
-  await page.getByRole("button", { name: "Tessello" }).click();
+  await (await showLauncher(page)).getByRole("button", { name: "Tessello" }).click();
 }
 
 const widgets = (page: Page) => page.getByRole("list", { name: "Widgets" });
@@ -53,19 +53,43 @@ function probeModule(name: string, size?: "S" | "M" | "L", options: { silentWidg
 /** The names of the Widgets, in the order the Home shows them. */
 const order = (page: Page) => widgets(page).getByRole("listitem").evaluateAll((items) => items.map((item) => item.getAttribute("aria-label")));
 
+/** Waits until the Launcher is in the page, or has slid out of it to the left. */
+const launcherIs = (page: Page, shown: boolean) =>
+  page.waitForFunction((shown) => (document.getElementById("launcher")!.getBoundingClientRect().right > 0) === shown, shown);
+
 describe("the Home", () => {
+  test("keeps the Launcher beside it, which becomes a drawer behind a View, shown again near the left edge", async () => {
+    const page = await host.newPage();
+    await install(page, "Notes", await zipExample("notes"));
+    await page.mouse.move(600, 300);
+    await launcherIs(page, true);
+
+    await (await showLauncher(page)).getByRole("button", { name: "Notes" }).click();
+    await page.locator("iframe[title='Notes']").waitFor();
+    await launcherIs(page, false);
+
+    await page.mouse.move(0, 300);
+    await launcherIs(page, true);
+    await page.mouse.move(600, 300);
+    await launcherIs(page, false);
+
+    await (await showLauncher(page)).getByRole("button", { name: "Tessello" }).click();
+    await page.mouse.move(600, 300);
+    await launcherIs(page, true);
+  });
+
   test("shows the Notes Widget, which follows the notes written in the View and opens it", async () => {
     const page = await host.newPage();
     await install(page, "Notes", await zipExample("notes"));
     const widget = page.frameLocator("iframe[title='Notes widget']");
     await widget.getByText("No notes yet").waitFor();
 
-    await page.getByRole("navigation", { name: "Launcher" }).getByRole("button", { name: "Notes" }).click();
+    await (await showLauncher(page)).getByRole("button", { name: "Notes" }).click();
     const view = page.frameLocator("iframe[title='Notes']");
     await view.getByRole("textbox", { name: "New note" }).fill("Buy oat milk");
     await view.getByRole("button", { name: "Add note" }).click();
     await view.getByText("Buy oat milk").waitFor();
-    await page.getByRole("button", { name: "Tessello" }).click();
+    await (await showLauncher(page)).getByRole("button", { name: "Tessello" }).click();
     await widget.getByText("Buy oat milk").waitFor();
 
     await widget.getByRole("button", { name: "Open Notes" }).click();
@@ -88,7 +112,7 @@ describe("the Home", () => {
     const gap = 16;
     assert.deepEqual([medium.width, medium.height], [2 * small.width + gap, small.height]);
     assert.deepEqual([large.width, large.height], [2 * small.width + gap, 2 * small.height + gap]);
-    await page.getByRole("navigation", { name: "Launcher" }).getByRole("button", { name: "Plain" }).waitFor();
+    await (await showLauncher(page)).getByRole("button", { name: "Plain" }).waitFor();
   });
 
   test("the User reorders the Widgets with buttons or by dragging, and the order is kept after a reload", async () => {
@@ -131,7 +155,7 @@ describe("the Home", () => {
 
     await textbox.fill("Unsent draft");
     await textbox.blur();
-    await page.getByRole("button", { name: "Tessello" }).click();
+    await (await showLauncher(page)).getByRole("button", { name: "Tessello" }).click();
     await widget.getByRole("button", { name: "New note" }).click();
     await page.locator("iframe[title='Notes']").waitFor({ state: "visible" });
     assert.equal(await textbox.inputValue(), "Unsent draft", "the same View comes back");
@@ -147,11 +171,11 @@ describe("the Home", () => {
     const viewLog = view.locator("#log");
     await widgetLog.getByText(/^Probe widget (ready|visibility: .*true)$/).waitFor();
 
-    await page.getByRole("navigation", { name: "Launcher" }).getByRole("button", { name: "Probe" }).click();
+    await (await showLauncher(page)).getByRole("button", { name: "Probe" }).click();
     await viewLog.getByText("Probe view ready").waitFor();
     await widgetLog.getByText(/false$/).waitFor({ state: "attached" });
 
-    await page.getByRole("button", { name: "Tessello" }).click();
+    await (await showLauncher(page)).getByRole("button", { name: "Tessello" }).click();
     await widgetLog.getByText(/false,true$/).waitFor();
     await viewLog.getByText("Probe view visibility: false").waitFor({ state: "attached" });
 

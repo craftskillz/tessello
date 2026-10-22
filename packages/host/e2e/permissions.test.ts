@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import type { Page } from "playwright";
-import { dropFile, useHost, zip, zipExample } from "./browser.ts";
+import { dropFile, showLauncher, useHost, zip, zipExample } from "./browser.ts";
 
 const host = useHost();
 
@@ -68,7 +68,7 @@ describe("the consent screen", () => {
   test("cancelling installs nothing; accepting installs the Module with every Permission, which the Host shows", async () => {
     const page = await host.newPage();
     await fakeOpenMeteo(page);
-    const launcher = page.getByRole("navigation", { name: "Launcher" });
+    const launcher = await showLauncher(page);
     await dropFile(page, "meteo.zip", await zipExample("meteo"));
     await page.getByRole("dialog", { name: "Install Weather?" }).getByRole("button", { name: "Cancel" }).click();
     await page.reload();
@@ -82,7 +82,7 @@ describe("the consent screen", () => {
     await consent.getByRole("button", { name: "Accept and install" }).click();
     await page.frameLocator("iframe[title='Weather']").getByRole("heading", { name: "Paris" }).waitFor();
 
-    await launcher.getByRole("listitem").filter({ hasText: "Weather" }).getByRole("button", { name: "About" }).click();
+    await (await showLauncher(page)).getByRole("listitem").filter({ hasText: "Weather" }).getByRole("button", { name: "About" }).click();
     const granted = page.getByRole("dialog", { name: "About Weather" });
     assert.match(await granted.innerText(), /Limited[\s\S]*only these servers[\s\S]*api\.open-meteo\.com/);
   });
@@ -97,7 +97,7 @@ describe("the Weather Module", () => {
     const view = page.frameLocator("iframe[title='Weather']");
     await view.getByText("49 °C").waitFor();
 
-    await page.getByRole("button", { name: "Tessello" }).click();
+    await (await showLauncher(page)).getByRole("button", { name: "Tessello" }).click();
     const widget = page.frameLocator("iframe[title='Weather widget']");
     await widget.getByRole("button", { name: "Open the weather of Tokyo" }).getByText("36 °C").waitFor();
     assert.equal(await page.getByRole("listitem", { name: "Weather" }).getAttribute("class"), "widget size-M");

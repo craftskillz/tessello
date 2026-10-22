@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { dropFile, useHost, zip, zipExample } from "./browser.ts";
+import { dropFile, showLauncher, useHost, zip, zipExample } from "./browser.ts";
 
 const host = useHost();
 
@@ -13,11 +13,11 @@ describe("installing a Module", () => {
     await preview.waitFor();
     assert.match(await preview.innerText(), /Notes[\s\S]*1\.1\.0[\s\S]*@tessello\/notes[\s\S]*Jot down short notes/);
     assert.equal(await preview.getByRole("img", { name: "Notes icon" }).evaluate((img: HTMLImageElement) => img.naturalWidth > 0), true);
-    const launcher = page.getByRole("navigation", { name: "Launcher" });
+    const launcher = await showLauncher(page);
     assert.equal(await launcher.getByRole("button", { name: "Notes" }).count(), 0, "nothing is installed before confirming");
 
     await preview.getByRole("button", { name: "Accept and install" }).click();
-    await launcher.getByRole("button", { name: "Notes" }).click();
+    await (await showLauncher(page)).getByRole("button", { name: "Notes" }).click();
 
     const iframe = page.locator("iframe[title='Notes']");
     assert.equal(await iframe.getAttribute("sandbox"), "allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads");
@@ -43,7 +43,7 @@ describe("installing a Module", () => {
     await report.getByRole("button", { name: "Close" }).click();
 
     await page.reload();
-    assert.equal(await page.getByRole("navigation", { name: "Launcher" }).getByRole("listitem").count(), 0);
+    assert.equal(await (await showLauncher(page)).getByRole("listitem").count(), 0);
   });
 });
 
@@ -61,7 +61,7 @@ describe("persistence", () => {
     await notes.getByText("Call the plumber").waitFor();
 
     await page.reload();
-    await page.getByRole("navigation", { name: "Launcher" }).getByRole("button", { name: "Notes" }).click();
+    await (await showLauncher(page)).getByRole("button", { name: "Notes" }).click();
     await notes.getByText("Call the plumber").waitFor();
     assert.deepEqual(await notes.getByRole("listitem").allInnerTexts().then((items) => items.map((item) => item.split("\n")[0])), [
       "Call the plumber",

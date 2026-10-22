@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { strToU8, zipSync } from "fflate";
 import type { Page } from "playwright";
-import { dropFile, exampleFiles, readFolder, useHost, zipExample } from "./browser.ts";
+import { dropFile, exampleFiles, readFolder, showLauncher, useHost, zipExample } from "./browser.ts";
 
 const host = useHost();
 
@@ -25,11 +25,10 @@ async function installNotes(page: Page) {
   await notes.getByText("Buy oat milk").waitFor();
 }
 
-const launcher = (page: Page) => page.getByRole("navigation", { name: "Launcher" });
 
 /** Opens the About dialog of Notes, with the Permissions granted to it, from the Launcher. */
 async function openGranted(page: Page) {
-  await launcher(page).getByRole("listitem").filter({ hasText: "Notes" }).getByRole("button", { name: "About" }).click();
+  await (await showLauncher(page)).getByRole("listitem").filter({ hasText: "Notes" }).getByRole("button", { name: "About" }).click();
   return page.getByRole("dialog", { name: "About Notes" });
 }
 
@@ -55,7 +54,7 @@ describe("updating a Module", () => {
 
     await update.getByRole("button", { name: "Cancel" }).click();
     await page.reload();
-    await launcher(page).getByRole("button", { name: "Notes" }).click();
+    await (await showLauncher(page)).getByRole("button", { name: "Notes" }).click();
     const notes = page.frameLocator("iframe[title='Notes']");
     await notes.getByRole("heading", { name: "Notes", exact: true }).waitFor();
     assert.match(await grantedPermissions(page), /No network access/);
@@ -65,7 +64,7 @@ describe("updating a Module", () => {
     await notes.getByRole("heading", { name: "Notes 1.2" }).waitFor();
     await notes.getByText("Buy oat milk").waitFor();
     assert.match(await grantedPermissions(page), /only these servers[\s\S]*sync\.example\.com/);
-    assert.equal(await launcher(page).getByRole("listitem").count(), 1);
+    assert.equal(await (await showLauncher(page)).getByRole("listitem").count(), 1);
   });
 });
 
@@ -73,19 +72,19 @@ describe("uninstalling a Module", () => {
   test("after confirmation, removes the Module from the Launcher and the Home, with its folder and its data", async () => {
     const page = await host.newPage();
     await installNotes(page);
-    await page.getByRole("button", { name: "Tessello" }).click();
+    await (await showLauncher(page)).getByRole("button", { name: "Tessello" }).click();
     await page.getByRole("listitem", { name: "Notes" }).waitFor();
 
     await (await openGranted(page)).getByRole("button", { name: "Uninstall…" }).click();
     const confirm = page.getByRole("dialog", { name: "Uninstall Notes?" });
     assert.match(await confirm.innerText(), /folder “notes”[\s\S]*data/);
     await confirm.getByRole("button", { name: "Cancel" }).click();
-    assert.equal(await launcher(page).getByRole("button", { name: "Notes" }).count(), 1, "cancelling keeps the Module");
+    assert.equal(await (await showLauncher(page)).getByRole("button", { name: "Notes" }).count(), 1, "cancelling keeps the Module");
 
     await (await openGranted(page)).getByRole("button", { name: "Uninstall…" }).click();
     await page.getByRole("dialog", { name: "Uninstall Notes?" }).getByRole("button", { name: "Uninstall" }).click();
     await page.getByRole("heading", { name: "Your space is ready" }).waitFor();
-    assert.equal(await launcher(page).getByRole("listitem").count(), 0);
+    assert.equal(await (await showLauncher(page)).getByRole("listitem").count(), 0);
     assert.equal(await page.getByRole("listitem", { name: "Notes" }).count(), 0);
     assert.deepEqual(await readFolder(page, "modules/notes"), {});
     assert.deepEqual(await readFolder(page, "modules/.tessello/data/@tessello/notes"), {});

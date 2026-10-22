@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { after, before, describe, test } from "node:test";
 import type { Page } from "playwright";
-import { dropFile, useHost, zip, zipExample } from "./browser.ts";
+import { dropFile, showLauncher, useHost, zip, zipExample } from "./browser.ts";
 
 const host = useHost();
 // The Host as it is once deployed: a public site, to which Chrome applies Local Network Access.
@@ -53,7 +53,7 @@ describe("the Local Prometheus Module", () => {
     await view.getByRole("listitem").filter({ hasText: "ApiDown" }).waitFor();
     assert.equal(await view.getByText("Slow").count(), 0, "a pending alert is not firing");
 
-    await page.getByRole("button", { name: "Tessello" }).click();
+    await (await showLauncher(page)).getByRole("button", { name: "Tessello" }).click();
     const widget = page.frameLocator("iframe[title='Local Prometheus widget']");
     await widget.getByText("2/3 up").waitFor();
     await widget.getByText("1 alert firing").waitFor();

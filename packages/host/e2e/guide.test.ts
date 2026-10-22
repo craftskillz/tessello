@@ -2,7 +2,7 @@
 
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { dropFile, useHost, zip } from "./browser.ts";
+import { dropFile, showLauncher, useHost, zip } from "./browser.ts";
 
 const host = useHost();
 
@@ -49,7 +49,7 @@ describe("the User guide of a Module", () => {
     const page = await host.newPage();
     await dropFile(page, "lamp.zip", LAMP);
     await page.getByRole("dialog", { name: "Install Lamp?" }).getByRole("button", { name: "Accept and install" }).click();
-    const launcher = page.getByRole("navigation", { name: "Launcher" });
+    const launcher = await showLauncher(page);
     await launcher.getByRole("listitem").filter({ hasText: "Lamp" }).getByRole("button", { name: "About" }).click();
 
     const about = page.getByRole("dialog", { name: "About Lamp" });

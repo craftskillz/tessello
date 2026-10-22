@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { dropFile, useHost, zip } from "./browser.ts";
+import { dropFile, showLauncher, useHost, zip } from "./browser.ts";
 
 const host = useHost();
 
@@ -25,6 +25,6 @@ test("a View that does not send ready within 10 seconds is replaced by an error,
   await page.getByRole("alert").getByText("Silent is not responding").waitFor();
   assert.equal(await page.locator("iframe[title='Silent']").count(), 0);
 
-  await page.getByRole("button", { name: "Tessello" }).click();
+  await (await showLauncher(page)).getByRole("button", { name: "Tessello" }).click();
   await page.getByRole("heading", { name: "Your space is ready" }).waitFor();
 });

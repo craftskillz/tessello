@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 import type { Page } from "playwright";
-import { dropFile, readFolder, useHost, zipSample } from "./browser.ts";
+import { dropFile, readFolder, showLauncher, useHost, zipSample } from "./browser.ts";
 
 const host = useHost();
 
@@ -17,8 +17,8 @@ const dot = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR
 const view = (page: Page) => page.frameLocator("iframe[title='Watch Later']");
 const field = (page: Page) => view(page).getByRole("textbox", { name: "Paste a YouTube URL" });
 const widget = (page: Page) => page.frameLocator("iframe[title='Watch Later widget']");
-const goHome = (page: Page) => page.getByRole("button", { name: "Tessello" }).click();
-const openFromLauncher = (page: Page) => page.getByRole("navigation", { name: "Launcher" }).getByRole("button", { name: "Watch Later" }).click();
+const goHome = async (page: Page) => (await showLauncher(page)).getByRole("button", { name: "Tessello" }).click();
+const openFromLauncher = async (page: Page) => (await showLauncher(page)).getByRole("button", { name: "Watch Later" }).click();
 
 /**
  * Answers for YouTube, so that the tests do not depend on it: the thumbnails, and oEmbed with `title`, or as when

@@ -574,3 +574,67 @@ dialog code,
     --cell: calc((100vw - 3rem - var(--gap)) / 2);
   }
 }
+
+/*
+ * Behind a View, the Launcher slides out to the left: it comes back while the pointer is near the left edge of the
+ * page or over it, or while the keyboard moves in it. The edge lies above the View, whose iframe takes the pointer.
+ */
+.launcher-edge {
+  display: none;
+}
+
+body.drawer {
+  grid-template-columns: 1fr;
+  grid-template-rows: 1fr;
+}
+
+body.drawer .launcher-edge {
+  display: block;
+  position: fixed;
+  inset: 0 auto 0 0;
+  width: 0.5rem;
+  z-index: 1;
+}
+
+body.drawer .launcher {
+  position: fixed;
+  inset: 0 auto 0 0;
+  width: 14rem;
+  z-index: 2;
+  flex-direction: column;
+  border-right: 1px solid var(--border);
+  border-bottom: 0;
+  overflow-x: hidden;
+  transform: translateX(-100%);
+  transition: transform 0.2s ease;
+}
+
+body.drawer .launcher-edge:hover + .launcher,
+body.drawer .launcher:hover,
+body.drawer .launcher:has(:focus-visible) {
+  transform: none;
+  box-shadow: 0 0 1.5rem rgb(0 0 0 / 0.2);
+}
+
+body.drawer .launcher ul {
+  display: grid;
+}
+
+body.drawer .launcher button,
+body.drawer .launcher-install {
+  width: 100%;
+  white-space: normal;
+}
+
+body.drawer .launcher-install {
+  margin-left: 0;
+}
+
+body.drawer label.launcher-install {
+  margin-top: auto;
+}
+
+body.drawer.drawer-dismissed .launcher-edge + .launcher {
+  transform: translateX(-100%);
+  box-shadow: none;
+}

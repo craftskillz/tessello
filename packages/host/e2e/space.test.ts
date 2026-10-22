@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { describe, test } from "node:test";
-import { dropFile, useHost, zipExample } from "./browser.ts";
+import { dropFile, showLauncher, useHost, zipExample } from "./browser.ts";
 
 const host = useHost();
 
@@ -15,7 +15,7 @@ describe("export and import of the space", () => {
     await notes.getByRole("button", { name: "Add note" }).click();
     await notes.getByText("Buy oat milk").waitFor();
 
-    await page.getByRole("button", { name: /^Modules folder/ }).click();
+    await (await showLauncher(page)).getByRole("button", { name: /^Modules folder/ }).click();
     const [download] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "Export your space" }).click()]);
     assert.match(download.suggestedFilename(), /^tessello-space-\d{4}-\d{2}-\d{2}\.zip$/);
     const exported = await readFile(await download.path());
@@ -26,11 +26,11 @@ describe("export and import of the space", () => {
     const preview = other.getByRole("dialog", { name: "Import 1 Module?" });
     await preview.waitFor();
     assert.match(await preview.innerText(), /Notes[\s\S]*@tessello\/notes[\s\S]*What Notes can do/);
-    const launcher = other.getByRole("navigation", { name: "Launcher" });
+    const launcher = await showLauncher(other);
     assert.equal(await launcher.getByRole("button", { name: "Notes" }).count(), 0, "nothing is imported before accepting");
 
     await preview.getByRole("button", { name: "Accept and import" }).click();
-    await launcher.getByRole("button", { name: "Notes" }).click();
+    await (await showLauncher(other)).getByRole("button", { name: "Notes" }).click();
     await other.frameLocator("iframe[title='Notes']").getByText("Buy oat milk").waitFor();
   });
 
@@ -42,6 +42,6 @@ describe("export and import of the space", () => {
     await refusal.waitFor();
     assert.match(await refusal.innerText(), /not an export of Tessello[\s\S]*Nothing was imported/);
     await refusal.getByRole("button", { name: "Close" }).click();
-    assert.equal(await page.getByRole("navigation", { name: "Launcher" }).getByRole("listitem").count(), 0);
+    assert.equal(await (await showLauncher(page)).getByRole("listitem").count(), 0);
   });
 });

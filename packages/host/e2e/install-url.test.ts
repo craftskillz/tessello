@@ -1,16 +1,15 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import type { Page } from "playwright";
-import { chooseFolder, installLink, usePackageServer, useHost, zipExample } from "./browser.ts";
+import { chooseFolder, installLink, showLauncher, useHost, usePackageServer, zipExample } from "./browser.ts";
 
 const host = useHost();
 const packages = usePackageServer();
 
-const launcher = (page: Page) => page.getByRole("navigation", { name: "Launcher" });
 
 /** Pastes a URL in the field "Install from a URL" and starts the download. */
 async function installFromUrl(page: Page, url: string) {
-  await launcher(page).getByRole("button", { name: "Install from a URL…" }).click();
+  await (await showLauncher(page)).getByRole("button", { name: "Install from a URL…" }).click();
   const form = page.getByRole("dialog", { name: "Install from a URL" });
   await form.getByRole("textbox", { name: "URL of the .zip file" }).fill(url);
   await form.getByRole("button", { name: "Download" }).click();
@@ -28,7 +27,7 @@ describe("installing a Module from a URL", () => {
     await preview.getByRole("button", { name: "Accept and install" }).click();
 
     await page.frameLocator("iframe[title='Notes']").getByText("No notes yet.").waitFor();
-    assert.equal(await launcher(page).getByRole("button", { name: "Notes" }).count(), 1);
+    assert.equal(await (await showLauncher(page)).getByRole("button", { name: "Notes" }).count(), 1);
   });
 
   test("a server that sends no CORS header gives one message, which offers to download the .zip and drop it", async () => {
@@ -41,7 +40,7 @@ describe("installing a Module from a URL", () => {
     assert.match(await message.innerText(), /unreachable, or it does not allow Tessello to download the file/);
     assert.equal(await message.getByRole("link", { name: "Download the .zip file" }).getAttribute("href"), noCors);
     assert.match(await message.innerText(), /drop it on Tessello/);
-    assert.equal(await launcher(page).getByRole("listitem").count(), 0);
+    assert.equal(await (await showLauncher(page)).getByRole("listitem").count(), 0);
   });
 
   test("a download beyond the package size limit is stopped, and refused with package/too-large", async () => {
@@ -51,7 +50,7 @@ describe("installing a Module from a URL", () => {
     const report = page.getByRole("dialog", { name: "huge.zip can't be installed" });
     await report.waitFor();
     assert.match(await report.innerText(), /\[package\/too-large\]/);
-    assert.equal(await launcher(page).getByRole("listitem").count(), 0);
+    assert.equal(await (await showLauncher(page)).getByRole("listitem").count(), 0);
   });
 
   test("a URL that is neither https: nor a Creator's localhost is refused with an explanation, before any request", async () => {
@@ -78,10 +77,10 @@ describe("an install link", () => {
     await preview.waitFor();
     assert.match(await preview.innerText(), new RegExp(cors.replaceAll(".", "\\.")));
     assert.equal(page.url(), host.url, "the link is removed from the address");
-    assert.equal(await launcher(page).getByRole("button", { name: "Notes" }).count(), 0, "nothing is installed before accepting");
+    assert.equal(await (await showLauncher(page)).getByRole("button", { name: "Notes" }).count(), 0, "nothing is installed before accepting");
 
     await page.reload();
-    await launcher(page).waitFor();
+    await (await showLauncher(page)).waitFor();
     assert.equal(await page.getByRole("dialog").isVisible(), false, "a reload does not install again");
   });
 

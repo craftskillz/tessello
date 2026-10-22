@@ -336,6 +336,8 @@ function updateVisibility() {
   const pageShown = document.visibilityState === "visible";
   for (const cell of cells.values()) cell.surface?.setVisible(pageShown && !home.hidden);
   current?.surface?.setVisible(pageShown && !current.element.hidden);
+  // Behind a View, the Launcher becomes a drawer, shown again near the left edge of the page.
+  document.body.classList.toggle("drawer", home.hidden);
 }
 
 function clearStage() {
@@ -1174,6 +1176,12 @@ fileInput.addEventListener("change", () => {
 });
 byId<HTMLButtonElement>("install-url-button").addEventListener("click", showUrlForm);
 byId<HTMLButtonElement>("home-button").addEventListener("click", showHome);
+// A choice made with the pointer in the drawer sends it away, until the pointer comes back near the left edge.
+launcher.addEventListener("click", (event) => {
+  if (event.detail > 0) document.body.classList.add("drawer-dismissed");
+});
+launcher.addEventListener("pointerleave", () => document.body.classList.remove("drawer-dismissed"));
+document.querySelector(".launcher-edge")!.addEventListener("pointerenter", () => document.body.classList.remove("drawer-dismissed"));
 byId<HTMLButtonElement>("settings-button").addEventListener("click", showSettings);
 byId<HTMLElement>("home-empty-text").replaceChildren(...t.homeEmptyText(el("code", {}, ".zip")));
 // An install link opened in a tab where the Host already runs only changes the fragment.

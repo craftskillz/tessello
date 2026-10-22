@@ -4,7 +4,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import type { Page } from "playwright";
-import { dropFile, useHost, zip } from "./browser.ts";
+import { dropFile, showLauncher, useHost, zip } from "./browser.ts";
 
 const host = useHost();
 
@@ -48,7 +48,7 @@ const view = (page: Page) => page.frameLocator("iframe[title='Lamp']");
 const widget = (page: Page, title = "Lamp widget") => page.frameLocator(`iframe[title='${title}']`);
 
 async function chooseTheme(page: Page, theme: "Same as the system" | "Light" | "Dark") {
-  await page.getByRole("button", { name: "Settings" }).click();
+  await (await showLauncher(page)).getByRole("button", { name: "Settings" }).click();
   const settings = page.getByRole("dialog", { name: "Settings" });
   await settings.getByRole("radio", { name: theme }).check();
   await settings.getByRole("button", { name: "Close" }).click();
@@ -69,17 +69,17 @@ describe("the theme of the interface", () => {
     assert.equal(await background(page), "rgb(255, 255, 255)");
 
     // The View stays loaded behind the Home: both it and the Widget get the change.
-    await page.getByRole("button", { name: "Tessello" }).click();
+    await (await showLauncher(page)).getByRole("button", { name: "Tessello" }).click();
     await widget(page).getByText("Mode: light").waitFor();
     await chooseTheme(page, "Dark");
     await widget(page).getByText("Mode: dark").waitFor();
-    await page.getByRole("navigation", { name: "Launcher" }).getByRole("button", { name: "Lamp", exact: true }).click();
+    await (await showLauncher(page)).getByRole("button", { name: "Lamp", exact: true }).click();
     await view(page).getByText("Mode: dark").waitFor();
 
     // A choice ignores the system, and is kept.
     await page.emulateMedia({ colorScheme: "light" });
     await page.reload();
-    await page.getByRole("button", { name: "Tessello" }).waitFor();
+    await (await showLauncher(page)).getByRole("button", { name: "Tessello" }).waitFor();
     await widget(page).getByText("Mode: dark").waitFor();
 
     // Back to the system's: it follows the system as it changes.
@@ -96,7 +96,7 @@ describe("the language of the interface", () => {
     await installLamp(page);
     await view(page).getByText("Locale: en").waitFor();
 
-    await page.getByRole("button", { name: "Settings" }).click();
+    await (await showLauncher(page)).getByRole("button", { name: "Settings" }).click();
     await page.getByRole("dialog", { name: "Settings" }).getByRole("combobox", { name: "Language" }).selectOption("fr");
 
     // Tessello restarts in French.
@@ -106,6 +106,7 @@ describe("the language of the interface", () => {
     await widget(page, "Widget Lamp").getByText("Locale: fr").waitFor();
     await launcher.getByRole("button", { name: "Lamp", exact: true }).click();
     await view(page).getByText("Locale: fr").waitFor();
+    await page.mouse.move(0, 300);
     await page.getByRole("button", { name: "Réglages" }).click();
     await page.getByRole("dialog", { name: "Réglages" }).getByRole("radio", { name: "Sombre" }).waitFor();
 

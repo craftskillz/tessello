@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 import type { Page } from "playwright";
-import { dropFile, readFolder, useHost, zipSample } from "./browser.ts";
+import { dropFile, readFolder, showLauncher, useHost, zipSample } from "./browser.ts";
 
 const host = useHost();
 
@@ -29,8 +29,8 @@ async function stored(page: Page, key: "tasks" | "notes" | "links", written: (va
 
 const view = (page: Page) => page.frameLocator("iframe[title='Survival Kit']");
 const widget = (page: Page) => page.frameLocator("iframe[title='Survival Kit widget']");
-const goHome = (page: Page) => page.getByRole("button", { name: "Tessello" }).click();
-const openFromLauncher = (page: Page) => page.getByRole("navigation", { name: "Launcher" }).getByRole("button", { name: "Survival Kit" }).click();
+const goHome = async (page: Page) => (await showLauncher(page)).getByRole("button", { name: "Tessello" }).click();
+const openFromLauncher = async (page: Page) => (await showLauncher(page)).getByRole("button", { name: "Survival Kit" }).click();
 
 async function addTask(page: Page, text: string, priority: "Normal" | "Urgent" | "Later") {
   await view(page).getByRole("textbox", { name: "New task" }).fill(text);
@@ -176,7 +176,7 @@ describe("the Survival Kit sample Module", () => {
   test("its User guide opens from the Launcher, with its screenshots", async () => {
     const page = await host.newPage();
     await install(page);
-    const launcher = page.getByRole("navigation", { name: "Launcher" });
+    const launcher = await showLauncher(page);
     await launcher.getByRole("listitem").filter({ hasText: "Survival Kit" }).getByRole("button", { name: "About" }).click();
     await page.getByRole("dialog", { name: "About Survival Kit" }).getByRole("button", { name: "User guide" }).click();
     const guide = page.frameLocator("iframe[title='Survival Kit: User guide']");
