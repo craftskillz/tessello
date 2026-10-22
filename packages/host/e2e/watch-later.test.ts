@@ -48,7 +48,7 @@ async function install(page: Page) {
 }
 
 /** The videos as the Host wrote them, under the key `videos`. A file read while the Host writes it may fail: it is read again. */
-async function storedVideos(page: Page): Promise<{ videoId: string; title: string; metaStatus: string }[]> {
+async function storedVideos(page: Page): Promise<{ videoId: string; title: string; metaStatus: string; watched: boolean; note?: string; tags: string[] }[]> {
   for (let tries = 0; ; tries++) {
     try {
       const file = (await readFolder(page, "modules/.tessello/data/@craftskills/watch-later"))["videos.json"];
@@ -58,6 +58,19 @@ async function storedVideos(page: Page): Promise<{ videoId: string; title: strin
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
   }
+}
+
+/** The settings as the Host wrote them, under the key `settings`; null when none was written. */
+async function storedSettings(page: Page): Promise<{ hideWatched: boolean } | null> {
+  const file = (await readFolder(page, "modules/.tessello/data/@craftskills/watch-later"))["settings.json"];
+  return file ? JSON.parse(file).value : null;
+}
+
+/** Adds a video by its URL, typed in the field, and waits for its title. */
+async function addByField(page: Page, url: string, title = "Never Gonna Give You Up") {
+  await field(page).fill(url);
+  await field(page).press("Enter");
+  await view(page).getByRole("link", { name: title, exact: true }).first().waitFor();
 }
 
 /** Waits until the videos the Host wrote pass `written`, so that a reload cannot cut a write short. */
@@ -114,7 +127,7 @@ describe("the Watch Later sample Module", () => {
     await view(page).getByRole("link", { name: "Never Gonna Give You Up", exact: true }).waitFor();
     await paste("body", `youtube.com/shorts/${ID}`);
     await paste("body", "not a video");
-    await paste("input", `https://youtu.be/${ID}`);
+    await paste("input[type=text]", `https://youtu.be/${ID}`);
     assert.equal(await field(page).inputValue(), "");
     await stored(page, (videos) => videos.length === 1 && videos[0].metaStatus === "ok");
     assert.equal(await view(page).getByRole("article").count(), 1);
@@ -202,5 +215,81 @@ describe("the Watch Later sample Module", () => {
     await field(page).press("Enter");
     await view(page).getByRole("alert").getByText(/Your last change could not be saved: the storage of the Watch Later Module is full/).waitFor();
     await view(page).getByRole("link", { name: /^x+$/ }).waitFor();
+  });
+
+  test("a video marked as watched is hidden, shown again when the watched are not hidden, and its note survives a reload", async () => {
+    const page = await host.newPage();
+    await fakeYouTube(page);
+    await install(page);
+    await addByField(page, `https://www.youtube.com/watch?v=${ID}`);
+    await stored(page, (videos) => videos[0]?.metaStatus === "ok");
+    const card = view(page).getByRole("article", { name: "Never Gonna Give You Up" });
+    const hideWatched = view(page).getByRole("checkbox", { name: "Hide watched" });
+    assert.equal(await hideWatched.isChecked(), true, "the watched videos are hidden by default");
+
+    await card.getByRole("button", { name: "Watched" }).click();
+    await card.waitFor({ state: "detached" });
+    const notice = view(page).getByRole("status");
+    await notice.getByText("Marked as watched").waitFor();
+    await stored(page, (videos) => videos[0]?.watched === true);
+
+    // Undo brings it back as to watch.
+    await notice.getByRole("button", { name: "Undo" }).click();
+    await card.waitFor();
+    await stored(page, (videos) => videos[0]?.watched === false);
+    await card.getByRole("button", { name: "Watched" }).click();
+    await card.waitFor({ state: "detached" });
+
+    await hideWatched.uncheck();
+    await card.waitFor();
+    assert.equal(await card.getByRole("button", { name: "Watched" }).getAttribute("aria-pressed"), "true");
+    await card.getByText("Watched", { exact: true }).first().waitFor();
+
+    await card.getByRole("button", { name: "Details" }).click();
+    const details = view(page).getByRole("dialog", { name: "Never Gonna Give You Up" });
+    await details.getByText("Rick Astley").waitFor();
+    const note = details.getByRole("textbox", { name: "Note" });
+    assert.equal(await note.getAttribute("maxlength"), "2000");
+    await note.fill("For the talk on Friday");
+    // Saved when the field is left.
+    await note.blur();
+    await stored(page, (videos) => videos[0]?.note === "For the talk on Friday");
+    await details.getByRole("button", { name: "Close" }).click();
+    await details.waitFor({ state: "detached" });
+    await card.getByRole("img", { name: "Has a note" }).waitFor();
+    await stored(page, () => true);
+    for (let tries = 0; (await storedSettings(page))?.hideWatched !== false; tries++) {
+      assert.ok(tries < 50, "the Host did not write the settings");
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+
+    await page.reload();
+    await openFromLauncher(page);
+    assert.equal(await view(page).getByRole("checkbox", { name: "Hide watched" }).isChecked(), false, "the choice is kept");
+    await card.getByRole("button", { name: "Details" }).click();
+    assert.equal(await details.getByRole("textbox", { name: "Note" }).inputValue(), "For the talk on Friday");
+  });
+
+  test("a video is deleted only once the User confirms it", async () => {
+    const page = await host.newPage();
+    await fakeYouTube(page);
+    await install(page);
+    await addByField(page, `https://www.youtube.com/watch?v=${ID}`);
+    const card = view(page).getByRole("article", { name: "Never Gonna Give You Up" });
+    const details = view(page).getByRole("dialog", { name: "Never Gonna Give You Up" });
+    const confirmation = view(page).getByRole("dialog", { name: "Delete this video?" });
+
+    await card.getByRole("button", { name: "Details" }).click();
+    await details.getByRole("button", { name: "Delete" }).click();
+    await confirmation.getByRole("button", { name: "Cancel" }).click();
+    await confirmation.waitFor({ state: "detached" });
+    await card.waitFor();
+
+    await details.getByRole("button", { name: "Delete" }).click();
+    await confirmation.getByRole("button", { name: "Delete" }).click();
+    await card.waitFor({ state: "detached" });
+    await details.waitFor({ state: "detached" });
+    await view(page).getByText(/^No videos yet/).waitFor();
+    await stored(page, (videos) => videos.length === 0);
   });
 });
