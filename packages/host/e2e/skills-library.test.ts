@@ -311,4 +311,181 @@ describe("the Skills Library sample Module", () => {
     assert.equal(await view(page).getByRole("listitem").count(), 1);
     assert.equal((await stored(page, () => true)).length, 1);
   });
+
+  // The edit panel, the quadrants and the filters (skills-library ticket 03).
+
+  const panelOf = (page: Page, name: string) => view(page).getByRole("dialog", { name });
+  const openPanel = async (page: Page, name: string) => {
+    await view(page).getByRole("button", { name: `Edit ${name}` }).click();
+    const panel = panelOf(page, name);
+    await panel.waitFor();
+    return panel;
+  };
+  /** Waits until the settings the Host wrote pass `written`. */
+  async function storedSettings(page: Page, written: (settings: any) => boolean) {
+    for (let tries = 0; tries < 50; tries++) {
+      const settings = await storedFile(page, "settings.json");
+      if (settings && written(settings)) return settings as any;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    assert.fail("the Host did not write the settings");
+  }
+
+  test("a click on a skill opens its panel, where each change is saved at once; Escape closes it", async () => {
+    const page = await host.newPage();
+    await install(page);
+    await addByHand(page, "Grill me");
+    await stored(page, (skills) => skills.length === 1);
+
+    // The panel opens for the skill just added, and from a click on its row.
+    await panelOf(page, "Grill me").waitFor();
+    await page.keyboard.press("Escape");
+    await panelOf(page, "Grill me").waitFor({ state: "hidden" });
+    await view(page).getByRole("listitem").getByText("Design & planning").click();
+    const panel = panelOf(page, "Grill me");
+    await panel.waitFor();
+
+    await panel.getByLabel("Description").fill("Questions until it is clear");
+    await panel.getByRole("radio", { name: "Recommended" }).check();
+    await panel.getByRole("radio", { name: "5 out of 5" }).check({ force: true });
+    await panel.getByLabel("Quadrant").selectOption({ label: "Code & tests" });
+    await panel.getByLabel("Notes").fill("# Great\n\nUse it **often**.");
+
+    const [skill] = await stored(page, ([item]) => item?.ring === "recommended" && item.score === 5 && item.quadrant === 1 && item.notes.startsWith("# Great") && item.description !== "");
+    assert.equal(skill.description, "Questions until it is clear");
+    assert.ok(skill.updatedAt > skill.addedAt);
+
+    // The list shows the changes behind the panel.
+    const row = view(page).getByRole("listitem").filter({ hasText: "Grill me" });
+    await row.getByText("Recommended", { exact: true }).waitFor();
+    await row.getByRole("img", { name: "5 out of 5" }).waitFor();
+    await row.getByText("Code & tests").waitFor();
+
+    await panel.getByRole("button", { name: "Close" }).click();
+    await panel.waitFor({ state: "hidden" });
+  });
+
+  test("the score is set with the keyboard", async () => {
+    const page = await host.newPage();
+    await install(page);
+    await addByHand(page, "Keys");
+    const panel = panelOf(page, "Keys");
+    await panel.waitFor();
+    await panel.getByRole("radio", { name: "3 out of 5" }).focus();
+    await page.keyboard.press("ArrowRight");
+    await page.keyboard.press("ArrowRight");
+    assert.ok(await panel.getByRole("radio", { name: "5 out of 5" }).isChecked());
+    await stored(page, ([item]) => item?.score === 5);
+  });
+
+  test("a blank name, notes over 8,000 characters and the URL of another skill are refused with a message", async () => {
+    const page = await host.newPage();
+    await install(page);
+    await addByHand(page, "Taken", "https://example.com/taken");
+    await panelOf(page, "Taken").getByRole("button", { name: "Close" }).click();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await addByHand(page, "Mine");
+    await stored(page, (skills) => skills.length === 2);
+    const panel = panelOf(page, "Mine");
+    await panel.waitFor();
+
+    await panel.getByLabel("Name").fill("");
+    await panel.getByText("A name is required.").waitFor();
+    await panel.getByLabel("Name").fill("Mine, renamed");
+    await panel.getByText("A name is required.").waitFor({ state: "hidden" });
+    await panelOf(page, "Mine, renamed").waitFor();
+
+    await panel.getByLabel("Notes").fill("x".repeat(8001));
+    await panel.getByText("Notes are limited to 8,000 characters.").waitFor();
+    assert.equal((await panel.getByLabel("Notes").inputValue()).length, 8001, "what was typed is kept to be trimmed");
+    await panel.getByLabel("Notes").fill("x".repeat(8000));
+    await panel.getByText("Notes are limited to 8,000 characters.").waitFor({ state: "hidden" });
+
+    await panel.getByLabel("URL").fill("https://example.com/taken/");
+    await panel.getByLabel("URL").blur();
+    await panel.getByText("Another skill already has this URL.").waitFor();
+
+    const skills = await stored(page, (list) => list.some((item) => item.notes === "x".repeat(8000)));
+    const mine = skills.find((item) => item.name === "Mine, renamed");
+    assert.ok(mine);
+    assert.equal(mine.sourceUrl, undefined, "the refused URL was not saved");
+    assert.equal(skills.length, 2);
+  });
+
+  test("the quadrants are renamed, the Library is filtered and searched, and all of it is kept after a reload", async () => {
+    const page = await host.newPage();
+    await install(page);
+    await addByHand(page, "Élégant plan");
+    await stored(page, (skills) => skills.length === 1);
+    const panel = panelOf(page, "Élégant plan");
+    await panel.getByRole("radio", { name: "Try" }).check();
+    await panel.getByLabel("Quadrant").selectOption({ label: "Writing & docs" });
+    await panel.getByRole("radio", { name: "4 out of 5" }).check({ force: true });
+    await panel.getByLabel("Notes").fill("kept");
+    await panel.getByRole("button", { name: "Close" }).click();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await addByHand(page, "Other thing");
+    await panelOf(page, "Other thing").getByRole("button", { name: "Close" }).click();
+    const before = await stored(page, (skills) => skills.length === 2 && skills.some((item) => item.notes === "kept" && item.quadrant === 2 && item.ring === "try" && item.score === 4));
+    const plan = before.find((item) => item.name === "Élégant plan")!;
+    assert.ok(plan.updatedAt > plan.addedAt);
+
+    // Renaming a quadrant changes the name shown, and no skill's quadrant.
+    await view(page).getByRole("button", { name: "Rename quadrants" }).click();
+    const dialog = view(page).getByRole("dialog", { name: "Rename quadrants" });
+    await dialog.getByLabel("Quadrant 3", { exact: true }).fill("");
+    await dialog.getByText("A quadrant name is required.").waitFor();
+    await dialog.getByLabel("Quadrant 3", { exact: true }).fill("Prose");
+    await dialog.getByText("A quadrant name is required.").waitFor({ state: "hidden" });
+    await dialog.getByRole("button", { name: "Close" }).click();
+    await view(page).getByRole("listitem").filter({ hasText: "Élégant plan" }).getByText("Prose").waitFor();
+
+    // Filters: a ring, a quadrant, and a search without case or accents.
+    const items = view(page).getByRole("listitem");
+    await view(page).getByRole("button", { name: "Try", exact: true }).click();
+    assert.equal(await view(page).getByRole("button", { name: "Try", exact: true }).getAttribute("aria-pressed"), "true");
+    await items.nth(0).waitFor();
+    assert.equal(await items.count(), 1);
+    await view(page).getByRole("button", { name: "Clear filters" }).click();
+    assert.equal(await items.count(), 2);
+    await view(page).getByRole("button", { name: "Prose", exact: true }).click();
+    assert.equal(await items.count(), 1);
+    await view(page).getByLabel("Search by name").fill("ELEGANT");
+    assert.equal(await items.count(), 1);
+    await view(page).getByLabel("Search by name").fill("nothing like it");
+    await view(page).getByText("No skill matches these filters.").waitFor();
+    await view(page).getByLabel("Search by name").fill("elegant");
+    await items.first().waitFor();
+
+    const settings = await storedSettings(page, (value) => value.quadrants?.[2] === "Prose" && value.filters?.query === "elegant");
+    assert.deepEqual(settings.filters, { rings: [], quadrants: [2], query: "elegant" });
+    assert.deepEqual(settings.quadrants, ["Design & planning", "Code & tests", "Prose", "Tooling & workflow"]);
+    const after = await stored(page, () => true);
+    assert.deepEqual(after.map((item) => item.quadrant).sort(), [0, 2], "renaming moved no skill");
+
+    await page.reload();
+    await openFromLauncher(page);
+    assert.equal(await view(page).getByLabel("Search by name").inputValue(), "elegant");
+    assert.equal(await view(page).getByRole("button", { name: "Prose", exact: true }).getAttribute("aria-pressed"), "true");
+    await items.first().waitFor();
+    assert.equal(await items.count(), 1);
+    const reopened = await openPanel(page, "Élégant plan");
+    assert.ok(await reopened.getByRole("radio", { name: "Try" }).isChecked());
+    assert.ok(await reopened.getByRole("radio", { name: "4 out of 5" }).isChecked());
+    assert.equal(await reopened.getByLabel("Quadrant").inputValue(), "2");
+    assert.equal(await reopened.getByLabel("Notes").inputValue(), "kept");
+  });
+
+  test("a skill added while the filters hide it clears them, so that its row is shown", async () => {
+    const page = await host.newPage();
+    await install(page);
+    await addByHand(page, "First");
+    await panelOf(page, "First").getByRole("button", { name: "Close" }).click();
+    await view(page).getByRole("button", { name: "Try", exact: true }).click();
+    await view(page).getByText("No skill matches these filters.").waitFor();
+
+    await addByHand(page, "Hidden by the filter");
+    await view(page).getByRole("listitem").filter({ hasText: "Hidden by the filter" }).waitFor();
+    assert.equal(await view(page).getByRole("button", { name: "Try", exact: true }).getAttribute("aria-pressed"), "false");
+  });
 });

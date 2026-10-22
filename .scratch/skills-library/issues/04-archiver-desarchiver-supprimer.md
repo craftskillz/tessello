@@ -16,3 +16,4 @@ Spec parente : `.scratch/skills-library/spec.md`. Vocabulaire : `GLOSSARY.md` et
 ## Comments
 
 - Depuis le ticket 02, une URL déjà présente met en évidence la Skill existante. Si elle est archivée et que « Show archived » est éteint, sa ligne n'est pas affichée : il faut alors l'afficher (ou allumer l'interrupteur) avant de la mettre en évidence.
+- Depuis le ticket 03, les boutons Archive / Unarchive / Delete vont dans `src/view/EditPanel.svelte`. « Show archived » s'ajoute aux filtres (`Filters` et `filterSkills` dans `src/lib/skills.ts`) ; `show` dans `View.svelte` efface les filtres qui cachent une Skill, et devra aussi montrer les archivées quand un doublon archivé est trouvé.
