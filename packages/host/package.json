@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "Tessello Host: the static web app where the User installs and opens Modules.",
+  "license": "MIT",
   "type": "module",
   "dependencies": {
     "@tessello/convention": "0.1.0",

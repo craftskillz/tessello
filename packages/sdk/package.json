@@ -2,6 +2,7 @@
   "name": "@tessello/sdk",
   "version": "0.1.0",
   "description": "Tessello SDK: talk to the Host from a Module, without dependencies.",
+  "license": "MIT",
   "type": "module",
   "exports": "./src/index.ts"
 }

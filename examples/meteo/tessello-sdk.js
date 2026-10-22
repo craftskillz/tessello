@@ -1,4 +1,5 @@
 // Tessello SDK (built from @tessello/sdk). Copy this file into your Module and import it with a relative path.
+// Copyright (c) 2026 Medaghri-Alaoui Youssef. MIT License: https://opensource.org/licenses/MIT
 class TesselloError extends Error {
   code;
   constructor(code, message) {

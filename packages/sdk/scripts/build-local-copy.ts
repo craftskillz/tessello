@@ -13,7 +13,8 @@ export const LOCAL_COPIES = ["notes", "meteo", "prometheus"].map((name) => at(`.
 export async function buildLocalCopy(): Promise<string> {
   const source = await readFile(at("../src/index.ts"), "utf8");
   const { code } = await transform(source, { loader: "ts", format: "esm", target: "es2022" });
-  return `// Tessello SDK (built from @tessello/sdk). Copy this file into your Module and import it with a relative path.\n${code}`;
+  // The MIT License asks for its notice in every copy, and this file is copied on its own into Modules.
+  return `// Tessello SDK (built from @tessello/sdk). Copy this file into your Module and import it with a relative path.\n// Copyright (c) 2026 Medaghri-Alaoui Youssef. MIT License: https://opensource.org/licenses/MIT\n${code}`;
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

@@ -2,6 +2,7 @@
   "name": "@tessello/host-core",
   "version": "0.1.0",
   "description": "Tessello Host core, without interface: Module storage and the message protocol.",
+  "license": "MIT",
   "type": "module",
   "exports": "./src/index.ts",
   "dependencies": {

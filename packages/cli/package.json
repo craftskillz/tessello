@@ -2,6 +2,7 @@
   "name": "tessello",
   "version": "0.1.0",
   "description": "Tessello command-line tool.",
+  "license": "MIT",
   "type": "module",
   "bin": {
     "tessello": "./src/cli.ts"
