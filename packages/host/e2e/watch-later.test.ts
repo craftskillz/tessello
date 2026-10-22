@@ -63,7 +63,7 @@ async function storedVideos(page: Page): Promise<{ videoId: string; title: strin
 }
 
 /** The settings as the Host wrote them, under the key `settings`; null when none was written. */
-async function storedSettings(page: Page): Promise<{ hideWatched: boolean } | null> {
+async function storedSettings(page: Page): Promise<{ hideWatched: boolean; collapsed?: string[]; order?: Record<string, string[]>; sections?: string[] } | null> {
   const file = (await readFolder(page, "modules/.tessello/data/@craftskills/watch-later"))["settings.json"];
   return file ? JSON.parse(file).value : null;
 }
@@ -337,6 +337,210 @@ describe("the Watch Later sample Module", () => {
     await row("No tag").locator(`[data-video-id="${ID}"]`).waitFor();
     assert.equal(await row("80s").count(), 0);
     await stored(page, (videos) => videos.find((video) => video.videoId === ID)?.tags.length === 0);
+  });
+
+  test("the tags of a group are rows of a section, which folds, and stays folded after a reload", async () => {
+    const page = await host.newPage();
+    await fakeYouTube(page);
+    await install(page);
+    const OTHER = "aaaaaaaaaaa";
+    const row = (name: string) => view(page).getByRole("region", { name, exact: true });
+    const group = view(page).getByRole("button", { name: /^Music \d+ videos?$/ });
+    const details = view(page).getByRole("dialog");
+    const tag = details.getByRole("combobox", { name: "Add a tag" });
+
+    await addByField(page, `https://www.youtube.com/watch?v=${ID}`);
+    await addByField(page, `https://youtu.be/${OTHER}`);
+    await view(page).locator(`[data-video-id="${ID}"]`).getByRole("button", { name: "Details" }).click();
+    await tag.fill("Music / Jazz");
+    await tag.press("Enter");
+    await tag.fill("80s");
+    await tag.press("Enter");
+    await details.getByRole("button", { name: "Close" }).click();
+    await view(page).locator(`[data-video-id="${OTHER}"]`).getByRole("button", { name: "Details" }).click();
+    await tag.fill("music/Rock");
+    await tag.press("Enter");
+    await details.getByRole("button", { name: "Remove the tag Music/Rock" }).waitFor();
+    await details.getByRole("button", { name: "Close" }).click();
+
+    // A row of the group is named by its whole tag for a screen reader, and shows the name of the tag in the group.
+    await row("Music/Jazz").getByRole("heading", { name: "Jazz", exact: true }).waitFor();
+    await row("Music/Rock").locator(`[data-video-id="${OTHER}"]`).waitFor();
+    assert.deepEqual(await view(page).getByRole("region").evaluateAll((rows) => rows.map((row) => row.getAttribute("aria-label"))), [
+      "80s",
+      "Music/Jazz",
+      "Music/Rock",
+    ]);
+    assert.equal(await group.getAttribute("aria-expanded"), "true");
+    await group.getByText("2 videos", { exact: true }).waitFor();
+
+    await group.click();
+    assert.equal(await group.getAttribute("aria-expanded"), "false");
+    assert.equal(await row("Music/Jazz").count(), 0, "a folded group hides its rows");
+    await row("80s").getByRole("article").waitFor();
+    for (let tries = 0; tries < 50 && (await storedSettings(page))?.collapsed?.join() !== "Music"; tries++) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    assert.deepEqual((await storedSettings(page))?.collapsed, ["Music"]);
+
+    await page.reload();
+    await openFromLauncher(page);
+    await row("80s").getByRole("article").waitFor();
+    assert.equal(await group.getAttribute("aria-expanded"), "false");
+    assert.equal(await row("Music/Rock").count(), 0);
+    await group.click();
+    await row("Music/Rock").locator(`[data-video-id="${OTHER}"]`).waitFor();
+  });
+
+  test("a card dragged in its row changes place, dragged to another row changes tag, and both are kept after a reload", async () => {
+    const page = await host.newPage();
+    await fakeYouTube(page);
+    await install(page);
+    const OTHER = "aaaaaaaaaaa";
+    const THIRD = "bbbbbbbbbbb";
+    const row = (name: string) => view(page).getByRole("region", { name, exact: true });
+    const card = (videoId: string) => view(page).locator(`li:has([data-video-id="${videoId}"])`);
+    const order = (name: string) => row(name).locator("li").evaluateAll((items) => items.map((item) => item.querySelector("[data-video-id]")?.getAttribute("data-video-id")));
+    const details = view(page).getByRole("dialog");
+
+    await addByField(page, `https://www.youtube.com/watch?v=${ID}`);
+    await addByField(page, `https://youtu.be/${OTHER}`);
+    await addByField(page, `https://youtu.be/${THIRD}`);
+    assert.deepEqual(await order("No tag"), [THIRD, OTHER, ID], "the newest first");
+
+    // Dropped on the left half of a card, a card goes before it.
+    await card(ID).dragTo(card(THIRD), { targetPosition: { x: 10, y: 60 } });
+    assert.deepEqual(await order("No tag"), [ID, THIRD, OTHER]);
+    assert.equal((await view(page).getByRole("status").textContent())?.trim(), "", "a moved card is not taken for a dropped link");
+    for (let tries = 0; tries < 50 && (await storedSettings(page))?.order?.[""]?.join() !== [ID, THIRD, OTHER].join(); tries++) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+
+    await card(THIRD).getByRole("button", { name: "Details" }).click();
+    const tag = details.getByRole("combobox", { name: "Add a tag" });
+    await tag.fill("Music");
+    await tag.press("Enter");
+    await details.getByRole("button", { name: "Close" }).click();
+    await row("Music").getByRole("article").waitFor();
+
+    // Dropped on another row, it leaves its row and takes the tag of the other.
+    await card(OTHER).dragTo(card(THIRD), { targetPosition: { x: 10, y: 60 } });
+    assert.deepEqual(await order("Music"), [OTHER, THIRD]);
+    assert.deepEqual(await order("No tag"), [ID]);
+    await stored(page, (videos) => videos.find((video) => video.videoId === OTHER)?.tags.join() === "Music");
+    for (let tries = 0; tries < 50 && (await storedSettings(page))?.order?.music?.join() !== [OTHER, THIRD].join(); tries++) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+
+    await page.reload();
+    await openFromLauncher(page);
+    await row("Music").getByRole("article").first().waitFor();
+    assert.deepEqual(await order("Music"), [OTHER, THIRD]);
+    assert.deepEqual(await order("No tag"), [ID]);
+  });
+
+  test("a section dragged by its header goes above or below another, in the View or in its group, and stays there after a reload", async () => {
+    const page = await host.newPage();
+    // Every section in sight, so that the drag needs no scrolling.
+    await page.setViewportSize({ width: 1280, height: 1400 });
+    await fakeYouTube(page);
+    await install(page);
+    const OTHER = "aaaaaaaaaaa";
+    const row = (name: string) => view(page).getByRole("region", { name, exact: true });
+    const regions = () => view(page).getByRole("region").evaluateAll((rows) => rows.map((row) => row.getAttribute("aria-label")));
+    const group = view(page).locator(".wl-group");
+    const details = view(page).getByRole("dialog");
+    const tag = details.getByRole("combobox", { name: "Add a tag" });
+
+    await addByField(page, `https://www.youtube.com/watch?v=${ID}`);
+    await addByField(page, `https://youtu.be/${OTHER}`);
+    await view(page).locator(`[data-video-id="${ID}"]`).getByRole("button", { name: "Details" }).click();
+    await tag.fill("Music/Jazz");
+    await tag.press("Enter");
+    await tag.fill("80s");
+    await tag.press("Enter");
+    await details.getByRole("button", { name: "Close" }).click();
+    await view(page).locator(`[data-video-id="${OTHER}"]`).getByRole("button", { name: "Details" }).click();
+    await tag.fill("Music/Rock");
+    await tag.press("Enter");
+    await details.getByRole("button", { name: "Remove the tag Music/Rock" }).waitFor();
+    await details.getByRole("button", { name: "Close" }).click();
+    await row("Music/Rock").getByRole("article").waitFor();
+    assert.deepEqual(await regions(), ["80s", "Music/Jazz", "Music/Rock"]);
+
+    // Dropped on the lower half of the group, the row goes below it.
+    const box = (await group.boundingBox())!;
+    await row("80s").locator("header").dragTo(group, { targetPosition: { x: 40, y: box.height - 10 } });
+    assert.deepEqual(await regions(), ["Music/Jazz", "Music/Rock", "80s"]);
+    assert.equal((await view(page).getByRole("status").textContent())?.trim(), "", "a moved section is not taken for a dropped link");
+
+    // A row of the group, dropped on the upper half of the other, goes above it.
+    await row("Music/Rock").locator("header").dragTo(row("Music/Jazz"), { targetPosition: { x: 40, y: 10 } });
+    assert.deepEqual(await regions(), ["Music/Rock", "Music/Jazz", "80s"]);
+
+    // A row of a group stays in it: dropped beside a section of the View, it does not move.
+    await row("Music/Jazz").locator("header").dragTo(row("80s"), { targetPosition: { x: 40, y: 10 } });
+    assert.deepEqual(await regions(), ["Music/Rock", "Music/Jazz", "80s"]);
+
+    for (let tries = 0; tries < 50 && (await storedSettings(page))?.sections?.join() !== "music/rock,music/jazz,music/,80s"; tries++) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    assert.deepEqual((await storedSettings(page))?.sections, ["music/rock", "music/jazz", "music/", "80s"]);
+
+    await page.reload();
+    await openFromLauncher(page);
+    await row("80s").getByRole("article").waitFor();
+    assert.deepEqual(await regions(), ["Music/Rock", "Music/Jazz", "80s"]);
+  });
+
+  test("a whole section is deleted at once, the videos it shares with other sections too, once the User confirms it", async () => {
+    const page = await host.newPage();
+    await fakeYouTube(page);
+    await install(page);
+    const OTHER = "aaaaaaaaaaa";
+    const THIRD = "bbbbbbbbbbb";
+    const row = (name: string) => view(page).getByRole("region", { name, exact: true });
+    const details = view(page).getByRole("dialog");
+    const tag = details.getByRole("combobox", { name: "Add a tag" });
+    const confirmation = view(page).getByRole("dialog", { name: "Delete this section?" });
+
+    await addByField(page, `https://www.youtube.com/watch?v=${ID}`);
+    await addByField(page, `https://youtu.be/${OTHER}`);
+    await addByField(page, `https://youtu.be/${THIRD}`);
+    for (const [videoId, tags] of [
+      [ID, ["Music/Jazz", "80s"]],
+      [OTHER, ["Music/Rock"]],
+    ] as const) {
+      await view(page).locator(`[data-video-id="${videoId}"]`).getByRole("button", { name: "Details" }).click();
+      for (const name of tags) {
+        await tag.fill(name);
+        await tag.press("Enter");
+      }
+      await details.getByRole("button", { name: `Remove the tag ${tags.at(-1)}` }).waitFor();
+      await details.getByRole("button", { name: "Close" }).click();
+    }
+    await row("Music/Rock").getByRole("article").waitFor();
+
+    // Cancelled, nothing is deleted.
+    await row("80s").getByRole("button", { name: "Delete the section 80s" }).click();
+    await confirmation.getByText("The video of “80s” will be removed from your list. It is also in other sections").waitFor();
+    await confirmation.getByRole("button", { name: "Cancel" }).click();
+    await confirmation.waitFor({ state: "detached" });
+    await row("80s").getByRole("article").waitFor();
+
+    await row("80s").getByRole("button", { name: "Delete the section 80s" }).click();
+    await confirmation.getByRole("button", { name: "Delete" }).click();
+    await row("80s").waitFor({ state: "detached" });
+    assert.equal(await row("Music/Jazz").count(), 0, "the video leaves its other sections too");
+    await stored(page, (videos) => videos.length === 2);
+
+    // A group goes with every video of its rows.
+    await view(page).getByRole("button", { name: "Delete the section Music", exact: true }).click();
+    await confirmation.getByText("The video of “Music” will be removed from your list.").waitFor();
+    await confirmation.getByRole("button", { name: "Delete" }).click();
+    await row("Music/Rock").waitFor({ state: "detached" });
+    await row("No tag").locator(`[data-video-id="${THIRD}"]`).waitFor();
+    await stored(page, (videos) => videos.map((video) => video.videoId).join() === THIRD);
   });
 
   test("a tag typed and left without Enter, or picked among the suggestions, is added too", async () => {

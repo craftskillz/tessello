@@ -74,10 +74,31 @@ Le Widget (taille **L**) est un aperçu des vidéos à voir et un point d'entré
 - Dans une ligne, les vidéos les plus récemment ajoutées viennent en premier. Chaque ligne affiche son nombre de vidéos.
 - Les lignes vides (par exemple quand toutes leurs vidéos sont vues et cachées) ne s'affichent pas.
 
+### Groupes de tags
+
+- Un tag `Groupe/Tag` (coupé au premier `/`, espaces autour retirés) range la vidéo dans le tag `Tag` du groupe `Groupe`. Le groupe garde la casse de son premier usage.
+- Un groupe est une section repliable, qui contient une ligne par tag du groupe, et affiche son nombre de vidéos (chaque vidéo comptée une fois). Un tag simple qui porte le nom d'un groupe est la première ligne de ce groupe.
+- Les groupes et les tags sans groupe sont classés ensemble par ordre alphabétique, puis vient « Sans tag ». Les sections repliées sont retenues.
+
+### Déplacer une vidéo
+
+- Une carte se glisse-dépose à la souris. Déposée dans sa ligne, elle change de place, avant la carte sous le pointeur ou en fin de ligne. La ligne retient cet ordre ; les vidéos jamais placées viennent avant, les plus récentes d'abord.
+- Déposée dans une autre ligne, la vidéo perd le tag de la ligne quittée et prend celui de la ligne d'arrivée (écrit comme son premier usage). Elle garde ses autres tags. Elle ne va dans « Sans tag » que si le tag quitté était son seul tag.
+
+### Déplacer une section
+
+- Une ligne se glisse-dépose par son en-tête, un groupe par son titre, au-dessus ou en dessous d'une autre section selon la moitié sous le pointeur. Les lignes et groupes du haut de la Vue se déplacent entre eux ; les lignes d'un groupe entre elles, dans le groupe.
+- L'ordre est retenu. Les sections jamais placées viennent après les autres, dans l'ordre par défaut.
+
+### Supprimer une section
+
+- L'en-tête d'une ligne et le titre d'un groupe ont un bouton « Supprimer » (visible au survol ou au focus, toujours sur écran tactile). Il supprime toutes les vidéos de la section, vues comprises, même cachées : pour un groupe, celles de toutes ses lignes.
+- Une confirmation dit combien de vidéos partent, et combien quittent aussi d'autres sections.
+
 ### Stockage (§6.1)
 
 - `videos` : la liste de toutes les vidéos. Une vidéo pèse environ 300 octets sans note, ce qui laisse de la place pour plusieurs milliers de vidéos sous la limite de 1 Mo par valeur. La Vue refuse une note de plus de 2 000 caractères.
-- `settings` : `{ hideWatched: boolean }`, vrai par défaut.
+- `settings` : `{ hideWatched: boolean, collapsed: string[], order: Record<string, string[]>, sections: string[] }` : `hideWatched` est vrai par défaut, `collapsed` (les groupes repliés) est vide par défaut, `order` donne, par tag en minuscules (`""` pour « Sans tag »), les vidéos placées par l'utilisateur, dans leur ordre ; il est vide par défaut. `sections` (vide par défaut) donne les sections placées, dans leur ordre : une ligne par son tag en minuscules (`""` pour « Sans tag »), un groupe par son nom en minuscules suivi de `/`.
 - Chaque modification est enregistrée aussitôt. Un échec (`quota_exceeded`, par exemple) est affiché, et la modification reste visible, signalée comme non enregistrée. Un échec de lecture au démarrage bloque l'édition au lieu de montrer une liste vide qui écraserait les données.
 - La Vue et le Widget relisent le stockage quand ils redeviennent visibles.
 
