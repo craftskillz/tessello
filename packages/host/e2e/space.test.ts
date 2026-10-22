@@ -25,7 +25,7 @@ describe("export and import of the space", () => {
     await other.getByLabel("Space file to import").setInputFiles({ name: "space.zip", mimeType: "application/zip", buffer: exported });
     const preview = other.getByRole("dialog", { name: "Import 1 Module?" });
     await preview.waitFor();
-    assert.match(await preview.innerText(), /Notes[\s\S]*@tessello\/notes[\s\S]*What Notes can do/);
+    assert.match(await preview.innerText(), /Notes[\s\S]*@craftskillz\/notes[\s\S]*What Notes can do/);
     const launcher = await showLauncher(other);
     assert.equal(await launcher.getByRole("button", { name: "Notes" }).count(), 0, "nothing is imported before accepting");
 

@@ -87,6 +87,6 @@ describe("uninstalling a Module", () => {
     assert.equal(await (await showLauncher(page)).getByRole("listitem").count(), 0);
     assert.equal(await page.getByRole("listitem", { name: "Notes" }).count(), 0);
     assert.deepEqual(await readFolder(page, "modules/notes"), {});
-    assert.deepEqual(await readFolder(page, "modules/.tessello/data/@tessello/notes"), {});
+    assert.deepEqual(await readFolder(page, "modules/.tessello/data/@craftskillz/notes"), {});
   });
 });

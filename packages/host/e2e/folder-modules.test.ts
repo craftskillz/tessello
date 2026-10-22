@@ -32,7 +32,7 @@ describe("Modules in the Modules folder", () => {
 
     const unpacked = await readFolder(page, "modules/notes-2");
     assert.deepEqual(Object.keys(unpacked).sort(), Object.keys(await exampleFiles("notes")).sort());
-    assert.deepEqual(await registry(page), { modules: [{ id: "@tessello/notes", folder: "notes-2", version: "1.1.0", permissions: {} }] });
+    assert.deepEqual(await registry(page), { modules: [{ id: "@craftskillz/notes", folder: "notes-2", version: "1.1.0", permissions: {} }] });
   });
 
   test("a .zip the Validator refuses writes nothing in the folder", async () => {
@@ -48,7 +48,7 @@ describe("Modules in the Modules folder", () => {
     await page.reload();
     await (await showLauncher(page)).getByRole("button", { name: "Notes New, to activate" }).click();
     const preview = page.getByRole("dialog", { name: "Activate Notes?" });
-    assert.match(await preview.innerText(), /Notes[\s\S]*1\.1\.0[\s\S]*@tessello\/notes/);
+    assert.match(await preview.innerText(), /Notes[\s\S]*1\.1\.0[\s\S]*@craftskillz\/notes/);
     assert.equal(await page.locator("iframe").count(), 0, "nothing runs before the User activates it");
     await preview.getByRole("button", { name: "Accept and activate" }).click();
 
@@ -74,7 +74,7 @@ describe("Modules in the Modules folder", () => {
 
     await (await showLauncher(page)).getByRole("button", { name: "Notes Conflict" }).click();
     const explanation = page.getByRole("dialog", { name: "“notes-copy” is in conflict" });
-    assert.match(await explanation.innerText(), /@tessello\/notes[\s\S]*“notes”/);
+    assert.match(await explanation.innerText(), /@craftskillz\/notes[\s\S]*“notes”/);
     await page.locator("iframe[title='Notes widget']").waitFor({ state: "attached" });
     assert.equal(await page.locator("iframe").count(), 1, "only the registered Notes runs, as its Widget");
   });
@@ -144,8 +144,8 @@ describe("Modules in the Modules folder", () => {
     await removeFolder(page, "modules/notes");
 
     await page.reload();
-    await (await showLauncher(page)).getByRole("button", { name: "@tessello/notes Not found" }).click();
-    await page.getByRole("dialog", { name: "@tessello/notes can't be found" }).getByRole("button", { name: "Close" }).click();
+    await (await showLauncher(page)).getByRole("button", { name: "@craftskillz/notes Not found" }).click();
+    await page.getByRole("dialog", { name: "@craftskillz/notes can't be found" }).getByRole("button", { name: "Close" }).click();
     await page.getByRole("heading", { name: "Your space is ready" }).waitFor();
 
     await writeFolder(page, "modules/renamed-notes", files);

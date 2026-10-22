@@ -51,12 +51,12 @@ describe("the Home", () => {
   test("shows the Widget of each active Module, with its size, in the order the Modules were activated", async () => {
     const { host } = await withModules([
       ["weather", "@test/weather", "Weather", "M"],
-      ["notes", "@tessello/notes", "Notes", "S"],
+      ["notes", "@craftskillz/notes", "Notes", "S"],
       ["photos", "@test/photos", "Photos", "L"],
     ]);
     assert.deepEqual(await host.home(), [
       { id: "@test/weather", name: "Weather", size: "M" },
-      { id: "@tessello/notes", name: "Notes", size: "S" },
+      { id: "@craftskillz/notes", name: "Notes", size: "S" },
       { id: "@test/photos", name: "Photos", size: "L" },
     ]);
   });
@@ -64,59 +64,59 @@ describe("the Home", () => {
   test("keeps the order the User arranges, for a new Host on the same Modules folder", async () => {
     const { host, persistence } = await withModules([
       ["weather", "@test/weather", "Weather", "M"],
-      ["notes", "@tessello/notes", "Notes", "S"],
+      ["notes", "@craftskillz/notes", "Notes", "S"],
       ["photos", "@test/photos", "Photos", "L"],
     ]);
-    await host.arrangeHome(["@test/photos", "@test/weather", "@tessello/notes"]);
-    assert.deepEqual(await ids(newHost(persistence)), ["@test/photos", "@test/weather", "@tessello/notes"]);
+    await host.arrangeHome(["@test/photos", "@test/weather", "@craftskillz/notes"]);
+    assert.deepEqual(await ids(newHost(persistence)), ["@test/photos", "@test/weather", "@craftskillz/notes"]);
   });
 
   test("a Module activated after the User arranged the Home comes last", async () => {
     const { host, persistence } = await withModules([
       ["weather", "@test/weather", "Weather", "M"],
-      ["notes", "@tessello/notes", "Notes", "S"],
+      ["notes", "@craftskillz/notes", "Notes", "S"],
     ]);
-    await host.arrangeHome(["@tessello/notes", "@test/weather"]);
+    await host.arrangeHome(["@craftskillz/notes", "@test/weather"]);
     await withModules([["photos", "@test/photos", "Photos", "L"]], persistence);
-    assert.deepEqual(await ids(host), ["@tessello/notes", "@test/weather", "@test/photos"]);
+    assert.deepEqual(await ids(host), ["@craftskillz/notes", "@test/weather", "@test/photos"]);
   });
 
   test("a Module without a Widget is not on the Home, but stays in the Launcher's list", async () => {
     const { host } = await withModules([
       ["clock", "@test/clock", "Clock"],
-      ["notes", "@tessello/notes", "Notes", "S"],
+      ["notes", "@craftskillz/notes", "Notes", "S"],
     ]);
-    assert.deepEqual(await ids(host), ["@tessello/notes"]);
+    assert.deepEqual(await ids(host), ["@craftskillz/notes"]);
     assert.deepEqual(
       (await host.modules()).map((entry) => entry.id),
-      ["@test/clock", "@tessello/notes"],
+      ["@test/clock", "@craftskillz/notes"],
     );
   });
 
   test("a Module whose folder has disappeared leaves the Home, and comes back at its place", async () => {
     const { host, persistence } = await withModules([
       ["weather", "@test/weather", "Weather", "M"],
-      ["notes", "@tessello/notes", "Notes", "S"],
+      ["notes", "@craftskillz/notes", "Notes", "S"],
     ]);
-    await host.arrangeHome(["@tessello/notes", "@test/weather"]);
+    await host.arrangeHome(["@craftskillz/notes", "@test/weather"]);
     const notes = persistence.disk.get("notes")!;
     persistence.disk.delete("notes");
     assert.deepEqual(await ids(host), ["@test/weather"]);
     persistence.disk.set("notes-renamed", notes);
-    assert.deepEqual(await ids(host), ["@tessello/notes", "@test/weather"]);
+    assert.deepEqual(await ids(host), ["@craftskillz/notes", "@test/weather"]);
   });
 
   test("arranging the Home while a Module's folder is missing keeps that Module's place for when it comes back", async () => {
     const { host, persistence } = await withModules([
       ["weather", "@test/weather", "Weather", "M"],
-      ["notes", "@tessello/notes", "Notes", "S"],
+      ["notes", "@craftskillz/notes", "Notes", "S"],
       ["photos", "@test/photos", "Photos", "L"],
     ]);
-    await host.arrangeHome(["@tessello/notes", "@test/weather", "@test/photos"]);
+    await host.arrangeHome(["@craftskillz/notes", "@test/weather", "@test/photos"]);
     const notes = persistence.disk.get("notes")!;
     persistence.disk.delete("notes");
     await host.arrangeHome(["@test/photos", "@test/weather"]);
     persistence.disk.set("notes", notes);
-    assert.deepEqual(await ids(host), ["@tessello/notes", "@test/photos", "@test/weather"]);
+    assert.deepEqual(await ids(host), ["@craftskillz/notes", "@test/photos", "@test/weather"]);
   });
 });

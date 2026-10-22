@@ -18,7 +18,7 @@ const notesFiles = (manifest: object = {}) =>
     Object.entries({
       "manifest.json": JSON.stringify({
         convention: 1,
-        id: "@tessello/notes",
+        id: "@craftskillz/notes",
         name: "Notes",
         version: "1.0.0",
         icon: "icon.svg",
@@ -77,10 +77,10 @@ describe("folders of the Modules folder", () => {
     await inspection.install();
     assert.deepEqual(
       (await host.modules()).map(({ status, folder, id }) => ({ status, folder, id })),
-      [{ status: "active", folder: "notes", id: "@tessello/notes" }],
+      [{ status: "active", folder: "notes", id: "@craftskillz/notes" }],
     );
     assert.deepEqual(await persistence.registry.read(), [
-      { id: "@tessello/notes", folder: "notes", version: "1.0.0", permissions: { network: ["https://api.example.com"] } },
+      { id: "@craftskillz/notes", folder: "notes", version: "1.0.0", permissions: { network: ["https://api.example.com"] } },
     ]);
   });
 
@@ -108,8 +108,8 @@ describe("folders of the Modules folder", () => {
     const { persistence, host } = await withNotes();
     placeFolder(persistence, "notes-copy", notesFiles({ name: "Other notes" }));
     assert.deepEqual(await statuses(host), [
-      { status: "active", folder: "notes", id: "@tessello/notes" },
-      { status: "conflict", folder: "notes-copy", id: "@tessello/notes" },
+      { status: "active", folder: "notes", id: "@craftskillz/notes" },
+      { status: "conflict", folder: "notes-copy", id: "@craftskillz/notes" },
     ]);
     assert.equal((await host.inspectFolder("notes-copy")).status, "conflict");
     assert.equal((await persistence.registry.read()).length, 1);
@@ -124,7 +124,7 @@ describe("folders of the Modules folder", () => {
 
     persistence.disk.delete("notes");
     assert.deepEqual(await statuses(host), [
-      { status: "missing", folder: "notes", id: "@tessello/notes" },
+      { status: "missing", folder: "notes", id: "@craftskillz/notes" },
       { status: "active", folder: "todo", id: "@tessello/todo" },
     ]);
   });
@@ -133,7 +133,7 @@ describe("folders of the Modules folder", () => {
     const { persistence, host } = await withNotes();
     persistence.disk.set("my-notes", persistence.disk.get("notes")!);
     persistence.disk.delete("notes");
-    assert.deepEqual(await statuses(host), [{ status: "active", folder: "my-notes", id: "@tessello/notes" }]);
+    assert.deepEqual(await statuses(host), [{ status: "active", folder: "my-notes", id: "@craftskillz/notes" }]);
     assert.equal((await persistence.registry.read())[0].folder, "my-notes");
   });
 
@@ -173,7 +173,7 @@ describe("installing a .zip", () => {
     assert.deepEqual([...persistence.disk.keys()], [], "nothing is written before the User confirms");
 
     await inspection.install();
-    assert.deepEqual(await statuses(host), [{ status: "active", folder: "notes", id: "@tessello/notes" }]);
+    assert.deepEqual(await statuses(host), [{ status: "active", folder: "notes", id: "@craftskillz/notes" }]);
     assert.equal(new TextDecoder().decode(persistence.disk.get("notes")!.get("view/index.html")), READY_VIEW);
   });
 
@@ -184,7 +184,7 @@ describe("installing a .zip", () => {
     const inspection = await host.inspectZip(zipOf(notesFiles()));
     assert.ok(inspection.status === "valid");
     await inspection.install();
-    assert.deepEqual((await statuses(host))[0], { status: "active", folder: "notes-2", id: "@tessello/notes" });
+    assert.deepEqual((await statuses(host))[0], { status: "active", folder: "notes-2", id: "@craftskillz/notes" });
   });
 
   test("a .zip the Validator refuses writes nothing", async () => {
@@ -217,7 +217,7 @@ describe("updating a Module from a .zip", () => {
 
   test("an update replaces the Module's code in its folder and keeps its storage", async () => {
     const { persistence, host } = await withNotes();
-    await persistence.storage.write("@tessello/notes", "notes", "[]");
+    await persistence.storage.write("@craftskillz/notes", "notes", "[]");
     editFile(persistence, "notes", "view/old.js", "// gone in 1.1.0");
     editFile(persistence, "notes", ".git/HEAD", "ref: refs/heads/main");
     const files = notesFiles({ version: "1.1.0" });
@@ -226,15 +226,15 @@ describe("updating a Module from a .zip", () => {
     assert.ok(inspection.status === "update");
     await inspection.update();
 
-    assert.deepEqual(await statuses(host), [{ status: "active", folder: "notes", id: "@tessello/notes" }]);
+    assert.deepEqual(await statuses(host), [{ status: "active", folder: "notes", id: "@craftskillz/notes" }]);
     assert.equal((await persistence.registry.read())[0].version, "1.1.0");
-    const opening = await host.open("@tessello/notes");
+    const opening = await host.open("@craftskillz/notes");
     assert.ok(opening.status === "ready");
     assert.equal(opening.manifest.version, "1.1.0");
     assert.deepEqual([...opening.files.keys()].sort(), ["guide.md", "icon.svg", "manifest.json", "view/index.html"]);
     assert.equal(new TextDecoder().decode(opening.files.get("view/index.html")), "<!doctype html><p>1.1.0</p>");
     assert.equal(persistence.disk.get("notes")!.has(".git/HEAD"), true, "the Creator's repository is not touched");
-    assert.deepEqual([...(await persistence.storage.read("@tessello/notes"))], [["notes", "[]"]]);
+    assert.deepEqual([...(await persistence.storage.read("@craftskillz/notes"))], [["notes", "[]"]]);
   });
 
   test("an update adding Permissions presents only the added ones; accepting grants them and the Module runs", async () => {
@@ -252,25 +252,25 @@ describe("updating a Module from a .zip", () => {
     assert.deepEqual(inspection.added, { network: ["https://sync.example.com"] });
 
     await inspection.update();
-    const opening = await host.open("@tessello/notes");
+    const opening = await host.open("@craftskillz/notes");
     assert.ok(opening.status === "ready");
     assert.deepEqual(opening.permissions, { network: ["https://api.example.com", "https://sync.example.com"] });
   });
 
   test("declining an update leaves the installed version, its Permissions and its storage intact", async () => {
     const { persistence, host } = await withNotes();
-    await persistence.storage.write("@tessello/notes", "notes", "[]");
+    await persistence.storage.write("@craftskillz/notes", "notes", "[]");
     const before = structuredClone(persistence.disk.get("notes"));
     const inspection = await host.inspectZip(zipOf(notesFiles({ version: "2.0.0", permissions: { network: ["https://sync.example.com"] } })));
     assert.ok(inspection.status === "update");
     // Declining is not calling update().
 
     assert.deepEqual(persistence.disk.get("notes"), before);
-    const opening = await host.open("@tessello/notes");
+    const opening = await host.open("@craftskillz/notes");
     assert.ok(opening.status === "ready");
     assert.equal(opening.manifest.version, "1.0.0");
     assert.deepEqual(opening.permissions, {});
-    assert.deepEqual([...(await persistence.storage.read("@tessello/notes"))], [["notes", "[]"]]);
+    assert.deepEqual([...(await persistence.storage.read("@craftskillz/notes"))], [["notes", "[]"]]);
   });
 
   test("an update goes to the folder the Module was renamed to, and never to another folder now under its old name", async () => {
@@ -285,20 +285,20 @@ describe("updating a Module from a .zip", () => {
     assert.deepEqual([...persistence.disk.get("notes")!.keys()], ["readme.txt"]);
     assert.equal(new TextDecoder().decode(persistence.disk.get("my-notes")!.get("manifest.json")).includes("1.1.0"), true);
     assert.deepEqual(await statuses(host), [
-      { status: "active", folder: "my-notes", id: "@tessello/notes" },
+      { status: "active", folder: "my-notes", id: "@craftskillz/notes" },
       { status: "new", folder: "notes", id: null },
     ]);
   });
 
   test("an update of a Module whose folder is missing puts its code back in a folder", async () => {
     const { persistence, host } = await withNotes();
-    await persistence.storage.write("@tessello/notes", "notes", "[]");
+    await persistence.storage.write("@craftskillz/notes", "notes", "[]");
     persistence.disk.delete("notes");
     const inspection = await host.inspectZip(zipOf(notesFiles({ version: "1.1.0" })));
     assert.ok(inspection.status === "update");
     await inspection.update();
-    assert.deepEqual(await statuses(host), [{ status: "active", folder: "notes", id: "@tessello/notes" }]);
-    assert.deepEqual([...(await persistence.storage.read("@tessello/notes"))], [["notes", "[]"]]);
+    assert.deepEqual(await statuses(host), [{ status: "active", folder: "notes", id: "@craftskillz/notes" }]);
+    assert.deepEqual([...(await persistence.storage.read("@craftskillz/notes"))], [["notes", "[]"]]);
   });
 
   test("a folder declaring an installed Module ID is still in conflict: only a package is an update", async () => {
@@ -319,7 +319,7 @@ describe("opening a View", () => {
   test("reads the Module's files as they are on disk when the View opens", async () => {
     const { persistence, host } = await withNotes();
     editFile(persistence, "notes", "view/index.html", "<!doctype html><p>Edited</p>");
-    const opening = await host.open("@tessello/notes");
+    const opening = await host.open("@craftskillz/notes");
     assert.ok(opening.status === "ready");
     assert.equal(new TextDecoder().decode(opening.files.get("view/index.html")), "<!doctype html><p>Edited</p>");
     assert.equal(opening.manifest.view.entry, "view/index.html");
@@ -328,25 +328,25 @@ describe("opening a View", () => {
   test("a folder changed so that it no longer complies shows the Validator's report instead", async () => {
     const { persistence, host } = await withNotes();
     editManifest(persistence, { view: { entry: "view/missing.html" } });
-    const opening = await host.open("@tessello/notes");
+    const opening = await host.open("@craftskillz/notes");
     assert.ok(opening.status === "invalid");
     assert.ok(opening.report.issues.some((issue) => issue.code === "manifest/file-not-found"));
   });
 
   test("a new version on disk updates the registry and keeps the Module's storage", async () => {
     const { persistence, host } = await withNotes();
-    await persistence.storage.write("@tessello/notes", "notes", "[]");
+    await persistence.storage.write("@craftskillz/notes", "notes", "[]");
     editManifest(persistence, { version: "1.1.0" });
-    assert.equal((await host.open("@tessello/notes")).status, "ready");
+    assert.equal((await host.open("@craftskillz/notes")).status, "ready");
     assert.equal((await persistence.registry.read())[0].version, "1.1.0");
-    assert.deepEqual([...(await persistence.storage.read("@tessello/notes"))], [["notes", "[]"]]);
+    assert.deepEqual([...(await persistence.storage.read("@craftskillz/notes"))], [["notes", "[]"]]);
   });
 
   test("a View runs with the Permissions granted in the registry, never those of the Manifest read again", async () => {
     const { persistence, host } = await withNotes();
     const [registered] = await persistence.registry.read();
     await persistence.registry.write([{ ...registered, permissions: { network: ["https://api.example.com"] } }]);
-    const opening = await host.open("@tessello/notes");
+    const opening = await host.open("@craftskillz/notes");
     assert.ok(opening.status === "ready");
     assert.deepEqual(opening.permissions, { network: ["https://api.example.com"] });
   });
@@ -355,20 +355,20 @@ describe("opening a View", () => {
     const { persistence, host } = await withNotes();
     const [registered] = await persistence.registry.read();
     await persistence.registry.write([{ ...registered, permissions: { network: ["https://api.example.com"] } }]);
-    await persistence.storage.write("@tessello/notes", "notes", "[]");
+    await persistence.storage.write("@craftskillz/notes", "notes", "[]");
     editManifest(persistence, {
       permissions: { network: ["https://api.example.com", "https://evil.example.com"], localNetwork: ["http://192.168.1.10"] },
     });
 
-    const opening = await host.open("@tessello/notes");
+    const opening = await host.open("@craftskillz/notes");
     assert.ok(opening.status === "permissions");
     assert.deepEqual(opening.added, { network: ["https://evil.example.com"], localNetwork: ["http://192.168.1.10"] });
     // Declining is not calling accept(): the Module stays inactive, its data intact.
-    assert.equal((await host.open("@tessello/notes")).status, "permissions");
-    assert.deepEqual([...(await persistence.storage.read("@tessello/notes"))], [["notes", "[]"]]);
+    assert.equal((await host.open("@craftskillz/notes")).status, "permissions");
+    assert.deepEqual([...(await persistence.storage.read("@craftskillz/notes"))], [["notes", "[]"]]);
 
     await opening.accept();
-    const accepted = await host.open("@tessello/notes");
+    const accepted = await host.open("@craftskillz/notes");
     assert.ok(accepted.status === "ready");
     assert.deepEqual(accepted.permissions, {
       network: ["https://api.example.com", "https://evil.example.com"],
@@ -380,10 +380,10 @@ describe("opening a View", () => {
     const { persistence, host } = await withNotes();
     const files = persistence.disk.get("notes")!;
     persistence.disk.delete("notes");
-    assert.equal((await host.open("@tessello/notes")).status, "missing");
+    assert.equal((await host.open("@craftskillz/notes")).status, "missing");
 
     persistence.disk.set("elsewhere", files);
-    assert.equal((await host.open("@tessello/notes")).status, "ready");
+    assert.equal((await host.open("@craftskillz/notes")).status, "ready");
     assert.equal((await persistence.registry.read())[0].folder, "elsewhere");
   });
 
@@ -401,30 +401,30 @@ describe("uninstalling a Module", () => {
     await todo.install();
     await host.arrangeHome(["@tessello/todo"]);
     await persistence.storage.write("@tessello/todo", "tasks", "[]");
-    await persistence.storage.write("@tessello/notes", "notes", "[]");
+    await persistence.storage.write("@craftskillz/notes", "notes", "[]");
 
     await host.uninstall("@tessello/todo");
-    assert.deepEqual(await statuses(host), [{ status: "active", folder: "notes", id: "@tessello/notes" }]);
+    assert.deepEqual(await statuses(host), [{ status: "active", folder: "notes", id: "@craftskillz/notes" }]);
     assert.deepEqual(await host.home(), []);
     assert.deepEqual(await persistence.home.read(), []);
     assert.deepEqual([...persistence.disk.keys()], ["notes"]);
     assert.deepEqual([...(await persistence.storage.read("@tessello/todo"))], []);
-    assert.deepEqual([...(await persistence.storage.read("@tessello/notes"))], [["notes", "[]"]], "the other Modules keep their data");
+    assert.deepEqual([...(await persistence.storage.read("@craftskillz/notes"))], [["notes", "[]"]], "the other Modules keep their data");
   });
 
   test("a Module whose folder is missing is uninstalled with its storage", async () => {
     const { persistence, host } = await withNotes();
-    await persistence.storage.write("@tessello/notes", "notes", "[]");
+    await persistence.storage.write("@craftskillz/notes", "notes", "[]");
     persistence.disk.delete("notes");
-    await host.uninstall("@tessello/notes");
+    await host.uninstall("@craftskillz/notes");
     assert.deepEqual(await host.modules(), []);
-    assert.deepEqual([...(await persistence.storage.read("@tessello/notes"))], []);
+    assert.deepEqual([...(await persistence.storage.read("@craftskillz/notes"))], []);
   });
 
   test("a folder in conflict with the uninstalled Module is not removed, and can then be activated", async () => {
     const { persistence, host } = await withNotes();
     placeFolder(persistence, "notes-copy", notesFiles({ name: "Other notes" }));
-    await host.uninstall("@tessello/notes");
-    assert.deepEqual(await statuses(host), [{ status: "new", folder: "notes-copy", id: "@tessello/notes" }]);
+    await host.uninstall("@craftskillz/notes");
+    assert.deepEqual(await statuses(host), [{ status: "new", folder: "notes-copy", id: "@craftskillz/notes" }]);
   });
 });

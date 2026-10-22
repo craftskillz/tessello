@@ -62,7 +62,7 @@ cd examples/notes && zip -r ../../notes.zip . && cd -
 Build it first; the package is written to `sample-modules/survival-kit/dist/` (not versioned):
 
 ```sh
-npm run build -w @tessello/survival-kit
+npm run build -w @craftskillz/survival-kit
 cd sample-modules/survival-kit/dist && zip -r ../survival-kit.zip . && cd -
 ```
 
@@ -99,6 +99,17 @@ npm run build:host     # builds the Host into packages/host/dist/
 npm run build:sdk      # writes the SDK's single-file copy (tessello-sdk.js) into the example Modules
 npm run build:samples  # builds every sample Module into its dist/
 ```
+
+## Moving data to the `@craftskillz` Module IDs
+
+The Modules of this repository were renamed from `@tessello/…` (and `@craftskills/watch-later`) to `@craftskillz/…`. A Module's data is tied to its Module ID, so a Modules folder used before the rename still keeps it under the old IDs. With the Host closed, a one-off script moves the registry entries, the data, the Home and the Manifests of the installed Modules:
+
+```sh
+node packages/host/scripts/rename-to-craftskillz.ts <Modules folder>          # dry run: lists what it would change
+node packages/host/scripts/rename-to-craftskillz.ts <Modules folder> --apply  # makes the changes
+```
+
+Before changing anything, it copies `.tessello/` and the Manifests it rewrites into a hidden `.tessello-backup-<date>-<time>/` folder of the Modules folder. To go back, close the Host and copy the backup's contents over the Modules folder. If a new Module ID is already in use (registered, holding data or declared by a folder), it changes nothing and names it. Given an export of the Space (`.zip`) instead of a folder, it writes a renamed copy next to it, `<name>-craftskillz.zip`, to import into an empty Space.
 
 ## License
 

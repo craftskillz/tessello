@@ -11,7 +11,7 @@ describe("installing a Module", () => {
 
     const preview = page.getByRole("dialog", { name: "Install Notes?" });
     await preview.waitFor();
-    assert.match(await preview.innerText(), /Notes[\s\S]*1\.1\.0[\s\S]*@tessello\/notes[\s\S]*Jot down short notes/);
+    assert.match(await preview.innerText(), /Notes[\s\S]*1\.1\.0[\s\S]*@craftskillz\/notes[\s\S]*Jot down short notes/);
     assert.equal(await preview.getByRole("img", { name: "Notes icon" }).evaluate((img: HTMLImageElement) => img.naturalWidth > 0), true);
     const launcher = await showLauncher(page);
     assert.equal(await launcher.getByRole("button", { name: "Notes" }).count(), 0, "nothing is installed before confirming");

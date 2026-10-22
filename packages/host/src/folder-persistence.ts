@@ -99,7 +99,7 @@ export async function keyFileName(key: string): Promise<string> {
 
 export function createFolderPersistence(root: FileSystemDirectoryHandle): Persistence {
   const tessello = () => folderAt(root, [TESSELLO], true) as Promise<FileSystemDirectoryHandle>;
-  // A Module ID such as "@tessello/notes" is two folders: "@tessello" and "notes".
+  // A Module ID such as "@craftskillz/notes" is two folders: "@craftskillz" and "notes".
   const dataOf = (moduleId: string, create: boolean) => folderAt(root, [TESSELLO, DATA, ...moduleId.split("/")], create);
 
   async function writeFiles(folder: string, files: PackageFiles) {

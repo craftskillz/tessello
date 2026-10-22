@@ -53,7 +53,7 @@ async function install(page: Page) {
 async function storedVideos(page: Page): Promise<{ videoId: string; title: string; metaStatus: string; watched: boolean; note?: string; tags: string[] }[]> {
   for (let tries = 0; ; tries++) {
     try {
-      const file = (await readFolder(page, "modules/.tessello/data/@craftskills/watch-later"))["videos.json"];
+      const file = (await readFolder(page, "modules/.tessello/data/@craftskillz/watch-later"))["videos.json"];
       return file ? JSON.parse(file).value : [];
     } catch (error) {
       if (tries === 10) throw error;
@@ -64,7 +64,7 @@ async function storedVideos(page: Page): Promise<{ videoId: string; title: strin
 
 /** The settings as the Host wrote them, under the key `settings`; null when none was written. */
 async function storedSettings(page: Page): Promise<{ hideWatched: boolean; collapsed?: string[]; order?: Record<string, string[]>; sections?: string[] } | null> {
-  const file = (await readFolder(page, "modules/.tessello/data/@craftskills/watch-later"))["settings.json"];
+  const file = (await readFolder(page, "modules/.tessello/data/@craftskillz/watch-later"))["settings.json"];
   return file ? JSON.parse(file).value : null;
 }
 

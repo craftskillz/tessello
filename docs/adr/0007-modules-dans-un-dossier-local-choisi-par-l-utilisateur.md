@@ -6,14 +6,14 @@ Tessello est une application modulaire à la manière d'un logiciel à plugins. 
 
 ```
 <Dossier des Modules>/
-├── notes/                    ← un Module : son dossier, au nom libre (celui d'un git clone, par exemple)
+├── notes/                       ← un Module : son dossier, au nom libre (celui d'un git clone, par exemple)
 │   ├── manifest.json
 │   └── view/…
 ├── meteo/
 └── .tessello/
-    ├── modules.json          ← registre : Identifiant → dossier, version, Permissions accordées
-    ├── home.json             ← disposition de l'Accueil
-    └── data/@tessello/notes/ ← données d'un Module : un fichier JSON indenté par clé
+    ├── modules.json             ← registre : Identifiant → dossier, version, Permissions accordées
+    ├── home.json                ← disposition de l'Accueil
+    └── data/@craftskillz/notes/ ← données d'un Module : un fichier JSON indenté par clé
 ```
 
 - **L'identité d'un Module** est l'Identifiant de son Manifeste, pas le nom de son dossier (ADR 0003). Deux dossiers qui déclarent le même Identifiant sont en conflit : seul celui qui est enregistré tourne, et l'autre est signalé.

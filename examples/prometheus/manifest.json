@@ -1,6 +1,6 @@
 {
   "convention": 1,
-  "id": "@tessello/prometheus",
+  "id": "@craftskillz/prometheus",
   "name": "Local Prometheus",
   "version": "1.0.0",
   "description": "The state of the Prometheus that runs on your computer: its targets and its firing alerts.",

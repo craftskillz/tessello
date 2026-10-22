@@ -40,7 +40,7 @@ type Entry = { id: string; title: string; updatedAt: number };
 async function storedIndex(page: Page): Promise<Entry[]> {
   for (let tries = 0; ; tries++) {
     try {
-      const file = (await readFolder(page, "modules/.tessello/data/@tessello/diagram"))["diagrams.json"];
+      const file = (await readFolder(page, "modules/.tessello/data/@craftskillz/diagram"))["diagrams.json"];
       return file ? JSON.parse(file).value : [];
     } catch (error) {
       if (tries === 10) throw error;
@@ -101,7 +101,7 @@ async function dragHandle(page: Page, name: string, dx: number, dy: number) {
   await drag(page, from, { x: from.x + dx, y: from.y + dy });
 }
 
-const DATA = "modules/.tessello/data/@tessello/diagram";
+const DATA = "modules/.tessello/data/@craftskillz/diagram";
 
 type StoredEnd = { shapeId?: string; port?: string | null; x?: number; y?: number };
 type StoredDiagram = {

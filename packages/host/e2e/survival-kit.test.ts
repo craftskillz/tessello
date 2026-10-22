@@ -20,7 +20,7 @@ async function install(page: Page) {
 /** Waits until the Host has written a key of the kit, so that a reload cannot cut the write short. */
 async function stored(page: Page, key: "tasks" | "notes" | "links", written: (value: any) => boolean) {
   for (let tries = 0; tries < 50; tries++) {
-    const file = (await readFolder(page, "modules/.tessello/data/@tessello/survival-kit"))[`${key}.json`];
+    const file = (await readFolder(page, "modules/.tessello/data/@craftskillz/survival-kit"))[`${key}.json`];
     if (file && written(JSON.parse(file).value)) return;
     await new Promise((resolve) => setTimeout(resolve, 100));
   }

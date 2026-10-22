@@ -74,11 +74,11 @@ async function spaceOf(host: Host) {
 /** Notes and Weather activated, the Home rearranged, and data in both. */
 async function aSpace() {
   const { host, persistence } = await withModules([
-    ["notes", "@tessello/notes", "Notes"],
+    ["notes", "@craftskillz/notes", "Notes"],
     ["weather", "@test/weather", "Weather", { permissions: { network: ["https://api.example.com"] } }],
   ]);
-  await host.arrangeHome(["@test/weather", "@tessello/notes"]);
-  await (await storageOf(host, "@tessello/notes")).set("notes", [{ text: "Buy milk" }]);
+  await host.arrangeHome(["@test/weather", "@craftskillz/notes"]);
+  await (await storageOf(host, "@craftskillz/notes")).set("notes", [{ text: "Buy milk" }]);
   const weather = await storageOf(host, "@test/weather");
   await weather.set("cities", ["Paris", "Rabat"]);
   await weather.set("unit", "celsius");
@@ -104,12 +104,12 @@ describe("export and import of the space", () => {
     assert.deepEqual(await spaceOf(other), await spaceOf(host));
     assert.deepEqual(await spaceOf(other), {
       modules: [
-        { status: "active", folder: "notes", id: "@tessello/notes", name: "Notes", permissions: {} },
+        { status: "active", folder: "notes", id: "@craftskillz/notes", name: "Notes", permissions: {} },
         { status: "active", folder: "weather", id: "@test/weather", name: "Weather", permissions: { network: ["https://api.example.com"] } },
       ],
-      home: ["@test/weather", "@tessello/notes"],
+      home: ["@test/weather", "@craftskillz/notes"],
       data: {
-        "@tessello/notes": { notes: [{ text: "Buy milk" }] },
+        "@craftskillz/notes": { notes: [{ text: "Buy milk" }] },
         "@test/weather": { cities: ["Paris", "Rabat"], unit: "celsius" },
       },
     });
@@ -191,7 +191,7 @@ describe("export and import of the space", () => {
           description.modules[0].folder = "no:tes";
         }),
       );
-      assert.match(inspection.problem, /@tessello\/notes has no valid folder name/);
+      assert.match(inspection.problem, /@craftskillz\/notes has no valid folder name/);
     });
 
     test("an archive that would be too large once decompressed is refused before being decompressed", async () => {
@@ -209,7 +209,7 @@ describe("export and import of the space", () => {
           description.modules[0].data.big = "x".repeat(1024 * 1024 + 1);
         }),
       );
-      assert.match(inspection.problem, /^The data of @tessello\/notes: the value of "big" is larger than/);
+      assert.match(inspection.problem, /^The data of @craftskillz\/notes: the value of "big" is larger than/);
     });
   });
 
@@ -230,7 +230,7 @@ describe("export and import of the space", () => {
     assert.deepEqual(
       inspection.modules.map(({ manifest, installed }) => ({ id: manifest.id, installed })),
       [
-        { id: "@tessello/notes", installed: false },
+        { id: "@craftskillz/notes", installed: false },
         { id: "@test/weather", installed: true },
       ],
     );
@@ -240,14 +240,14 @@ describe("export and import of the space", () => {
       modules: [
         { status: "active", folder: "photos", id: "@test/photos", name: "Photos", permissions: {} },
         { status: "active", folder: "weather", id: "@test/weather", name: "Weather", permissions: { network: ["https://other.example.com"] } },
-        { status: "active", folder: "notes-2", id: "@tessello/notes", name: "Notes", permissions: {} },
+        { status: "active", folder: "notes-2", id: "@craftskillz/notes", name: "Notes", permissions: {} },
         { status: "new", folder: "notes", id: "@test/someone-else", name: "Someone else's notes", permissions: null },
       ],
-      home: ["@test/photos", "@test/weather", "@tessello/notes"],
+      home: ["@test/photos", "@test/weather", "@craftskillz/notes"],
       data: {
         "@test/photos": {},
         "@test/weather": { cities: ["Oslo"] },
-        "@tessello/notes": { notes: [{ text: "Buy milk" }] },
+        "@craftskillz/notes": { notes: [{ text: "Buy milk" }] },
       },
     });
     assert.equal(JSON.parse(strFromU8(persistence.disk.get("weather")!.get("manifest.json")!)).version, "2.0.0", "its code is kept");
@@ -257,7 +257,7 @@ describe("export and import of the space", () => {
     const { host, persistence } = await aSpace();
     persistence.disk.delete("notes");
     const exported = await host.exportSpace();
-    assert.deepEqual(exported.missing, ["@tessello/notes"]);
+    assert.deepEqual(exported.missing, ["@craftskillz/notes"]);
 
     const other = newHost();
     await importInto(other, exported.file);

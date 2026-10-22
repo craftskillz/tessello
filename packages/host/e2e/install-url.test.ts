@@ -23,7 +23,7 @@ describe("installing a Module from a URL", () => {
 
     const preview = page.getByRole("dialog", { name: "Install Notes?" });
     await preview.waitFor();
-    assert.match(await preview.innerText(), new RegExp(`Notes[\\s\\S]*1\\.1\\.0[\\s\\S]*@tessello/notes[\\s\\S]*${cors.replaceAll(".", "\\.")}`));
+    assert.match(await preview.innerText(), new RegExp(`Notes[\\s\\S]*1\\.1\\.0[\\s\\S]*@craftskillz/notes[\\s\\S]*${cors.replaceAll(".", "\\.")}`));
     await preview.getByRole("button", { name: "Accept and install" }).click();
 
     await page.frameLocator("iframe[title='Notes']").getByText("No notes yet.").waitFor();
