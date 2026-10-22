@@ -458,7 +458,7 @@ describe("the Skills Library sample Module", () => {
     await items.first().waitFor();
 
     const settings = await storedSettings(page, (value) => value.quadrants?.[2] === "Prose" && value.filters?.query === "elegant");
-    assert.deepEqual(settings.filters, { rings: [], quadrants: [2], query: "elegant" });
+    assert.deepEqual(settings.filters, { rings: [], quadrants: [2], query: "elegant", archived: false });
     assert.deepEqual(settings.quadrants, ["Design & planning", "Code & tests", "Prose", "Tooling & workflow"]);
     const after = await stored(page, () => true);
     assert.deepEqual(after.map((item) => item.quadrant).sort(), [0, 2], "renaming moved no skill");
@@ -487,5 +487,98 @@ describe("the Skills Library sample Module", () => {
     await addByHand(page, "Hidden by the filter");
     await view(page).getByRole("listitem").filter({ hasText: "Hidden by the filter" }).waitFor();
     assert.equal(await view(page).getByRole("button", { name: "Try", exact: true }).getAttribute("aria-pressed"), "false");
+  });
+
+  // Archiving and deleting a skill (skills-library ticket 04).
+
+  test("an archived skill leaves the Library, shows greyed with the switch, and comes back when unarchived", async () => {
+    const page = await host.newPage();
+    await install(page);
+    await addByHand(page, "Keep me");
+    await panelOf(page, "Keep me").getByRole("button", { name: "Close" }).click();
+    await addByHand(page, "Old idea");
+    await panelOf(page, "Old idea").getByRole("button", { name: "Archive", exact: true }).click();
+    await panelOf(page, "Old idea").getByRole("button", { name: "Unarchive" }).waitFor();
+    await panelOf(page, "Old idea").getByRole("button", { name: "Close" }).click();
+
+    const items = view(page).getByRole("listitem");
+    await items.filter({ hasText: "Keep me" }).waitFor();
+    assert.equal(await items.count(), 1);
+    assert.equal((await stored(page, (list) => list.some((item) => item.name === "Old idea" && item.archived))).length, 2);
+
+    await view(page).getByLabel("Show archived").check();
+    const row = items.filter({ hasText: "Old idea" });
+    await row.waitFor();
+    assert.ok((await row.getAttribute("class"))?.includes("sl-archived"));
+    await row.getByText("Archived", { exact: true }).waitFor();
+    assert.ok(!(await items.filter({ hasText: "Keep me" }).getAttribute("class"))?.includes("sl-archived"));
+    await storedSettings(page, (value) => value.filters?.archived === true);
+
+    // The switch is remembered.
+    await page.reload();
+    await openFromLauncher(page);
+    await view(page).getByLabel("Show archived").waitFor();
+    assert.ok(await view(page).getByLabel("Show archived").isChecked());
+    await items.filter({ hasText: "Old idea" }).waitFor();
+
+    const panel = await openPanel(page, "Old idea");
+    await panel.getByRole("button", { name: "Unarchive" }).click();
+    await panel.getByRole("button", { name: "Archive", exact: true }).waitFor();
+    await stored(page, (list) => list.every((item) => !item.archived));
+    await view(page).getByLabel("Show archived").uncheck();
+    await items.filter({ hasText: "Old idea" }).waitFor();
+    assert.equal(await items.count(), 2);
+  });
+
+  test("when every skill is archived, the Library does not say that it is empty", async () => {
+    const page = await host.newPage();
+    await install(page);
+    await addByHand(page, "Only one");
+    await panelOf(page, "Only one").getByRole("button", { name: "Archive", exact: true }).click();
+    await panelOf(page, "Only one").getByRole("button", { name: "Close" }).click();
+    await view(page).getByText("No skill matches these filters.").waitFor();
+    await view(page).getByLabel("Show archived").waitFor();
+  });
+
+  test("a skill is deleted only after the User confirms it", async () => {
+    const page = await host.newPage();
+    await install(page);
+    await addByHand(page, "By mistake");
+    const panel = panelOf(page, "By mistake");
+    await panel.getByRole("button", { name: "Delete" }).click();
+    const confirmation = view(page).getByRole("dialog", { name: "Delete By mistake?" });
+    await confirmation.waitFor();
+
+    // Escape closes the confirmation only; Cancel keeps the skill.
+    await page.keyboard.press("Escape");
+    await confirmation.waitFor({ state: "hidden" });
+    await panel.waitFor();
+    await panel.getByRole("button", { name: "Delete" }).click();
+    await confirmation.getByRole("button", { name: "Cancel" }).click();
+    await confirmation.waitFor({ state: "hidden" });
+    assert.equal((await stored(page, () => true)).length, 1);
+
+    await panel.getByRole("button", { name: "Delete" }).click();
+    await confirmation.getByRole("button", { name: "Delete" }).click();
+    await panel.waitFor({ state: "hidden" });
+    await view(page).getByText(/^No skills yet/).waitFor();
+    await stored(page, (list) => list.length === 0);
+  });
+
+  test("a URL already in the Library as an archived skill shows that skill, switching the archived on", async () => {
+    const page = await host.newPage();
+    await install(page);
+    const url = "https://github.com/acme/skills/tree/main/grill-me";
+    await addByHand(page, "Grill me", url);
+    await panelOf(page, "Grill me").getByRole("button", { name: "Archive", exact: true }).click();
+    await panelOf(page, "Grill me").getByRole("button", { name: "Close" }).click();
+    await view(page).getByText("No skill matches these filters.").waitFor();
+
+    await addByHand(page, "Again", url);
+    const row = view(page).getByRole("listitem").filter({ hasText: "Grill me" });
+    await row.waitFor();
+    assert.ok(await view(page).getByLabel("Show archived").isChecked());
+    assert.ok((await row.getAttribute("class"))?.includes("sl-highlighted"));
+    assert.equal((await stored(page, () => true)).length, 1);
   });
 });

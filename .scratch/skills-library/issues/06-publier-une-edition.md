@@ -13,3 +13,7 @@ Spec parente : `.scratch/skills-library/spec.md`. Vocabulaire : `GLOSSARY.md` et
 - [ ] Une Skill présente dans une Édition ne montre plus « Delete », seulement « Archive ».
 - [ ] *Editions* liste les Éditions (numéro, date, nombre de Skills par Anneau), la plus récente en premier. Une Édition publiée ne se modifie pas.
 - [ ] Test navigateur : publier l'Édition 1 ; déplacer une Skill, ne pas pouvoir publier sans explication, l'écrire ; archiver une autre Skill ; voir les changements en attente ; publier l'Édition 2 ; recharger, les deux Éditions sont dans l'historique.
+
+## Comments
+
+- Depuis le ticket 04, « Delete » n'apparaît que si `canDelete(id, editions.published)` (`src/lib/skills.ts`) : `editions.published` dans `src/lib/store.svelte.ts` est encore une liste vide. Il faut la remplir avec les Éditions lues (`edition:<n>`) au chargement et après chaque publication ; `PublishedEdition` (`entries: { id }[]`) est la part d'une Édition que la règle lit.
