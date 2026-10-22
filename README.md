@@ -103,3 +103,5 @@ npm run build:samples  # builds every sample Module into its dist/
 ## License
 
 Tessello is released under the [MIT License](LICENSE): you may use, copy, modify and distribute it, in your own Modules too, as long as you keep the copyright notice.
+
+The agent skills in `.agents/skills/` (linked from `.claude/skills/`) come from [mattpocock/skills](https://github.com/mattpocock/skills), © Matt Pocock, under its own [MIT License](.agents/skills/LICENSE); `skills-lock.json` records their source.
