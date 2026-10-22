@@ -106,7 +106,7 @@ describe("the Watch Later sample Module", () => {
     await page.reload();
     await openFromLauncher(page);
     await view(page).getByRole("link", { name: "Never Gonna Give You Up", exact: true }).waitFor();
-    await view(page).getByRole("region", { name: "All" }).getByRole("article").waitFor();
+    await view(page).getByRole("region", { name: "No tag" }).getByRole("article").waitFor();
   });
 
   test("a URL pasted in the field or anywhere on the page is added at once, and the same video is never added twice", async () => {
@@ -127,7 +127,7 @@ describe("the Watch Later sample Module", () => {
     await view(page).getByRole("link", { name: "Never Gonna Give You Up", exact: true }).waitFor();
     await paste("body", `youtube.com/shorts/${ID}`);
     await paste("body", "not a video");
-    await paste("input[type=text]", `https://youtu.be/${ID}`);
+    await paste("form input", `https://youtu.be/${ID}`);
     assert.equal(await field(page).inputValue(), "");
     await stored(page, (videos) => videos.length === 1 && videos[0].metaStatus === "ok");
     assert.equal(await view(page).getByRole("article").count(), 1);
@@ -291,5 +291,49 @@ describe("the Watch Later sample Module", () => {
     await details.waitFor({ state: "detached" });
     await view(page).getByText(/^No videos yet/).waitFor();
     await stored(page, (videos) => videos.length === 0);
+  });
+
+  test("two tags give two rows, a video with both is in each, and the videos without a tag are in the last row", async () => {
+    const page = await host.newPage();
+    await fakeYouTube(page);
+    await install(page);
+    const OTHER = "aaaaaaaaaaa";
+    const row = (name: string) => view(page).getByRole("region", { name, exact: true });
+    const details = view(page).getByRole("dialog");
+
+    await addByField(page, `https://www.youtube.com/watch?v=${ID}`);
+    await row("No tag").getByRole("article").waitFor();
+
+    await view(page).getByRole("article").getByRole("button", { name: "Details" }).click();
+    const tag = details.getByRole("combobox", { name: "Add a tag" });
+    await tag.fill("  Music ");
+    await tag.press("Enter");
+    await tag.fill("80s");
+    await tag.press("Enter");
+    await details.getByRole("button", { name: "Remove the tag Music" }).waitFor();
+    await details.getByRole("button", { name: "Close" }).click();
+    await row("80s").getByRole("article").waitFor();
+    await row("Music").getByRole("article").waitFor();
+    assert.equal(await row("No tag").count(), 0, "an empty row is not shown");
+    assert.deepEqual(await view(page).getByRole("region").evaluateAll((rows) => rows.map((row) => row.getAttribute("aria-label"))), ["80s", "Music"]);
+
+    // A tag chosen beside the field is put on the next videos added, as it was first written.
+    const forNew = view(page).getByRole("combobox", { name: "Tags for new videos" });
+    await forNew.fill("music");
+    await forNew.press("Enter");
+    await field(page).fill(`https://youtu.be/${OTHER}`);
+    await field(page).press("Enter");
+    await row("Music").locator(`[data-video-id="${OTHER}"]`).waitFor();
+    assert.equal(await row("Music").getByRole("article").count(), 2);
+    await row("Music").getByText("2 videos", { exact: true }).waitFor();
+    await stored(page, (videos) => videos.find((video) => video.videoId === OTHER)?.tags.join() === "Music");
+
+    await row("80s").getByRole("button", { name: "Details" }).click();
+    await details.getByRole("button", { name: "Remove the tag 80s" }).click();
+    await details.getByRole("button", { name: "Remove the tag Music" }).click();
+    await details.getByRole("button", { name: "Close" }).click();
+    await row("No tag").locator(`[data-video-id="${ID}"]`).waitFor();
+    assert.equal(await row("80s").count(), 0);
+    await stored(page, (videos) => videos.find((video) => video.videoId === ID)?.tags.length === 0);
   });
 });
