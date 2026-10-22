@@ -14,3 +14,7 @@ Spec parente : `.scratch/skills-library/spec.md`. Vocabulaire : `GLOSSARY.md` et
 - [ ] Le `.zip` (`fflate`) contient `_posts/skills-radar-edition-<n>.md` et `public/assets/blog/skills-radar-edition-<n>/cover.png`. Il se télécharge par un lien `download` vers un `blob:` (ADR 0013), pour n'importe quelle Édition, depuis la Vue.
 - [ ] Test navigateur : publier deux Éditions, télécharger le `.zip` de la première puis de la seconde, les décompresser, vérifier les chemins, le frontmatter et les sections de chaque billet.
 - [ ] Vérification manuelle (notée en commentaire du ticket) : décompresser un `.zip` dans `craftskillz-blog`, lancer `npm run dev`, le billet s'affiche avec le radar et la couverture, en thème clair et sombre.
+
+## Comments
+
+- Depuis le ticket 05, `renderRadar(entries, quadrants, { labels, background })` (`src/lib/radar.ts`) prend ses textes dans `labels` (anneaux et légende des marqueurs) : le billet doit lui passer les libellés français. Seul le titre du SVG (`<title>` et `aria-label`, « Skills radar: … ») est encore en anglais en dur ; à ajouter à `RadarLabels`. `background` peint le fond plein de la couverture. Une entrée d'Édition (`change`, `previousRing`) a la forme de `RadarEntry` ; une Skill *retirée* n'est pas une entrée.

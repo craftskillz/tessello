@@ -177,7 +177,7 @@ describe("the Skills Library sample Module", () => {
 
     await tabs.getByRole("tab", { name: "Radar" }).click();
     assert.equal(await tabs.getByRole("tab", { name: "Radar" }).getAttribute("aria-selected"), "true");
-    await view(page).getByRole("tabpanel").getByText(/coming soon/i).waitFor();
+    await view(page).getByRole("tabpanel").getByText(/^Nothing to draw yet/).waitFor();
     for (let tries = 0; tries < 50; tries++) {
       if (((await storedFile(page, "settings.json")) as { tab?: string } | null)?.tab === "radar") break;
       await new Promise((resolve) => setTimeout(resolve, 100));
@@ -186,6 +186,9 @@ describe("the Skills Library sample Module", () => {
     await page.reload();
     await openFromLauncher(page);
     await view(page).getByRole("tab", { name: "Radar", selected: true }).waitFor();
+
+    await view(page).getByRole("tab", { name: "Editions" }).click();
+    await view(page).getByRole("tabpanel").getByText(/coming soon/i).waitFor();
   });
 
   test("the Widget counts the skills and opens the View", async () => {
@@ -580,5 +583,107 @@ describe("the Skills Library sample Module", () => {
     assert.ok(await view(page).getByLabel("Show archived").isChecked());
     assert.ok((await row.getAttribute("class"))?.includes("sl-highlighted"));
     assert.equal((await stored(page, () => true)).length, 1);
+  });
+
+  // The radar (skills-library ticket 05).
+
+  /** Adds a skill and puts it in a ring and a quadrant, through its panel. */
+  async function addJudged(page: Page, name: string, ring: string, quadrant: string) {
+    await addByHand(page, name);
+    const panel = panelOf(page, name);
+    await panel.waitFor();
+    await panel.getByRole("radio", { name: ring }).check();
+    await panel.getByLabel("Quadrant").selectOption({ label: quadrant });
+    await panel.getByRole("button", { name: "Close" }).click();
+    await panel.waitFor({ state: "hidden" });
+  }
+
+  const radarTab = (page: Page) => view(page).getByRole("tab", { name: "Radar" }).click();
+  const dots = (page: Page) => view(page).locator("svg [data-skill-id]");
+  /** The distance of a skill's dot from the centre of the radar, which is (260, 270) in the drawing. */
+  async function distanceOf(page: Page, name: string) {
+    const transform = await view(page).locator("svg [data-skill-id]").filter({ has: page.locator(`title`, { hasText: name }) }).first().getAttribute("transform");
+    const [x, y] = /translate\(([-\d.]+) ([-\d.]+)\)/.exec(transform ?? "")!.slice(1).map(Number);
+    return Math.hypot(x - 260, y - 270);
+  }
+  /** The ring (0 to 3, from the centre) a distance falls in. */
+  const ringAt = (distance: number) => [0.38, 0.58, 0.8, 1].findIndex((end) => distance <= end * 230);
+
+  test("the radar draws a point per skill, numbers them in a legend, lists them as new, and drops an archived skill", async () => {
+    const page = await host.newPage();
+    await install(page);
+    await addJudged(page, "Alpha", "Recommended", "Design & planning");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await addJudged(page, "Bravo", "Try", "Code & tests");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await addJudged(page, "Charlie", "Deprecated", "Tooling & workflow");
+    await stored(page, (skills) => skills.length === 3 && skills.some((item) => item.ring === "deprecated"));
+
+    await radarTab(page);
+    await dots(page).nth(2).waitFor();
+    assert.equal(await dots(page).count(), 3);
+    const legend = view(page).getByRole("button", { name: /^\d+\. / });
+    assert.deepEqual(await legend.allTextContents(), ["1. Alpha — Recommended", "2. Bravo — Try", "3. Charlie — Deprecated"]);
+    await view(page).getByText("3 changes waiting").waitFor();
+    const waiting = view(page).getByRole("list", { name: "Changes waiting" });
+    assert.equal(await waiting.getByText("New", { exact: true }).count(), 3);
+
+    await view(page).getByRole("tab", { name: "Library" }).click();
+    await view(page).getByRole("button", { name: "Edit Bravo" }).click();
+    await panelOf(page, "Bravo").getByRole("button", { name: "Archive", exact: true }).click();
+    await panelOf(page, "Bravo").getByRole("button", { name: "Close" }).click();
+    await radarTab(page);
+    await view(page).getByText("2 changes waiting").waitFor();
+    assert.equal(await dots(page).count(), 2);
+  });
+
+  test("changing the ring of a skill moves its point to the band of the new ring", async () => {
+    const page = await host.newPage();
+    await install(page);
+    await addJudged(page, "Mover", "Watch", "Code & tests");
+    await radarTab(page);
+    await dots(page).first().waitFor();
+    assert.equal(ringAt(await distanceOf(page, "Mover")), 2);
+
+    await view(page).getByRole("tab", { name: "Library" }).click();
+    await openPanel(page, "Mover");
+    await panelOf(page, "Mover").getByRole("radio", { name: "Recommended" }).check();
+    await panelOf(page, "Mover").getByRole("button", { name: "Close" }).click();
+    await radarTab(page);
+    await dots(page).first().waitFor();
+    assert.equal(ringAt(await distanceOf(page, "Mover")), 0);
+  });
+
+  test("a click on a point, or on a line of the legend, opens the skill in the Library", async () => {
+    const page = await host.newPage();
+    await install(page);
+    await addJudged(page, "Alpha", "Try", "Design & planning");
+    await addJudged(page, "Bravo", "Watch", "Code & tests");
+    await radarTab(page);
+    await dots(page).nth(1).waitFor();
+
+    await dots(page).filter({ has: page.locator("title", { hasText: "Bravo" }) }).first().click();
+    await panelOf(page, "Bravo").waitFor();
+    await view(page).getByRole("tab", { name: "Library", selected: true }).waitFor();
+    await panelOf(page, "Bravo").getByRole("button", { name: "Close" }).click();
+
+    await radarTab(page);
+    await view(page).getByRole("button", { name: /^1\. Alpha/ }).click();
+    await panelOf(page, "Alpha").waitFor();
+    await view(page).getByRole("tab", { name: "Library", selected: true }).waitFor();
+  });
+
+  test("the radar fits a 360 px wide screen, without a horizontal scroll", async () => {
+    const page = await host.newPage();
+    await page.setViewportSize({ width: 360, height: 800 });
+    await install(page);
+    await addJudged(page, "Alpha", "Try", "Design & planning");
+    await radarTab(page);
+    await dots(page).first().waitFor();
+
+    const svg = await view(page).locator(".sl-radar svg").boundingBox();
+    assert.ok(svg && svg.width > 200 && svg.width <= 360, `the radar is ${svg?.width} px wide`);
+    const overflow = await view(page).locator("html").evaluate((html) => html.scrollWidth - html.clientWidth);
+    assert.ok(overflow <= 0, `the page overflows by ${overflow} px`);
   });
 });

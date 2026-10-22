@@ -17,3 +17,5 @@ Spec parente : `.scratch/skills-library/spec.md`. Vocabulaire : `GLOSSARY.md` et
 ## Comments
 
 - Depuis le ticket 04, « Delete » n'apparaît que si `canDelete(id, editions.published)` (`src/lib/skills.ts`) : `editions.published` dans `src/lib/store.svelte.ts` est encore une liste vide. Il faut la remplir avec les Éditions lues (`edition:<n>`) au chargement et après chaque publication ; `PublishedEdition` (`entries: { id }[]`) est la part d'une Édition que la règle lit.
+- Depuis le ticket 05, `changesSince(skills, editions)` et `pendingCount`/`isPending` sont dans `src/lib/changes.ts` ; `editions.published` est typé `ComparedEdition[]` (`number`, et pour chaque entrée `id`, `ring`, `score`, `notes`). Le `change` et le `previousRing` d'une entrée figée viennent de ce calcul ; les Skills *retirées* se lisent sur `skills.list` (archivées), pas sur les entrées du radar.
+- Les positions du radar dépendent de l'`id` et des points déjà placés dans la même case (Quadrant × Anneau) : une autre Skill ajoutée dans la même case peut écarter un point. Entre cases, la position ne bouge pas.
