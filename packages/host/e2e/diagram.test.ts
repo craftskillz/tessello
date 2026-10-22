@@ -1519,4 +1519,18 @@ describe("the Diagram sample Module", () => {
     assert.equal((await storedIndex(page)).length, 0);
     assert.equal(await sidebar(page).getByRole("button", { name: "Sample Diagram", exact: true }).count(), 0);
   });
+
+  test("its User guide opens from the Launcher, with its screenshots", async () => {
+    const page = await host.newPage();
+    await install(page);
+    const launcher = page.getByRole("navigation", { name: "Launcher" });
+    await launcher.getByRole("listitem").filter({ hasText: "Diagram" }).getByRole("button", { name: "About" }).click();
+    await page.getByRole("dialog", { name: "About Diagram" }).getByRole("button", { name: "User guide" }).click();
+    const guide = page.frameLocator("iframe[title='Diagram: User guide']");
+    await guide.getByRole("heading", { name: "Diagram", level: 1 }).waitFor();
+    for (const image of await guide.getByRole("img").all()) {
+      assert.ok(await image.evaluate((element: HTMLImageElement) => element.complete && element.naturalWidth > 0), `${await image.getAttribute("alt")} is shown`);
+    }
+    assert.equal(await guide.getByRole("img").count(), 5);
+  });
 });
