@@ -3,8 +3,8 @@ import { readFile } from "node:fs/promises";
 import { before, describe, test } from "node:test";
 import { strFromU8, unzipSync } from "fflate";
 import matter from "gray-matter";
-import type { Page } from "playwright";
-import { dropFile, readFolder, showLauncher, useHost, zipSample } from "./browser.ts";
+import type { Locator, Page } from "playwright";
+import { dropFile, readFolder, showLauncher, useHost, writeFolder, zipSample } from "./browser.ts";
 
 const host = useHost();
 
@@ -23,7 +23,7 @@ const openFromLauncher = async (page: Page) => (await showLauncher(page)).getByR
 async function install(page: Page) {
   await dropFile(page, "skills-library.zip", skillsLibrary);
   await page.getByRole("dialog", { name: "Install Skills Library?" }).getByRole("button", { name: "Accept and install" }).click();
-  await view(page).getByText(/^No skills yet/).waitFor();
+  await view(page).getByText(/^No sets yet/).waitFor();
 }
 
 interface StoredSkill {
@@ -31,10 +31,20 @@ interface StoredSkill {
   name: string;
   sourceUrl?: string;
   description: string;
+  score?: number;
+  notes: string;
+  addedAt: string;
+}
+
+interface StoredSet {
+  id: string;
+  name: string;
+  sourceUrl?: string;
+  description: string;
   quadrant: number;
   ring: string;
-  score: number;
   notes: string;
+  skills: StoredSkill[];
   addedAt: string;
   updatedAt: string;
   archived: boolean;
@@ -53,19 +63,33 @@ async function storedFile(page: Page, name: string): Promise<unknown> {
   }
 }
 
-/** Waits until the skills the Host wrote pass `written`, so that a reload cannot cut a write short. */
-async function stored(page: Page, written: (skills: StoredSkill[]) => boolean): Promise<StoredSkill[]> {
+/** Waits until the sets the Host wrote pass `written`, so that a reload cannot cut a write short. */
+async function stored(page: Page, written: (sets: StoredSet[]) => boolean): Promise<StoredSet[]> {
   for (let tries = 0; tries < 50; tries++) {
-    const skills = ((await storedFile(page, "skills.json")) ?? []) as StoredSkill[];
-    if (written(skills)) return skills;
+    const sets = ((await storedFile(page, "sets.json")) ?? []) as StoredSet[];
+    if (written(sets)) return sets;
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
   assert.fail("the Host did not write the change");
 }
 
-/** Adds a skill by hand through the dialog. */
+/** Adds a set by hand through the dialog; its panel then opens. */
 async function addByHand(page: Page, name: string, url = "", description = "") {
-  await view(page).getByRole("button", { name: "Add manually" }).click();
+  await view(page).getByRole("button", { name: "New set" }).click();
+  const dialog = view(page).getByRole("dialog", { name: "New set" });
+  await dialog.getByLabel("Name").fill(name);
+  if (url) await dialog.getByLabel("URL").fill(url);
+  if (description) await dialog.getByLabel("Description").fill(description);
+  await dialog.getByRole("button", { name: "Add", exact: true }).click();
+  await dialog.waitFor({ state: "hidden" });
+}
+
+/** The field of the set in its panel, not the one of a skill: the fields of the set are the direct children of the body. */
+const setField = (panel: Locator, label: string) => panel.locator(".sl-panel-body > label").filter({ hasText: new RegExp(`^${label}`) }).locator("input, textarea, select");
+
+/** Adds a skill to the set whose panel is open, through the dialog; its section then unfolds. */
+async function addSkill(page: Page, panel: Locator, name: string, url = "", description = "") {
+  await panel.getByRole("button", { name: "Add skill" }).click();
   const dialog = view(page).getByRole("dialog", { name: "Add a skill" });
   await dialog.getByLabel("Name").fill(name);
   if (url) await dialog.getByLabel("URL").fill(url);
@@ -111,7 +135,7 @@ const paste = (page: Page, text: string) =>
   }, text);
 
 describe("the Skills Library sample Module", () => {
-  test("a skill added by hand is listed with its defaults, links to its URL, and is kept after a reload", async () => {
+  test("a set added by hand is listed with its defaults, links to its URL, and is kept after a reload", async () => {
     const page = await host.newPage();
     await install(page);
 
@@ -119,31 +143,30 @@ describe("the Skills Library sample Module", () => {
     const row = view(page).getByRole("listitem").filter({ hasText: "Grill me" });
     await row.waitFor();
     await row.getByText("Watch", { exact: true }).waitFor();
-    await row.getByRole("img", { name: "3 out of 5" }).waitFor();
-    assert.equal(await row.getByRole("img", { name: "3 out of 5" }).textContent(), "★★★☆☆");
+    await row.getByText("0 skills", { exact: true }).waitFor();
     await row.getByText("Design & planning").waitFor();
     const link = row.getByRole("link", { name: "Grill me" });
     assert.equal(await link.getAttribute("href"), "https://raw.githubusercontent.com/acme/skills/main/grill/SKILL.md");
     assert.equal(await link.getAttribute("target"), "_blank");
     assert.match((await link.getAttribute("rel")) ?? "", /noopener/);
 
-    const [skill] = await stored(page, (skills) => skills.length === 1);
-    assert.equal(skill.name, "Grill me");
-    assert.equal(skill.sourceUrl, "https://raw.githubusercontent.com/acme/skills/main/grill/SKILL.md");
-    assert.equal(skill.description, "Questions until it is clear");
-    assert.equal(skill.ring, "watch");
-    assert.equal(skill.score, 3);
-    assert.equal(skill.quadrant, 0);
-    assert.equal(skill.notes, "#### À quoi ça sert\n\n#### Pourquoi\n\n#### Comment\n");
-    assert.equal(skill.archived, false);
-    assert.ok(skill.id);
+    const [set] = await stored(page, (sets) => sets.length === 1);
+    assert.equal(set.name, "Grill me");
+    assert.equal(set.sourceUrl, "https://raw.githubusercontent.com/acme/skills/main/grill/SKILL.md");
+    assert.equal(set.description, "Questions until it is clear");
+    assert.equal(set.ring, "watch");
+    assert.equal(set.quadrant, 0);
+    assert.equal(set.notes, "");
+    assert.deepEqual(set.skills, []);
+    assert.equal(set.archived, false);
+    assert.ok(set.id);
 
     await page.reload();
     await openFromLauncher(page);
     await view(page).getByRole("listitem").filter({ hasText: "Grill me" }).waitFor();
   });
 
-  test("a skill without a URL has no link, and the newest skill comes first", async () => {
+  test("a set without a URL has no link, and the newest set comes first", async () => {
     const page = await host.newPage();
     await install(page);
 
@@ -162,11 +185,11 @@ describe("the Skills Library sample Module", () => {
     assert.equal(await view(page).getByRole("link", { name: "Second one" }).count(), 0);
   });
 
-  test("a name is required to add a skill", async () => {
+  test("a name is required to add a set", async () => {
     const page = await host.newPage();
     await install(page);
-    await view(page).getByRole("button", { name: "Add manually" }).click();
-    const dialog = view(page).getByRole("dialog", { name: "Add a skill" });
+    await view(page).getByRole("button", { name: "New set" }).click();
+    const dialog = view(page).getByRole("dialog", { name: "New set" });
     await dialog.getByLabel("URL").fill("https://example.com/x");
     assert.ok(await dialog.getByRole("button", { name: "Add", exact: true }).isDisabled());
   });
@@ -195,7 +218,7 @@ describe("the Skills Library sample Module", () => {
     await view(page).getByRole("tabpanel").getByText(/^No edition yet/).waitFor();
   });
 
-  test("the Widget counts the skills per ring, counts the changes waiting, and opens the View", async () => {
+  test("the Widget counts the sets per ring, counts the changes waiting, and opens the View", async () => {
     const page = await host.newPage();
     await install(page);
     const widget = page.frameLocator("iframe[title='Skills Library widget']");
@@ -204,7 +227,7 @@ describe("the Skills Library sample Module", () => {
     await widget.getByText("No edition yet").waitFor();
     await ring("Recommended").getByText("0", { exact: true }).waitFor();
 
-    // Back to the View, two skills are added; the Widget, hidden meanwhile, reads them again when the Home comes back.
+    // Back to the View, two sets are added; the Widget, hidden meanwhile, reads them again when the Home comes back.
     await openFromLauncher(page);
     await addJudged(page, "Alpha", "Try", "Design & planning");
     await addJudged(page, "Bravo", "Watch", "Code & tests");
@@ -225,7 +248,7 @@ describe("the Skills Library sample Module", () => {
     await widget.getByText(/^Last edition: /).waitFor();
     assert.equal(await widget.getByText(/changes? waiting/).count(), 0);
 
-    // Moving a skill puts it back up, and the skill follows its new ring.
+    // Moving a set puts it back up, and the set follows its new ring.
     await openFromLauncher(page);
     await libraryTab(page);
     const panel = await openPanel(page, "Alpha");
@@ -240,7 +263,7 @@ describe("the Skills Library sample Module", () => {
     await view(page).getByRole("listitem").filter({ hasText: "Alpha" }).waitFor();
   });
 
-  test("the URL of a skill folder, entered, adds the skill with the name and the description read from its SKILL.md", async () => {
+  test("the URL of a skill folder, entered, adds a set of one skill with the name and the description read from its SKILL.md", async () => {
     const page = await host.newPage();
     const requests = await fakeGitHub(page);
     await install(page);
@@ -251,10 +274,16 @@ describe("the Skills Library sample Module", () => {
     await row.waitFor();
     assert.equal(await pasteField(page).inputValue(), "", "the field is emptied for the next URL");
 
-    const [skill] = await stored(page, (skills) => skills.length === 1);
-    assert.equal(skill.name, "grill-me");
-    assert.equal(skill.description, "Interviews you relentlessly about a plan.");
-    assert.equal(skill.sourceUrl, "https://github.com/acme/skills/tree/main/grill-me");
+    const [set] = await stored(page, (sets) => sets.length === 1);
+    assert.equal(set.name, "grill-me");
+    assert.equal(set.description, "Interviews you relentlessly about a plan.");
+    assert.equal(set.sourceUrl, "https://github.com/acme/skills/tree/main/grill-me");
+    assert.equal(set.skills.length, 1);
+    assert.equal(set.skills[0].name, "grill-me");
+    assert.equal(set.skills[0].description, "Interviews you relentlessly about a plan.");
+    assert.equal(set.skills[0].sourceUrl, "https://github.com/acme/skills/tree/main/grill-me");
+    assert.equal(set.skills[0].score, undefined, "not evaluated");
+    await view(page).getByRole("listitem").filter({ hasText: "grill-me" }).getByText("1 skill (not evaluated)").waitFor();
     assert.deepEqual(requests, ["https://raw.githubusercontent.com/acme/skills/main/grill-me/SKILL.md"]);
   });
 
@@ -266,18 +295,18 @@ describe("the Skills Library sample Module", () => {
     await pasteField(page).focus();
     await paste(page, "github.com/acme/skills/blob/main/grill-me/SKILL.md");
     await view(page).getByRole("listitem").filter({ hasText: "grill-me" }).waitFor();
-    const [skill] = await stored(page, (skills) => skills.length === 1);
-    assert.equal(skill.sourceUrl, "https://github.com/acme/skills/tree/main/grill-me");
+    const [set] = await stored(page, (sets) => sets.length === 1);
+    assert.equal(set.sourceUrl, "https://github.com/acme/skills/tree/main/grill-me");
   });
 
-  test("the same skill entered again adds nothing, reads nothing, and says it is there", async () => {
+  test("the same set entered again adds nothing, reads nothing, and says it is there", async () => {
     const page = await host.newPage();
     const requests = await fakeGitHub(page);
     await install(page);
     await pasteField(page).fill("https://github.com/acme/skills/tree/main/grill-me");
     await pasteField(page).press("Enter");
     await view(page).getByRole("listitem").filter({ hasText: "grill-me" }).waitFor();
-    await stored(page, (skills) => skills.length === 1);
+    await stored(page, (sets) => sets.length === 1);
 
     // Its file, with another case for the owner.
     await pasteField(page).fill("https://github.com/ACME/skills/blob/main/grill-me/SKILL.md");
@@ -288,7 +317,7 @@ describe("the Skills Library sample Module", () => {
     assert.equal((await stored(page, () => true)).length, 1);
   });
 
-  test("a skill that cannot be found says so, and Add manually opens the dialog with the URL", async () => {
+  test("a skill that cannot be found says so, and New set opens the dialog with the URL", async () => {
     const page = await host.newPage();
     await fakeGitHub(page);
     await install(page);
@@ -296,18 +325,18 @@ describe("the Skills Library sample Module", () => {
     await pasteField(page).fill("https://github.com/acme/skills/tree/main/unknown");
     await pasteField(page).press("Enter");
     await view(page).getByText("No SKILL.md was found at this URL.").waitFor();
-    await view(page).getByRole("status").getByRole("button", { name: "Add manually" }).click();
-    const dialog = view(page).getByRole("dialog", { name: "Add a skill" });
+    await view(page).getByRole("status").getByRole("button", { name: "New set" }).click();
+    const dialog = view(page).getByRole("dialog", { name: "New set" });
     assert.equal(await dialog.getByLabel("URL").inputValue(), "https://github.com/acme/skills/tree/main/unknown");
     await dialog.getByLabel("Name").fill("Unknown");
     await dialog.getByRole("button", { name: "Add", exact: true }).click();
     await dialog.waitFor({ state: "hidden" });
     await view(page).getByRole("listitem").filter({ hasText: "Unknown" }).waitFor();
-    const [skill] = await stored(page, (skills) => skills.length === 1);
-    assert.equal(skill.sourceUrl, "https://github.com/acme/skills/tree/main/unknown");
+    const [set] = await stored(page, (sets) => sets.length === 1);
+    assert.equal(set.sourceUrl, "https://github.com/acme/skills/tree/main/unknown");
   });
 
-  test("a URL that is not a skill on GitHub says so, and Add manually keeps what was typed", async () => {
+  test("a URL that is not a skill on GitHub says so, and New set keeps what was typed", async () => {
     const page = await host.newPage();
     const requests = await fakeGitHub(page);
     await install(page);
@@ -315,8 +344,8 @@ describe("the Skills Library sample Module", () => {
     await pasteField(page).fill("https://example.com/x");
     await pasteField(page).press("Enter");
     await view(page).getByText("This is not the GitHub URL of a skill.").waitFor();
-    await view(page).getByRole("status").getByRole("button", { name: "Add manually" }).click();
-    assert.equal(await view(page).getByRole("dialog", { name: "Add a skill" }).getByLabel("URL").inputValue(), "https://example.com/x");
+    await view(page).getByRole("status").getByRole("button", { name: "New set" }).click();
+    assert.equal(await view(page).getByRole("dialog", { name: "New set" }).getByLabel("URL").inputValue(), "https://example.com/x");
     assert.deepEqual(requests, []);
   });
 
@@ -334,14 +363,14 @@ describe("the Skills Library sample Module", () => {
     await message.waitFor({ state: "hidden" });
   });
 
-  test("a skill added by hand with a URL that is there already adds nothing", async () => {
+  test("a set added by hand with a URL that is there already adds nothing", async () => {
     const page = await host.newPage();
     await install(page);
     await addByHand(page, "Grill me", "https://github.com/acme/skills/tree/main/grill-me");
     await view(page).getByRole("listitem").filter({ hasText: "Grill me" }).waitFor();
 
-    await view(page).getByRole("button", { name: "Add manually" }).click();
-    const dialog = view(page).getByRole("dialog", { name: "Add a skill" });
+    await view(page).getByRole("button", { name: "New set" }).click();
+    const dialog = view(page).getByRole("dialog", { name: "New set" });
     await dialog.getByLabel("Name").fill("Another");
     await dialog.getByLabel("URL").fill("https://raw.githubusercontent.com/Acme/skills/main/grill-me/SKILL.md");
     await dialog.getByRole("button", { name: "Add", exact: true }).click();
@@ -370,11 +399,11 @@ describe("the Skills Library sample Module", () => {
     assert.fail("the Host did not write the settings");
   }
 
-  test("a click on a skill opens its panel, where each change is saved at once; Escape closes it", async () => {
+  test("a click on a set opens its panel, where each change is saved at once; Escape closes it", async () => {
     const page = await host.newPage();
     await install(page);
     await addByHand(page, "Grill me");
-    await stored(page, (skills) => skills.length === 1);
+    await stored(page, (sets) => sets.length === 1);
 
     // The panel opens for the skill just added, and from a click on its row.
     await panelOf(page, "Grill me").waitFor();
@@ -386,90 +415,97 @@ describe("the Skills Library sample Module", () => {
 
     await panel.getByLabel("Description").fill("Questions until it is clear");
     await panel.getByRole("radio", { name: "Recommended" }).check();
-    await panel.getByRole("radio", { name: "5 out of 5" }).check({ force: true });
     await panel.getByLabel("Quadrant").selectOption({ label: "Code & tests" });
-    await panel.getByLabel("Notes").fill("# Great\n\nUse it **often**.");
+    await panel.getByLabel("Set notes").fill("# Great\n\nUse it **often**.");
 
-    const [skill] = await stored(page, ([item]) => item?.ring === "recommended" && item.score === 5 && item.quadrant === 1 && item.notes.startsWith("# Great") && item.description !== "");
-    assert.equal(skill.description, "Questions until it is clear");
-    assert.ok(skill.updatedAt > skill.addedAt);
+    const [set] = await stored(page, ([item]) => item?.ring === "recommended" && item.quadrant === 1 && item.notes.startsWith("# Great") && item.description !== "");
+    assert.equal(set.description, "Questions until it is clear");
+    assert.ok(set.updatedAt > set.addedAt);
 
     // The list shows the changes behind the panel.
     const row = view(page).getByRole("listitem").filter({ hasText: "Grill me" });
     await row.getByText("Recommended", { exact: true }).waitFor();
-    await row.getByRole("img", { name: "5 out of 5" }).waitFor();
     await row.getByText("Code & tests").waitFor();
 
     await panel.getByRole("button", { name: "Close" }).click();
     await panel.waitFor({ state: "hidden" });
   });
 
-  test("the score is set with the keyboard", async () => {
+  test("the score of a skill is set with the keyboard, and cleared: the skill is not evaluated again", async () => {
     const page = await host.newPage();
     await install(page);
     await addByHand(page, "Keys");
     const panel = panelOf(page, "Keys");
-    await panel.waitFor();
-    await panel.getByRole("radio", { name: "3 out of 5" }).focus();
+    await addSkill(page, panel, "Typing");
+    await panel.getByText("Not evaluated").first().waitFor();
+    await panel.getByRole("radio", { name: "1 out of 5" }).focus();
     await page.keyboard.press("ArrowRight");
     await page.keyboard.press("ArrowRight");
-    assert.ok(await panel.getByRole("radio", { name: "5 out of 5" }).isChecked());
-    await stored(page, ([item]) => item?.score === 5);
+    assert.ok(await panel.getByRole("radio", { name: "3 out of 5" }).isChecked());
+    await stored(page, ([item]) => item?.skills[0]?.score === 3);
+    await view(page).getByRole("listitem").filter({ hasText: "Keys" }).getByText("1 skill", { exact: true }).waitFor();
+
+    await panel.getByRole("button", { name: "Clear", exact: true }).click();
+    await panel.getByRole("button", { name: "Clear", exact: true }).waitFor({ state: "detached" });
+    const [set] = await stored(page, ([item]) => item?.skills[0]?.score === undefined);
+    assert.equal(set.skills[0].score, undefined);
+    await view(page).getByRole("listitem").filter({ hasText: "Keys" }).getByText("1 skill (not evaluated)").waitFor();
   });
 
-  test("a blank name, notes over 8,000 characters and the URL of another skill are refused with a message", async () => {
+  test("a blank name, notes over 8,000 characters and the URL of another set are refused with a message", async () => {
     const page = await host.newPage();
     await install(page);
     await addByHand(page, "Taken", "https://example.com/taken");
     await panelOf(page, "Taken").getByRole("button", { name: "Close" }).click();
     await new Promise((resolve) => setTimeout(resolve, 20));
     await addByHand(page, "Mine");
-    await stored(page, (skills) => skills.length === 2);
+    await stored(page, (sets) => sets.length === 2);
     const panel = panelOf(page, "Mine");
     await panel.waitFor();
 
-    await panel.getByLabel("Name").fill("");
+    await setField(panel, "Name").fill("");
     await panel.getByText("A name is required.").waitFor();
-    await panel.getByLabel("Name").fill("Mine, renamed");
+    await setField(panel, "Name").fill("Mine, renamed");
     await panel.getByText("A name is required.").waitFor({ state: "hidden" });
     await panelOf(page, "Mine, renamed").waitFor();
 
-    await panel.getByLabel("Notes").fill("x".repeat(8001));
+    await setField(panel, "Set notes").fill("x".repeat(8001));
     await panel.getByText("Notes are limited to 8,000 characters.").waitFor();
-    assert.equal((await panel.getByLabel("Notes").inputValue()).length, 8001, "what was typed is kept to be trimmed");
-    await panel.getByLabel("Notes").fill("x".repeat(8000));
+    assert.equal((await setField(panel, "Set notes").inputValue()).length, 8001, "what was typed is kept to be trimmed");
+    await setField(panel, "Set notes").fill("x".repeat(8000));
     await panel.getByText("Notes are limited to 8,000 characters.").waitFor({ state: "hidden" });
 
-    await panel.getByLabel("URL").fill("https://example.com/taken/");
-    await panel.getByLabel("URL").blur();
-    await panel.getByText("Another skill already has this URL.").waitFor();
+    await setField(panel, "URL").fill("https://example.com/taken/");
+    await setField(panel, "URL").blur();
+    await panel.getByText("Another set already has this URL.").waitFor();
 
-    const skills = await stored(page, (list) => list.some((item) => item.notes === "x".repeat(8000)));
-    const mine = skills.find((item) => item.name === "Mine, renamed");
+    const sets = await stored(page, (list) => list.some((item) => item.notes === "x".repeat(8000)));
+    const mine = sets.find((item) => item.name === "Mine, renamed");
     assert.ok(mine);
     assert.equal(mine.sourceUrl, undefined, "the refused URL was not saved");
-    assert.equal(skills.length, 2);
+    assert.equal(sets.length, 2);
   });
 
   test("the quadrants are renamed, the Library is filtered and searched, and all of it is kept after a reload", async () => {
     const page = await host.newPage();
     await install(page);
     await addByHand(page, "Élégant plan");
-    await stored(page, (skills) => skills.length === 1);
+    await stored(page, (sets) => sets.length === 1);
     const panel = panelOf(page, "Élégant plan");
     await panel.getByRole("radio", { name: "Try" }).check();
     await panel.getByLabel("Quadrant").selectOption({ label: "Writing & docs" });
+    await addSkill(page, panel, "Zebra crossing");
     await panel.getByRole("radio", { name: "4 out of 5" }).check({ force: true });
-    await panel.getByLabel("Notes").fill("kept");
+    await setField(panel, "Set notes").fill("kept");
     await panel.getByRole("button", { name: "Close" }).click();
     await new Promise((resolve) => setTimeout(resolve, 20));
     await addByHand(page, "Other thing");
     await panelOf(page, "Other thing").getByRole("button", { name: "Close" }).click();
-    const before = await stored(page, (skills) => skills.length === 2 && skills.some((item) => item.notes === "kept" && item.quadrant === 2 && item.ring === "try" && item.score === 4));
+    const before = await stored(page, (sets) => sets.length === 2 && sets.some((item) => item.notes === "kept" && item.quadrant === 2 && item.ring === "try" && item.skills[0]?.score === 4));
     const plan = before.find((item) => item.name === "Élégant plan")!;
     assert.ok(plan.updatedAt > plan.addedAt);
 
-    // Renaming a quadrant changes the name shown, and no skill's quadrant.
+    // Renaming a quadrant changes the name shown, and no set's quadrant.
     await view(page).getByRole("button", { name: "Rename quadrants" }).click();
     const dialog = view(page).getByRole("dialog", { name: "Rename quadrants" });
     await dialog.getByLabel("Quadrant 3", { exact: true }).fill("");
@@ -489,39 +525,44 @@ describe("the Skills Library sample Module", () => {
     assert.equal(await items.count(), 2);
     await view(page).getByRole("button", { name: "Prose", exact: true }).click();
     assert.equal(await items.count(), 1);
-    await view(page).getByLabel("Search by name").fill("ELEGANT");
+    await view(page).getByLabel("Search by set or skill name").fill("ELEGANT");
     assert.equal(await items.count(), 1);
-    await view(page).getByLabel("Search by name").fill("nothing like it");
-    await view(page).getByText("No skill matches these filters.").waitFor();
-    await view(page).getByLabel("Search by name").fill("elegant");
+    await view(page).getByLabel("Search by set or skill name").fill("nothing like it");
+    await view(page).getByText("No set matches these filters.").waitFor();
+    // The name of one of its skills finds a set too.
+    await view(page).getByLabel("Search by set or skill name").fill("ZEBRA");
+    await items.first().waitFor();
+    assert.equal(await items.count(), 1);
+    await view(page).getByLabel("Search by set or skill name").fill("elegant");
     await items.first().waitFor();
 
     const settings = await storedSettings(page, (value) => value.quadrants?.[2] === "Prose" && value.filters?.query === "elegant");
     assert.deepEqual(settings.filters, { rings: [], quadrants: [2], query: "elegant", archived: false });
     assert.deepEqual(settings.quadrants, ["Design & planning", "Code & tests", "Prose", "Tooling & workflow"]);
     const after = await stored(page, () => true);
-    assert.deepEqual(after.map((item) => item.quadrant).sort(), [0, 2], "renaming moved no skill");
+    assert.deepEqual(after.map((item) => item.quadrant).sort(), [0, 2], "renaming moved no set");
 
     await page.reload();
     await openFromLauncher(page);
-    assert.equal(await view(page).getByLabel("Search by name").inputValue(), "elegant");
+    assert.equal(await view(page).getByLabel("Search by set or skill name").inputValue(), "elegant");
     assert.equal(await view(page).getByRole("button", { name: "Prose", exact: true }).getAttribute("aria-pressed"), "true");
     await items.first().waitFor();
     assert.equal(await items.count(), 1);
     const reopened = await openPanel(page, "Élégant plan");
     assert.ok(await reopened.getByRole("radio", { name: "Try" }).isChecked());
+    await reopened.locator("summary", { hasText: "Zebra crossing" }).click();
     assert.ok(await reopened.getByRole("radio", { name: "4 out of 5" }).isChecked());
     assert.equal(await reopened.getByLabel("Quadrant").inputValue(), "2");
-    assert.equal(await reopened.getByLabel("Notes").inputValue(), "kept");
+    assert.equal(await setField(reopened, "Set notes").inputValue(), "kept");
   });
 
-  test("a skill added while the filters hide it clears them, so that its row is shown", async () => {
+  test("a set added while the filters hide it clears them, so that its row is shown", async () => {
     const page = await host.newPage();
     await install(page);
     await addByHand(page, "First");
     await panelOf(page, "First").getByRole("button", { name: "Close" }).click();
     await view(page).getByRole("button", { name: "Try", exact: true }).click();
-    await view(page).getByText("No skill matches these filters.").waitFor();
+    await view(page).getByText("No set matches these filters.").waitFor();
 
     await addByHand(page, "Hidden by the filter");
     await view(page).getByRole("listitem").filter({ hasText: "Hidden by the filter" }).waitFor();
@@ -530,7 +571,7 @@ describe("the Skills Library sample Module", () => {
 
   // Archiving and deleting a skill (skills-library ticket 04).
 
-  test("an archived skill leaves the Library, shows greyed with the switch, and comes back when unarchived", async () => {
+  test("an archived set leaves the Library, shows greyed with the switch, and comes back when unarchived", async () => {
     const page = await host.newPage();
     await install(page);
     await addByHand(page, "Keep me");
@@ -569,17 +610,17 @@ describe("the Skills Library sample Module", () => {
     assert.equal(await items.count(), 2);
   });
 
-  test("when every skill is archived, the Library does not say that it is empty", async () => {
+  test("when every set is archived, the Library does not say that it is empty", async () => {
     const page = await host.newPage();
     await install(page);
     await addByHand(page, "Only one");
     await panelOf(page, "Only one").getByRole("button", { name: "Archive", exact: true }).click();
     await panelOf(page, "Only one").getByRole("button", { name: "Close" }).click();
-    await view(page).getByText("No skill matches these filters.").waitFor();
+    await view(page).getByText("No set matches these filters.").waitFor();
     await view(page).getByLabel("Show archived").waitFor();
   });
 
-  test("a skill is deleted only after the User confirms it", async () => {
+  test("a set is deleted only after the User confirms it", async () => {
     const page = await host.newPage();
     await install(page);
     await addByHand(page, "By mistake");
@@ -588,7 +629,7 @@ describe("the Skills Library sample Module", () => {
     const confirmation = view(page).getByRole("dialog", { name: "Delete By mistake?" });
     await confirmation.waitFor();
 
-    // Escape closes the confirmation only; Cancel keeps the skill.
+    // Escape closes the confirmation only; Cancel keeps the set.
     await page.keyboard.press("Escape");
     await confirmation.waitFor({ state: "hidden" });
     await panel.waitFor();
@@ -600,18 +641,18 @@ describe("the Skills Library sample Module", () => {
     await panel.getByRole("button", { name: "Delete" }).click();
     await confirmation.getByRole("button", { name: "Delete" }).click();
     await panel.waitFor({ state: "hidden" });
-    await view(page).getByText(/^No skills yet/).waitFor();
+    await view(page).getByText(/^No sets yet/).waitFor();
     await stored(page, (list) => list.length === 0);
   });
 
-  test("a URL already in the Library as an archived skill shows that skill, switching the archived on", async () => {
+  test("a URL already in the Library as an archived set shows that set, switching the archived on", async () => {
     const page = await host.newPage();
     await install(page);
     const url = "https://github.com/acme/skills/tree/main/grill-me";
     await addByHand(page, "Grill me", url);
     await panelOf(page, "Grill me").getByRole("button", { name: "Archive", exact: true }).click();
     await panelOf(page, "Grill me").getByRole("button", { name: "Close" }).click();
-    await view(page).getByText("No skill matches these filters.").waitFor();
+    await view(page).getByText("No set matches these filters.").waitFor();
 
     await addByHand(page, "Again", url);
     const row = view(page).getByRole("listitem").filter({ hasText: "Grill me" });
@@ -623,7 +664,7 @@ describe("the Skills Library sample Module", () => {
 
   // The radar (skills-library ticket 05).
 
-  /** Adds a skill and puts it in a ring and a quadrant, through its panel. */
+  /** Adds a set and puts it in a ring and a quadrant, through its panel. */
   async function addJudged(page: Page, name: string, ring: string, quadrant: string) {
     await addByHand(page, name);
     const panel = panelOf(page, name);
@@ -635,17 +676,17 @@ describe("the Skills Library sample Module", () => {
   }
 
   const radarTab = (page: Page) => view(page).getByRole("tab", { name: "Radar" }).click();
-  const dots = (page: Page) => view(page).locator("svg [data-skill-id]");
+  const dots = (page: Page) => view(page).locator("svg [data-set-id]");
   /** The distance of a skill's dot from the centre of the radar, which is (260, 270) in the drawing. */
   async function distanceOf(page: Page, name: string) {
-    const transform = await view(page).locator("svg [data-skill-id]").filter({ has: page.locator(`title`, { hasText: name }) }).first().getAttribute("transform");
+    const transform = await view(page).locator("svg [data-set-id]").filter({ has: page.locator(`title`, { hasText: name }) }).first().getAttribute("transform");
     const [x, y] = /translate\(([-\d.]+) ([-\d.]+)\)/.exec(transform ?? "")!.slice(1).map(Number);
     return Math.hypot(x - 260, y - 270);
   }
   /** The ring (0 to 3, from the centre) a distance falls in. */
   const ringAt = (distance: number) => [0.38, 0.58, 0.8, 1].findIndex((end) => distance <= end * 230);
 
-  test("the radar draws a point per skill, numbers them in a legend, lists them as new, and drops an archived skill", async () => {
+  test("the radar draws a point per set, numbers them in a legend, lists them as new, and drops an archived set", async () => {
     const page = await host.newPage();
     await install(page);
     await addJudged(page, "Alpha", "Recommended", "Design & planning");
@@ -653,7 +694,7 @@ describe("the Skills Library sample Module", () => {
     await addJudged(page, "Bravo", "Try", "Code & tests");
     await new Promise((resolve) => setTimeout(resolve, 20));
     await addJudged(page, "Charlie", "Deprecated", "Tooling & workflow");
-    await stored(page, (skills) => skills.length === 3 && skills.some((item) => item.ring === "deprecated"));
+    await stored(page, (sets) => sets.length === 3 && sets.some((item) => item.ring === "deprecated"));
 
     await radarTab(page);
     await dots(page).nth(2).waitFor();
@@ -673,7 +714,7 @@ describe("the Skills Library sample Module", () => {
     assert.equal(await dots(page).count(), 2);
   });
 
-  test("changing the ring of a skill moves its point to the band of the new ring", async () => {
+  test("changing the ring of a set moves its point to the band of the new ring", async () => {
     const page = await host.newPage();
     await install(page);
     await addJudged(page, "Mover", "Watch", "Code & tests");
@@ -690,7 +731,7 @@ describe("the Skills Library sample Module", () => {
     assert.equal(ringAt(await distanceOf(page, "Mover")), 0);
   });
 
-  test("a click on a point, or on a line of the legend, opens the skill in the Library", async () => {
+  test("a click on a point, or on a line of the legend, opens the set in the Library", async () => {
     const page = await host.newPage();
     await install(page);
     await addJudged(page, "Alpha", "Try", "Design & planning");
@@ -738,7 +779,7 @@ describe("the Skills Library sample Module", () => {
 
   const libraryTab = (page: Page) => view(page).getByRole("tab", { name: "Library" }).click();
 
-  test("an edition is published with its introduction; a moved skill must be explained before the next one; the editions are listed after a reload", async () => {
+  test("an edition is published with its introduction; a moved set must be explained before the next one; the editions are listed after a reload", async () => {
     const page = await host.newPage();
     await install(page);
     await addJudged(page, "Alpha", "Try", "Design & planning");
@@ -784,7 +825,7 @@ describe("the Skills Library sample Module", () => {
 
     await publishEdition(page, 2, "Second edition");
     await view(page).getByText("No change waiting").waitFor();
-    await stored(page, (skills) => skills.every((skill) => !("moveReason" in skill)));
+    await stored(page, (sets) => sets.every((set) => !("moveReason" in set)));
     await new Promise((resolve) => setTimeout(resolve, 200));
 
     await page.reload();
@@ -843,13 +884,13 @@ describe("the Skills Library sample Module", () => {
     assert.match(first, /## Ce qui bouge/);
     assert.match(first, /### 1\. Alpha/);
     assert.match(first, /### 2\. Bravo/);
-    assert.doesNotMatch(first, /## Retirées du radar/);
+    assert.doesNotMatch(first, /## Retirés du radar/);
 
     const second = await zipOf(2);
     assert.match(second, /Second edition/);
     assert.match(second, /Déplacé : À essayer → Recommandé/);
     assert.match(second, /Used it for a month/);
-    assert.match(second, /## Retirées du radar\n\n- Bravo — À surveiller/);
+    assert.match(second, /## Retirés du radar\n\n- Bravo — À surveiller/);
   });
 
   test("the Editions tab says so when nothing is published", async () => {
@@ -859,7 +900,7 @@ describe("the Skills Library sample Module", () => {
     await view(page).getByText("No edition yet. Publish one from the Radar.").waitFor();
   });
 
-  test("a published skill offers Archive only; the explanation of a move is asked only while the ring differs from the published one", async () => {
+  test("a published set offers Archive only; the explanation of a move is asked only while the ring differs from the published one", async () => {
     const page = await host.newPage();
     await install(page);
     await addJudged(page, "Alpha", "Try", "Design & planning");
@@ -932,5 +973,153 @@ describe("the Skills Library sample Module", () => {
     assert.ok(box && box.x >= 0 && box.x + box.width <= 360, `the dialog is at ${box?.x}, ${box?.width} px wide`);
     const overflow = await view(page).locator("html").evaluate((html) => html.scrollWidth - html.clientWidth);
     assert.ok(overflow <= 0, `the page overflows by ${overflow} px`);
+  });
+
+  // The sets, end to end (skills-library ticket 11).
+
+  const section = (panel: Locator, name: string) => panel.locator("details", { hasText: name });
+
+  test("a storage in the old model is migrated into sets of one skill, with no change waiting, and the old edition still downloads", async () => {
+    const page = await host.newPage();
+    await install(page);
+    const quadrants = ["Design & planning", "Code & tests", "Writing & docs", "Tooling & workflow"];
+    const legacy = (id: string, name: string, ring: string, quadrant: number, score: number, notes: string) => ({
+      id,
+      name,
+      description: `About ${name}`,
+      quadrant,
+      ring,
+      score,
+      notes,
+      addedAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-02T00:00:00.000Z",
+      archived: false,
+    });
+    const alpha = legacy("legacy-a", "Alpha", "try", 0, 4, "Notes of Alpha");
+    const bravo = legacy("legacy-b", "Bravo", "watch", 1, 2, "Notes of Bravo");
+    const publishedAt = "2026-02-01T00:00:00.000Z";
+    const entry = (skill: typeof alpha) => ({
+      id: skill.id,
+      name: skill.name,
+      quadrant: skill.quadrant,
+      ring: skill.ring,
+      change: "new",
+      description: skill.description,
+      score: skill.score,
+      notes: skill.notes,
+    });
+    await writeFolder(page, DATA, {
+      "skills.json": { key: "skills", value: [alpha, bravo] },
+      "editions.json": { key: "editions", value: [{ number: 1, publishedAt, counts: { recommended: 0, try: 1, watch: 1, deprecated: 0 } }] },
+      "edition%3A1.json": {
+        key: "edition:1",
+        value: { number: 1, publishedAt, intro: "Old edition", quadrants, entries: [entry(alpha), entry(bravo)], retired: [] },
+      },
+    });
+    await page.reload();
+    await openFromLauncher(page);
+
+    const items = view(page).getByRole("listitem");
+    await items.nth(1).waitFor();
+    assert.equal(await items.count(), 2);
+    for (const name of ["Alpha", "Bravo"]) await items.filter({ hasText: name }).getByText("1 skill", { exact: true }).waitFor();
+    assert.equal(await view(page).getByText("Updated", { exact: true }).count(), 0);
+    assert.equal(await view(page).getByText("New", { exact: true }).count(), 0, "no pending change");
+
+    const sets = await stored(page, (list) => list.length === 2);
+    const migrated = sets.find((set) => set.id === "legacy-a")!;
+    assert.equal(migrated.ring, "try");
+    assert.equal(migrated.notes, "");
+    assert.equal(migrated.skills.length, 1);
+    assert.equal(migrated.skills[0].score, 4);
+    assert.equal(migrated.skills[0].notes, "Notes of Alpha");
+    const files = await readFolder(page, DATA);
+    assert.deepEqual(JSON.parse(files["skills.json"]).value, [alpha, bravo], "the old skills are left as they were");
+
+    await radarTab(page);
+    await view(page).getByText("No change waiting").waitFor();
+    await view(page).getByRole("tab", { name: "Editions" }).click();
+    await view(page).getByText("1 Try · 1 Watch", { exact: true }).waitFor();
+    const file = await downloaded(page, () => view(page).getByRole("button", { name: "Download edition 1 as .zip" }).click());
+    assert.equal(file.name, "skills-radar-edition-1.zip");
+    const post = strFromU8(unzipSync(new Uint8Array(file.bytes))["_posts/skills-radar-edition-1.md"]);
+    assert.match(post, /Old edition/);
+    assert.match(post, /### 1\. Alpha/);
+    assert.match(post, /### 2\. Bravo/);
+  });
+
+  test("a set made by hand takes two skills, one of them scored; published, it is updated when a skill is removed", async () => {
+    const page = await host.newPage();
+    await install(page);
+    await addByHand(page, "Bundle");
+    const panel = panelOf(page, "Bundle");
+    await addSkill(page, panel, "Alpha skill", "https://example.com/alpha", "The first");
+    await addSkill(page, panel, "Beta skill");
+    // The same URL in the same set is refused; in another set it would be accepted.
+    await panel.getByRole("button", { name: "Add skill" }).click();
+    const dialog = view(page).getByRole("dialog", { name: "Add a skill" });
+    await dialog.getByLabel("Name").fill("Again");
+    await dialog.getByLabel("URL").fill("https://example.com/alpha");
+    await dialog.getByRole("button", { name: "Add", exact: true }).click();
+    await dialog.getByText("Another skill of this set already has this URL.").waitFor();
+    await dialog.getByRole("button", { name: "Cancel" }).click();
+
+    const first = section(panel, "Alpha skill");
+    await first.locator("summary").click();
+    await first.getByRole("radio", { name: "5 out of 5" }).check({ force: true });
+    const [set] = await stored(page, ([item]) => item?.skills.length === 2 && item.skills[0].score === 5);
+    assert.deepEqual(set.skills.map((skill) => skill.name), ["Alpha skill", "Beta skill"]);
+    assert.equal(set.skills[1].score, undefined);
+    assert.equal(set.skills[0].notes, "#### À quoi ça sert\n\n#### Pourquoi\n\n#### Comment\n");
+    const row = view(page).getByRole("listitem").filter({ hasText: "Bundle" });
+    await row.getByText("2 skills (1 not evaluated)").waitFor();
+    await row.getByText("New", { exact: true }).waitFor();
+
+    await panel.getByRole("button", { name: "Close" }).click();
+    await publishEdition(page, 1, "A set");
+    await libraryTab(page);
+    await row.getByText("New", { exact: true }).waitFor({ state: "detached" });
+
+    // Removing a skill is allowed after the publication, behind a confirmation.
+    await openPanel(page, "Bundle");
+    const beta = section(panel, "Beta skill");
+    await beta.locator("summary").click();
+    await beta.getByRole("button", { name: "Remove from set" }).click();
+    const confirmation = view(page).getByRole("dialog", { name: "Remove Beta skill from the set?" });
+    await confirmation.getByRole("button", { name: "Cancel" }).click();
+    await confirmation.waitFor({ state: "hidden" });
+    assert.equal((await stored(page, () => true))[0].skills.length, 2);
+    await beta.getByRole("button", { name: "Remove from set" }).click();
+    await confirmation.getByRole("button", { name: "Remove from set" }).click();
+    await stored(page, ([item]) => item?.skills.length === 1);
+    await panel.getByRole("button", { name: "Close" }).click();
+    await row.getByText("Updated", { exact: true }).waitFor();
+    await row.getByText("1 skill", { exact: true }).waitFor();
+    await radarTab(page);
+    await view(page).getByText("No change waiting").waitFor();
+  });
+
+  test("a set that moved is explained before the next edition, which counts the sets per ring", async () => {
+    const page = await host.newPage();
+    await install(page);
+    await addJudged(page, "Bundle", "Try", "Design & planning");
+    await publishEdition(page, 1, "First");
+    await libraryTab(page);
+    const panel = await openPanel(page, "Bundle");
+    await panel.getByRole("radio", { name: "Recommended" }).check();
+    await panel.getByRole("button", { name: "Close" }).click();
+    await radarTab(page);
+    await view(page).getByText("1 change waiting").waitFor();
+    await view(page).getByText("Moved: Try → Recommended").waitFor();
+
+    await view(page).getByRole("button", { name: "Publish edition 2", exact: true }).click();
+    const refused = view(page).getByRole("dialog", { name: "Publish edition 2", exact: true });
+    await refused.getByRole("button", { name: "Bundle" }).click();
+    await panelOf(page, "Bundle").getByLabel("Why did it move?").fill("It earned it");
+    await panelOf(page, "Bundle").getByRole("button", { name: "Close" }).click();
+    await publishEdition(page, 2, "Second");
+    await view(page).getByRole("tab", { name: "Editions" }).click();
+    await view(page).getByText("1 Recommended", { exact: true }).waitFor();
+    await view(page).getByText("1 Try", { exact: true }).waitFor();
   });
 });
