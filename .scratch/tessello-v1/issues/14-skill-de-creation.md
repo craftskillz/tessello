@@ -17,3 +17,11 @@ Spec parente : `.scratch/tessello-v1/spec.md`. Vocabulaire : `GLOSSARY.md`. Cont
 ### Guide d'utilisation (2026-10-19)
 
 Depuis l'ADR 0010 et le ticket 16, le Validateur refuse un Module sans Guide d'utilisation. La skill doit donc faire écrire à chaque Module un `guide.md` destiné à l'Utilisateur, en suivant les recommandations de la Convention (§3.2) : à quoi sert le Module, comment se servir de sa Vue et de son Widget, ce que veulent dire ses messages, où vont ses données. Le Guide du Survival Kit (`sample-modules/survival-kit/guide/guide.md`) sert d'exemple.
+
+### Marketplace (2026-10-22)
+
+Décidé au grilling de la Marketplace (`.scratch/marketplace/spec.md`) :
+
+- [ ] La skill s'arrête toujours au `.zip` qui passe `tessello validate`. Elle ne conduit pas la publication.
+- [ ] Une courte section « Publishing » renvoie à `PUBLISHING.md` de la Marketplace, recommande GitHub Pages pour héberger le `.zip` (une URL par version, jamais écrasée), et rappelle que l'Identifiant doit être sous l'Espace de noms du compte GitHub du Créateur (ADR 0016).
+- [ ] La note « Publishing your Module » de la Convention (§8) renvoie elle aussi à `PUBLISHING.md`.

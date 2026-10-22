@@ -1,6 +1,6 @@
 # Tessello
 
-Application web composable : l'utilisateur assemble son espace à partir de modules installés depuis une marketplace ou créés par lui-même à l'aide d'un LLM.
+Application web composable : l'utilisateur assemble son espace à partir de modules installés depuis la Marketplace ou créés par lui-même à l'aide d'un LLM.
 
 Les termes sont en français ; le terme anglais entre parenthèses est le terme officiel utilisé dans la Convention, le SDK, la skill et l'interface.
 
@@ -35,7 +35,7 @@ Tout ce que l'Utilisateur a assemblé dans l'Hôte : ses Modules activés et leu
 _Avoid_: Workspace, profil, configuration
 
 **Espace de noms** (*Namespace*):
-Préfixe propre à un Créateur, sous lequel il nomme tous ses Modules.
+Préfixe propre à un Créateur, sous lequel il nomme tous ses Modules ; c'est le nom de son compte ou de son organisation GitHub.
 _Avoid_: Scope, organisation, compte
 
 **Validateur** (*Validator*):
@@ -70,11 +70,33 @@ _Avoid_: Répertoire, workspace, espace de stockage
 Élément permanent de l'Hôte qui liste les Modules installés et permet d'ouvrir leur Vue depuis n'importe où.
 _Avoid_: Dock, sidebar, menu
 
+## Marketplace
+
+**Marketplace** (*Marketplace*):
+Le catalogue officiel et gratuit des Modules publiés par les Créateurs, et le site qui le présente ; l'Hôte fonctionne sans elle.
+_Avoid_: Store, registre, catalogue, boutique
+
+**Approbation** (*Approval*):
+La décision du Mainteneur, prise une seule fois, d'admettre un nouveau Module dans la Marketplace ; elle ne garantit rien de ce Module ni de ses versions suivantes.
+_Avoid_: Revue, validation, certification, audit
+
+**Bannissement** (*Ban*):
+Le retrait, par le Mainteneur et à tout moment, d'une version, d'un Module ou d'un Espace de noms entier de la Marketplace.
+_Avoid_: Suppression, blocage, modération
+
+**Retrait** (*Withdrawal*):
+Le retrait d'un de ses Modules, ou d'une de ses versions, de la Marketplace par son Créateur.
+_Avoid_: Dépublication, suppression
+
 ## Personnes
 
 **Créateur** (*Creator*):
-Personne qui produit un Module, à la main ou avec un LLM, et peut le publier sur la marketplace.
+Personne qui produit un Module, à la main ou avec un LLM, et peut le publier sur la Marketplace sous l'Espace de noms de son compte GitHub.
 _Avoid_: Développeur, auteur, éditeur
+
+**Mainteneur** (*Maintainer*):
+La personne qui tient la Marketplace : elle décide des Approbations et des Bannissements, sans répondre du code des Modules.
+_Avoid_: Modérateur, administrateur, relecteur
 
 **Utilisateur** (*User*):
 Personne qui installe et utilise des Modules dans son Hôte. Un même individu peut être Créateur et Utilisateur.

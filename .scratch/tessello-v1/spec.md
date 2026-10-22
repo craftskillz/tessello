@@ -148,7 +148,7 @@ Déjà livré : la Convention (version 1, avec Permissions), le Validateur et la
 
 ## Out of Scope
 
-- La **marketplace** sous toutes ses formes : publication, comptes de Créateurs, réservation des Espaces de noms, modération, recherche, notes, monétisation, commande `publish`. Elle fera l'objet d'une session de grilling dédiée.
+- La **Marketplace** sous toutes ses formes : elle a sa propre spec, `.scratch/marketplace/spec.md` (ADR 0014 à 0018).
 - Le **Pont** (exécution de commandes déclarées, appels sans contrainte CORS) : il est prévu, mais aura son propre grilling et son propre ADR.
 - Les Permissions et capacités au-delà de `network` et `localNetwork` : notifications, fichiers, presse-papiers, etc.
 - La communication entre Modules.
