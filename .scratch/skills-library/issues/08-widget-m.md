@@ -12,3 +12,7 @@ Spec parente : `.scratch/skills-library/spec.md`. Vocabulaire : `GLOSSARY.md` et
 - [ ] Un clic ouvre la Vue (`navigation.openView`). Le Widget ne télécharge rien (ADR 0013).
 - [ ] Le Widget relit le stockage quand il redevient visible, et suit le thème de l'Hôte.
 - [ ] Test navigateur : ajouter des Skills, voir les nombres ; publier, le compteur revient à zéro ; déplacer une Skill, il remonte.
+
+## Comments
+
+- Depuis le ticket 06, l'index `editions` (`readEditionIndex` dans `src/lib/editions.ts`, la plus récente en premier) donne la date de la dernière Édition sans lire les Éditions complètes ; le compteur en attente demande les entrées de la dernière (`storage.readEditions()` puis `changesSince`).

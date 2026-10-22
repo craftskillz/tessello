@@ -188,7 +188,7 @@ describe("the Skills Library sample Module", () => {
     await view(page).getByRole("tab", { name: "Radar", selected: true }).waitFor();
 
     await view(page).getByRole("tab", { name: "Editions" }).click();
-    await view(page).getByRole("tabpanel").getByText(/coming soon/i).waitFor();
+    await view(page).getByRole("tabpanel").getByText(/^No edition yet/).waitFor();
   });
 
   test("the Widget counts the skills and opens the View", async () => {
@@ -683,6 +683,163 @@ describe("the Skills Library sample Module", () => {
 
     const svg = await view(page).locator(".sl-radar svg").boundingBox();
     assert.ok(svg && svg.width > 200 && svg.width <= 360, `the radar is ${svg?.width} px wide`);
+    const overflow = await view(page).locator("html").evaluate((html) => html.scrollWidth - html.clientWidth);
+    assert.ok(overflow <= 0, `the page overflows by ${overflow} px`);
+  });
+
+  // Editions (skills-library ticket 06).
+
+  /** Publishes the next edition from the Radar tab, through the dialog. */
+  async function publishEdition(page: Page, number: number, intro = "Hello **world**") {
+    await radarTab(page);
+    await view(page).getByRole("button", { name: `Publish edition ${number}`, exact: true }).click();
+    const dialog = view(page).getByRole("dialog", { name: `Publish edition ${number}`, exact: true });
+    await dialog.getByLabel("Introduction").fill(intro);
+    await dialog.getByRole("button", { name: "Next" }).click();
+    await view(page).getByRole("dialog", { name: `Publish edition ${number}?`, exact: true }).getByRole("button", { name: "Publish", exact: true }).click();
+    await view(page).getByRole("dialog").waitFor({ state: "hidden" });
+  }
+
+  const libraryTab = (page: Page) => view(page).getByRole("tab", { name: "Library" }).click();
+
+  test("an edition is published with its introduction; a moved skill must be explained before the next one; the editions are listed after a reload", async () => {
+    const page = await host.newPage();
+    await install(page);
+    await addJudged(page, "Alpha", "Try", "Design & planning");
+    await addJudged(page, "Bravo", "Watch", "Code & tests");
+    await radarTab(page);
+
+    // The introduction is required.
+    await view(page).getByRole("button", { name: "Publish edition 1", exact: true }).click();
+    const first = view(page).getByRole("dialog", { name: "Publish edition 1", exact: true });
+    assert.equal(await first.getByRole("button", { name: "Next" }).isDisabled(), true);
+    await first.getByLabel("Introduction").fill("   ");
+    assert.equal(await first.getByRole("button", { name: "Next" }).isDisabled(), true);
+    await first.getByRole("button", { name: "Cancel" }).click();
+    await first.waitFor({ state: "hidden" });
+
+    await publishEdition(page, 1, "First edition");
+    await view(page).getByText("No change waiting").waitFor();
+    await view(page).getByRole("button", { name: "Publish edition 2", exact: true }).waitFor();
+
+    // Alpha moves: the next edition is refused until the move is explained.
+    await libraryTab(page);
+    await openPanel(page, "Alpha");
+    await panelOf(page, "Alpha").getByRole("radio", { name: "Recommended" }).check();
+    await panelOf(page, "Alpha").getByRole("button", { name: "Close" }).click();
+    await openPanel(page, "Bravo");
+    await panelOf(page, "Bravo").getByRole("button", { name: "Archive", exact: true }).click();
+    await panelOf(page, "Bravo").getByRole("button", { name: "Close" }).click();
+    await radarTab(page);
+    await view(page).getByText("2 changes waiting").waitFor();
+    await view(page).getByText("Moved: Try → Recommended").waitFor();
+    await view(page).getByText("Retired (was Watch)").waitFor();
+
+    await view(page).getByRole("button", { name: "Publish edition 2", exact: true }).click();
+    const refused = view(page).getByRole("dialog", { name: "Publish edition 2", exact: true });
+    assert.equal(await refused.getByLabel("Introduction").count(), 0);
+    assert.equal(await refused.getByRole("button", { name: "Publish", exact: true }).count(), 0);
+    await refused.getByRole("button", { name: "Alpha" }).click();
+    await refused.waitFor({ state: "hidden" });
+    const panel = panelOf(page, "Alpha");
+    await panel.waitFor();
+    await panel.getByLabel("Why did it move?").fill("Used it for a month");
+    await panel.getByRole("button", { name: "Close" }).click();
+
+    await publishEdition(page, 2, "Second edition");
+    await view(page).getByText("No change waiting").waitFor();
+    await stored(page, (skills) => skills.every((skill) => !("moveReason" in skill)));
+    await new Promise((resolve) => setTimeout(resolve, 200));
+
+    await page.reload();
+    await openFromLauncher(page);
+    await view(page).getByRole("tab", { name: "Editions" }).click();
+    const headings = view(page).getByRole("heading", { name: /^Edition \d+$/ });
+    await headings.nth(1).waitFor();
+    assert.deepEqual(await headings.allTextContents(), ["Edition 2", "Edition 1"]);
+    // Edition 2 has Alpha (Recommended) only, since Bravo was archived; Edition 1 had one Try and one Watch.
+    await view(page).getByText("1 Recommended", { exact: true }).waitFor();
+    await view(page).getByText("1 Try · 1 Watch", { exact: true }).waitFor();
+  });
+
+  test("the Editions tab says so when nothing is published", async () => {
+    const page = await host.newPage();
+    await install(page);
+    await view(page).getByRole("tab", { name: "Editions" }).click();
+    await view(page).getByText("No edition yet. Publish one from the Radar.").waitFor();
+  });
+
+  test("a published skill offers Archive only; the explanation of a move is asked only while the ring differs from the published one", async () => {
+    const page = await host.newPage();
+    await install(page);
+    await addJudged(page, "Alpha", "Try", "Design & planning");
+    await addJudged(page, "Bravo", "Watch", "Code & tests");
+    await openPanel(page, "Alpha");
+    assert.equal(await panelOf(page, "Alpha").getByRole("button", { name: "Delete" }).count(), 1);
+    await panelOf(page, "Alpha").getByRole("button", { name: "Close" }).click();
+    await publishEdition(page, 1);
+    await libraryTab(page);
+
+    const panel = await openPanel(page, "Alpha");
+    await panel.getByRole("button", { name: "Archive", exact: true }).waitFor();
+    assert.equal(await panel.getByRole("button", { name: "Delete" }).count(), 0);
+    assert.equal(await panel.getByLabel("Why did it move?").count(), 0);
+
+    await panel.getByRole("radio", { name: "Recommended" }).check();
+    await panel.getByLabel("Why did it move?").fill("Typed");
+    await panel.getByRole("radio", { name: "Try" }).check();
+    await panel.getByLabel("Why did it move?").waitFor({ state: "detached" });
+    await panel.getByRole("radio", { name: "Watch" }).check();
+    assert.equal(await panel.getByLabel("Why did it move?").inputValue(), "");
+  });
+
+  test("the explanation of a move is limited to 280 characters", async () => {
+    const page = await host.newPage();
+    await install(page);
+    await addJudged(page, "Alpha", "Try", "Design & planning");
+    await publishEdition(page, 1);
+    await libraryTab(page);
+    const panel = await openPanel(page, "Alpha");
+    await panel.getByRole("radio", { name: "Recommended" }).check();
+    const field = panel.getByLabel("Why did it move?");
+    assert.equal(await field.getAttribute("maxlength"), "280");
+    await field.fill("x".repeat(300));
+    assert.equal((await field.inputValue()).length, 280);
+    assert.equal(await panel.getByRole("alert").count(), 0);
+  });
+
+  test("an edition is stored under its own key, then the index of the editions", async () => {
+    const page = await host.newPage();
+    await install(page);
+    await addJudged(page, "Alpha", "Try", "Design & planning");
+    await publishEdition(page, 1, "Stored intro");
+    let files: string[] = [];
+    for (let tries = 0; tries < 50; tries++) {
+      files = Object.keys(await readFolder(page, DATA));
+      if (files.some((name) => /^edition.*1/.test(name)) && files.includes("editions.json")) break;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    const name = files.find((file) => /^edition.*1/.test(file));
+    assert.ok(name && files.includes("editions.json"), `files: ${files.join(", ")}`);
+    const edition = (await storedFile(page, name)) as { number: number; intro: string; entries: { name: string; ring: string }[] };
+    assert.equal(edition.number, 1);
+    assert.equal(edition.intro, "Stored intro");
+    assert.deepEqual(edition.entries.map((entry) => [entry.name, entry.ring]), [["Alpha", "try"]]);
+    const index = (await storedFile(page, "editions.json")) as { number: number; counts: Record<string, number> }[];
+    assert.deepEqual(index.map((item) => [item.number, item.counts.try]), [[1, 1]]);
+  });
+
+  test("the publish dialog fits a 360 px wide screen", async () => {
+    const page = await host.newPage();
+    await page.setViewportSize({ width: 360, height: 800 });
+    await install(page);
+    await addJudged(page, "Alpha", "Try", "Design & planning");
+    await radarTab(page);
+    await view(page).getByRole("button", { name: "Publish edition 1", exact: true }).click();
+    const dialog = view(page).getByRole("dialog", { name: "Publish edition 1", exact: true });
+    await dialog.getByLabel("Introduction").fill("Hi");
+    const box = await dialog.boundingBox();
+    assert.ok(box && box.x >= 0 && box.x + box.width <= 360, `the dialog is at ${box?.x}, ${box?.width} px wide`);
     const overflow = await view(page).locator("html").evaluate((html) => html.scrollWidth - html.clientWidth);
     assert.ok(overflow <= 0, `the page overflows by ${overflow} px`);
   });
