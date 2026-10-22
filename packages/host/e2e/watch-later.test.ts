@@ -339,6 +339,33 @@ describe("the Watch Later sample Module", () => {
     await stored(page, (videos) => videos.find((video) => video.videoId === ID)?.tags.length === 0);
   });
 
+  test("a tag typed and left without Enter, or picked among the suggestions, is added too", async () => {
+    const page = await host.newPage();
+    await fakeYouTube(page);
+    await install(page);
+    const OTHER = "aaaaaaaaaaa";
+    const details = view(page).getByRole("dialog");
+    const tag = details.getByRole("combobox", { name: "Add a tag" });
+
+    await addByField(page, `https://www.youtube.com/watch?v=${ID}`);
+    await view(page).getByRole("article").getByRole("button", { name: "Details" }).click();
+    await tag.fill("Music");
+    await details.getByRole("button", { name: "Close" }).click();
+    await view(page).getByRole("region", { name: "Music", exact: true }).getByRole("article").waitFor();
+    await stored(page, (videos) => videos.find((video) => video.videoId === ID)?.tags.join() === "Music");
+
+    // The browser fills the field with the suggestion picked, with an input that is not a keystroke.
+    await addByField(page, `https://youtu.be/${OTHER}`);
+    await view(page).locator(`[data-video-id="${OTHER}"]`).getByRole("button", { name: "Details" }).click();
+    await tag.evaluate((input: HTMLInputElement) => {
+      input.value = "Music";
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await details.getByRole("button", { name: "Remove the tag Music" }).waitFor();
+    assert.equal(await tag.inputValue(), "");
+    await stored(page, (videos) => videos.find((video) => video.videoId === OTHER)?.tags.join() === "Music");
+  });
+
   test("the Widget shows a video added in the View until it is marked as watched, and opens the View", async () => {
     const page = await host.newPage();
     await fakeYouTube(page);
