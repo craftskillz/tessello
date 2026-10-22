@@ -13,3 +13,7 @@ Spec parente : `.scratch/skills-library/spec.md`. Vocabulaire : `GLOSSARY.md` et
 - [ ] Un réglage de *Library* renomme les 4 Quadrants (1 à 40 caractères, requis). Les défauts sont ceux de la spec. Renommer ne change le Quadrant d'aucune Skill.
 - [ ] *Library* se filtre par Anneau et par Quadrant (plusieurs valeurs possibles), et se cherche par nom (sans tenir compte de la casse ni des accents). Les filtres sont retenus.
 - [ ] Test navigateur : changer l'Anneau, la Note, les Notes et le Quadrant d'une Skill, renommer un Quadrant, filtrer, recharger, tout est retenu.
+
+## Comments
+
+- Depuis le ticket 02, une Skill ajoutée passe par `select` dans `src/view/View.svelte`, qui la met seulement en évidence : c'est là qu'il faut ouvrir son panneau d'édition.
