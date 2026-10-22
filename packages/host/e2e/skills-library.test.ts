@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { before, describe, test } from "node:test";
+import { strFromU8, unzipSync } from "fflate";
+import matter from "gray-matter";
 import type { Page } from "playwright";
 import { dropFile, readFolder, showLauncher, useHost, zipSample } from "./browser.ts";
 
@@ -760,6 +763,60 @@ describe("the Skills Library sample Module", () => {
     // Edition 2 has Alpha (Recommended) only, since Bravo was archived; Edition 1 had one Try and one Watch.
     await view(page).getByText("1 Recommended", { exact: true }).waitFor();
     await view(page).getByText("1 Try · 1 Watch", { exact: true }).waitFor();
+  });
+
+  /** The file the View hands the User when `start` runs: its name and its bytes. */
+  async function downloaded(page: Page, start: () => Promise<void>): Promise<{ name: string; bytes: Buffer }> {
+    const [file] = await Promise.all([page.waitForEvent("download", { timeout: 10000 }), start()]);
+    return { name: file.suggestedFilename(), bytes: await readFile((await file.path())!) };
+  }
+
+  test("the .zip of an edition holds its post for the blog and its cover, for any edition", async () => {
+    const page = await host.newPage();
+    await install(page);
+    await addJudged(page, "Alpha", "Try", "Design & planning");
+    await addJudged(page, "Bravo", "Watch", "Code & tests");
+    await publishEdition(page, 1, "First edition");
+    await libraryTab(page);
+    await openPanel(page, "Alpha");
+    await panelOf(page, "Alpha").getByRole("radio", { name: "Recommended" }).check();
+    await panelOf(page, "Alpha").getByLabel("Why did it move?").fill("Used it for a month");
+    await panelOf(page, "Alpha").getByRole("button", { name: "Close" }).click();
+    await openPanel(page, "Bravo");
+    await panelOf(page, "Bravo").getByRole("button", { name: "Archive", exact: true }).click();
+    await panelOf(page, "Bravo").getByRole("button", { name: "Close" }).click();
+    await publishEdition(page, 2, "Second edition");
+    await view(page).getByRole("tab", { name: "Editions" }).click();
+
+    const zipOf = async (n: number) => {
+      const file = await downloaded(page, () => view(page).getByRole("button", { name: `Download edition ${n} as .zip` }).click());
+      assert.equal(file.name, `skills-radar-edition-${n}.zip`);
+      const files = unzipSync(new Uint8Array(file.bytes));
+      const slug = `skills-radar-edition-${n}`;
+      assert.deepEqual(Object.keys(files).sort(), [`_posts/${slug}.md`, `public/assets/blog/${slug}/cover.png`]);
+      const cover = Buffer.from(files[`public/assets/blog/${slug}/cover.png`]);
+      assert.deepEqual([...cover.subarray(0, 8)], [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], "the cover is a PNG");
+      assert.deepEqual([cover.readUInt32BE(16), cover.readUInt32BE(20)], [1200, 630]);
+      const post = matter(strFromU8(files[`_posts/${slug}.md`]));
+      assert.equal(post.data.title, `Skills Radar — Édition ${n}`);
+      assert.equal(post.data.coverImage, `/assets/blog/${slug}/cover.png`);
+      assert.equal(post.data.ogImage.url, `/assets/blog/${slug}/cover.png`);
+      assert.match(String(post.data.date instanceof Date ? post.data.date.toISOString() : post.data.date), /^\d{4}-\d{2}-\d{2}/);
+      return post.content;
+    };
+
+    const first = await zipOf(1);
+    assert.match(first, /First edition/);
+    assert.match(first, /## Ce qui bouge/);
+    assert.match(first, /### 1\. Alpha/);
+    assert.match(first, /### 2\. Bravo/);
+    assert.doesNotMatch(first, /## Retirées du radar/);
+
+    const second = await zipOf(2);
+    assert.match(second, /Second edition/);
+    assert.match(second, /Déplacé : À essayer → Recommandé/);
+    assert.match(second, /Used it for a month/);
+    assert.match(second, /## Retirées du radar\n\n- Bravo — À surveiller/);
   });
 
   test("the Editions tab says so when nothing is published", async () => {

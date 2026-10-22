@@ -143,7 +143,7 @@ Ces termes sont propres au Module ; ils n'entrent pas dans `GLOSSARY.md`.
 
 ### Billet du blog (fonction pure) et `.zip`
 
-- `renderPost(edition, previousEditions, options) → string`, le Markdown d'un billet de `craftskillz-blog` (`_posts/*.md`, lu par `gray-matter`, rendu par `remark-gfm` + `remark-html` avec `sanitize: false`, donc le HTML brut et le SVG en ligne passent).
+- `renderPost(edition) → string` (l'Édition figée porte déjà le Changement, l'Anneau quitté et l'explication de chaque entrée, et les Skills retirées), le Markdown d'un billet de `craftskillz-blog` (`_posts/*.md`, lu par `gray-matter`, rendu par `remark-gfm` + `remark-html` avec `sanitize: false`, donc le HTML brut et le SVG en ligne passent).
 - Slug : `skills-radar-edition-<n>`. Frontmatter :
 
   ```yaml
