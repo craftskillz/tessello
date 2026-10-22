@@ -16,6 +16,7 @@ before(async () => {
 const DATA = "modules/.tessello/data/@craftskillz/skills-library";
 
 const view = (page: Page) => page.frameLocator("iframe[title='Skills Library']");
+const goHome = async (page: Page) => (await showLauncher(page)).getByRole("button", { name: "Tessello" }).click();
 const openFromLauncher = async (page: Page) => (await showLauncher(page)).getByRole("button", { name: "Skills Library" }).click();
 
 /** Installs the Skills Library Module from its .zip; the Host then shows its View, with an empty Library. */
@@ -194,17 +195,49 @@ describe("the Skills Library sample Module", () => {
     await view(page).getByRole("tabpanel").getByText(/^No edition yet/).waitFor();
   });
 
-  test("the Widget counts the skills and opens the View", async () => {
+  test("the Widget counts the skills per ring, counts the changes waiting, and opens the View", async () => {
     const page = await host.newPage();
     await install(page);
-    await addByHand(page, "Counted");
-    await stored(page, (skills) => skills.length === 1);
-
-    await page.reload();
     const widget = page.frameLocator("iframe[title='Skills Library widget']");
-    await widget.getByText("1 skill").waitFor();
+    const ring = (name: string) => widget.getByRole("listitem").filter({ hasText: name });
+    await goHome(page);
+    await widget.getByText("No edition yet").waitFor();
+    await ring("Recommended").getByText("0", { exact: true }).waitFor();
+
+    // Back to the View, two skills are added; the Widget, hidden meanwhile, reads them again when the Home comes back.
+    await openFromLauncher(page);
+    await addJudged(page, "Alpha", "Try", "Design & planning");
+    await addJudged(page, "Bravo", "Watch", "Code & tests");
+    await goHome(page);
+    await ring("Try").getByText("1", { exact: true }).waitFor();
+    await ring("Watch").getByText("1", { exact: true }).waitFor();
+    await ring("Recommended").getByText("0", { exact: true }).waitFor();
+    await widget.getByText("2 changes waiting").waitFor();
+    assert.ok(
+      await widget.locator("body").evaluate((body) => body.scrollHeight <= innerHeight && body.scrollWidth <= innerWidth),
+      "the Widget does not scroll",
+    );
+
+    // Publishing brings the counter back to zero and dates the last edition.
+    await openFromLauncher(page);
+    await publishEdition(page, 1);
+    await goHome(page);
+    await widget.getByText(/^Last edition: /).waitFor();
+    assert.equal(await widget.getByText(/changes? waiting/).count(), 0);
+
+    // Moving a skill puts it back up, and the skill follows its new ring.
+    await openFromLauncher(page);
+    await libraryTab(page);
+    const panel = await openPanel(page, "Alpha");
+    await panel.getByRole("radio", { name: "Recommended" }).check();
+    await panel.getByRole("button", { name: "Close" }).click();
+    await goHome(page);
+    await widget.getByText("1 change waiting").waitFor();
+    await ring("Recommended").getByText("1", { exact: true }).waitFor();
+    await ring("Try").getByText("0", { exact: true }).waitFor();
+
     await widget.getByRole("button", { name: /Open/ }).click();
-    await view(page).getByRole("listitem").filter({ hasText: "Counted" }).waitFor();
+    await view(page).getByRole("listitem").filter({ hasText: "Alpha" }).waitFor();
   });
 
   test("the URL of a skill folder, entered, adds the skill with the name and the description read from its SKILL.md", async () => {
