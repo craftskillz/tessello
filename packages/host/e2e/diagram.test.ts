@@ -348,6 +348,33 @@ const SAMPLE_LIBRARIES = { libraries: [{ id: "lib-1", name: "Infra", shapes: [{ 
 const json = (name: string, value: unknown) => ({ name, mimeType: "application/json", buffer: Buffer.from(JSON.stringify(value)) });
 
 describe("the Diagram sample Module", () => {
+  test("a visible connection handle stays reachable over a nearby shape, while ordinary hover finds the frontmost shape", async () => {
+    const page = await host.newPage();
+    await install(page);
+    await newDiagram(page, "Nearby shapes");
+    await addRectangle(page, 0, 0, "A");
+    await addRectangle(page, 121, 0, "B");
+    await tool(page, "Select (S)");
+    await page.keyboard.press("Escape");
+    const origin = await at(page, 0, 0);
+    await page.mouse.move(origin.x, origin.y);
+    const handle = view(page).getByRole("button", { name: "Draw arrow from right" });
+    const from = await middleOf(handle);
+    // The gap to A's handle and the handle itself overlap B's outline.
+    await page.mouse.move(origin.x + 62, origin.y);
+    near(await middleOf(handle), from);
+    await page.mouse.move(from.x, from.y, { steps: 8 });
+    near(await middleOf(handle), from);
+    await saved(page, async () => drag(page, from, await at(page, 270, 100)));
+    const data = await storedDiagram(page);
+    assert.deepEqual(data.arrows[0].from, { shapeId: data.shapes[0].id, port: "E" });
+    await editStored(page, (diagram) => { Object.assign(diagram.shapes[1], { x: 40 }); diagram.arrows = []; });
+    await tool(page, "Select (S)");
+    await page.mouse.move(origin.x - 30, origin.y);
+    await page.mouse.move(origin.x + 55, origin.y);
+    near(await middleOf(handle), await at(page, 114, 0));
+  });
+
   test("pulls a connection from a hovered shape while keeping Select, persists it and undoes it as one change", async () => {
     const page = await host.newPage();
     await install(page);

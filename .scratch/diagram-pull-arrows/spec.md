@@ -1,6 +1,6 @@
 # Spec : tirer une flèche depuis une forme
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 Contexte : [Module Diagram](../diagram/spec.md), notamment les tickets 03 (connexions), 07 (annuler/rétablir), 09 (formes personnalisées), 11 (valeurs par défaut) et 16 (Guide d'utilisation), déjà résolus. Vocabulaire : `GLOSSARY.md`.
 
