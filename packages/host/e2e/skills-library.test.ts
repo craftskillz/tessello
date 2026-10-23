@@ -595,7 +595,7 @@ describe("the Skills Library sample Module", () => {
     assert.ok(set.skills.every((skill: any) => !skill.goneUpstream));
   });
 
-  // The edit panel, the quadrants and the filters (skills-library ticket 03).
+  // The edit panel, the topics and the filters (skills-library ticket 03).
 
   const panelOf = (page: Page, name: string) => view(page).getByRole("dialog", { name });
   const openPanel = async (page: Page, name: string) => {
@@ -630,7 +630,7 @@ describe("the Skills Library sample Module", () => {
 
     await panel.getByLabel("Description").fill("Questions until it is clear");
     await panel.getByRole("radio", { name: "Recommended" }).check();
-    await panel.getByLabel("Quadrant").selectOption({ label: "Code & tests" });
+    await panel.getByLabel("Topic").selectOption({ label: "Code & tests" });
     await panel.getByLabel("Set notes").fill("# Great\n\nUse it **often**.");
 
     const [set] = await stored(page, ([item]) => item?.ring === "recommended" && item.quadrant === 1 && item.notes.startsWith("# Great") && item.description !== "");
@@ -701,14 +701,14 @@ describe("the Skills Library sample Module", () => {
     assert.equal(sets.length, 2);
   });
 
-  test("the quadrants are renamed, the Library is filtered and searched, and all of it is kept after a reload", async () => {
+  test("the topics are renamed, the Library is filtered and searched, and all of it is kept after a reload", async () => {
     const page = await host.newPage();
     await install(page);
     await addByHand(page, "Élégant plan");
     await stored(page, (sets) => sets.length === 1);
     const panel = panelOf(page, "Élégant plan");
     await panel.getByRole("radio", { name: "Try" }).check();
-    await panel.getByLabel("Quadrant").selectOption({ label: "Writing & docs" });
+    await panel.getByLabel("Topic").selectOption({ label: "Writing & docs" });
     await addSkill(page, panel, "Zebra crossing");
     await panel.getByRole("radio", { name: "4 out of 5" }).check({ force: true });
     await setField(panel, "Set notes").fill("kept");
@@ -720,17 +720,17 @@ describe("the Skills Library sample Module", () => {
     const plan = before.find((item) => item.name === "Élégant plan")!;
     assert.ok(plan.updatedAt > plan.addedAt);
 
-    // Renaming a quadrant changes the name shown, and no set's quadrant.
-    await view(page).getByRole("button", { name: "Rename quadrants" }).click();
-    const dialog = view(page).getByRole("dialog", { name: "Rename quadrants" });
-    await dialog.getByLabel("Quadrant 3", { exact: true }).fill("");
-    await dialog.getByText("A quadrant name is required.").waitFor();
-    await dialog.getByLabel("Quadrant 3", { exact: true }).fill("Prose");
-    await dialog.getByText("A quadrant name is required.").waitFor({ state: "hidden" });
+    // Renaming a topic changes the name shown, and no set's topic.
+    await view(page).getByRole("button", { name: "Rename topics" }).click();
+    const dialog = view(page).getByRole("dialog", { name: "Rename topics" });
+    await dialog.getByLabel("Topic 3", { exact: true }).fill("");
+    await dialog.getByText("A topic name is required.").waitFor();
+    await dialog.getByLabel("Topic 3", { exact: true }).fill("Prose");
+    await dialog.getByText("A topic name is required.").waitFor({ state: "hidden" });
     await dialog.getByRole("button", { name: "Close" }).click();
     await view(page).getByRole("listitem").filter({ hasText: "Élégant plan" }).getByText("Prose").waitFor();
 
-    // Filters: a ring, a quadrant, and a search without case or accents.
+    // Filters: a ring, a topic, and a search without case or accents.
     const items = view(page).getByRole("listitem");
     await view(page).getByRole("button", { name: "Try", exact: true }).click();
     assert.equal(await view(page).getByRole("button", { name: "Try", exact: true }).getAttribute("aria-pressed"), "true");
@@ -751,9 +751,9 @@ describe("the Skills Library sample Module", () => {
     await view(page).getByLabel("Search by set or skill name").fill("elegant");
     await items.first().waitFor();
 
-    const settings = await storedSettings(page, (value) => value.quadrants?.[2] === "Prose" && value.filters?.query === "elegant");
-    assert.deepEqual(settings.filters, { rings: [], quadrants: [2], query: "elegant", archived: false });
-    assert.deepEqual(settings.quadrants, ["Design & planning", "Code & tests", "Prose", "Tooling & workflow"]);
+    const settings = await storedSettings(page, (value) => value.topics?.[2] === "Prose" && value.filters?.query === "elegant");
+    assert.deepEqual(settings.filters, { rings: [], topics: [2], query: "elegant", archived: false });
+    assert.deepEqual(settings.topics, ["Design & planning", "Code & tests", "Prose", "Tooling & workflow", "Learning & upskilling"]);
     const after = await stored(page, () => true);
     assert.deepEqual(after.map((item) => item.quadrant).sort(), [0, 2], "renaming moved no set");
 
@@ -767,8 +767,62 @@ describe("the Skills Library sample Module", () => {
     assert.ok(await reopened.getByRole("radio", { name: "Try" }).isChecked());
     await reopened.locator("summary", { hasText: "Zebra crossing" }).click();
     assert.ok(await reopened.getByRole("radio", { name: "4 out of 5" }).isChecked());
-    assert.equal(await reopened.getByLabel("Quadrant").inputValue(), "2");
+    assert.equal(await reopened.getByLabel("Topic").inputValue(), "2");
     assert.equal(await setField(reopened, "Set notes").inputValue(), "kept");
+  });
+
+  test("the fifth topic is renamed, a set is put in it, and its point is in the fifth sector of the radar, under its name", async () => {
+    const page = await host.newPage();
+    await install(page);
+    await view(page).getByRole("button", { name: "Rename topics" }).click();
+    const dialog = view(page).getByRole("dialog", { name: "Rename topics" });
+    assert.equal(await dialog.getByLabel(/^Topic \d$/).count(), 5);
+    await dialog.getByLabel("Topic 5", { exact: true }).fill("Agents");
+    await dialog.getByRole("button", { name: "Close" }).click();
+    await addByHand(page, "Helper");
+    const panel = panelOf(page, "Helper");
+    assert.equal(await panel.getByLabel("Topic").locator("option").count(), 5);
+    await panel.getByLabel("Topic").selectOption({ label: "Agents" });
+    await stored(page, ([item]) => item?.quadrant === 4);
+    await panel.getByRole("button", { name: "Close" }).click();
+    await view(page).getByRole("listitem").filter({ hasText: "Helper" }).getByText("Agents").waitFor();
+
+    await radarTab(page);
+    await dots(page).first().waitFor();
+    await view(page).locator("svg text", { hasText: "Agents" }).first().waitFor();
+    const transform = await dots(page).first().getAttribute("transform");
+    const [x, y] = /translate\(([-\d.]+) ([-\d.]+)\)/.exec(transform ?? "")!.slice(1).map(Number);
+    // The sectors start at -36 degrees and are 72 degrees wide, clockwise on the screen; the fifth runs from 252 to 324 degrees.
+    const angle = ((Math.atan2(y - 270, x - 380) * 180) / Math.PI + 360) % 360;
+    assert.ok(angle > 252 && angle < 324, `the point is at ${angle} degrees`);
+  });
+
+  test("a Library with the settings of four quadrants opens with five topics, the filters kept at the same index", async () => {
+    const page = await host.newPage();
+    await install(page);
+    // The chips and the renaming only show once the Library has a set.
+    await addByHand(page, "Anything");
+    await panelOf(page, "Anything").getByRole("button", { name: "Close" }).click();
+    await stored(page, (sets) => sets.length === 1);
+    await writeFolder(page, DATA, {
+      "settings.json": {
+        key: "settings",
+        value: {
+          quadrants: ["Design & planning", "Code & tests", "Prose", "Tooling & workflow"],
+          tab: "library",
+          filters: { rings: [], quadrants: [2], query: "", archived: false },
+        },
+      },
+    });
+    await page.reload();
+    await openFromLauncher(page);
+    await view(page).getByRole("button", { name: "Prose", exact: true }).waitFor();
+    assert.equal(await view(page).getByRole("button", { name: "Prose", exact: true }).getAttribute("aria-pressed"), "true");
+    await view(page).getByRole("button", { name: "Learning & upskilling", exact: true }).waitFor();
+    await view(page).getByRole("button", { name: "Rename topics" }).click();
+    const dialog = view(page).getByRole("dialog", { name: "Rename topics" });
+    const names = await Promise.all([1, 2, 3, 4, 5].map((n) => dialog.getByLabel(`Topic ${n}`, { exact: true }).inputValue()));
+    assert.deepEqual(names, ["Design & planning", "Code & tests", "Prose", "Tooling & workflow", "Learning & upskilling"]);
   });
 
   test("a set added while the filters hide it clears them, so that its row is shown", async () => {
@@ -879,24 +933,24 @@ describe("the Skills Library sample Module", () => {
 
   // The radar (skills-library ticket 05).
 
-  /** Adds a set and puts it in a ring and a quadrant, through its panel. */
+  /** Adds a set and puts it in a ring and a topic, through its panel. */
   async function addJudged(page: Page, name: string, ring: string, quadrant: string) {
     await addByHand(page, name);
     const panel = panelOf(page, name);
     await panel.waitFor();
     await panel.getByRole("radio", { name: ring }).check();
-    await panel.getByLabel("Quadrant").selectOption({ label: quadrant });
+    await panel.getByLabel("Topic").selectOption({ label: quadrant });
     await panel.getByRole("button", { name: "Close" }).click();
     await panel.waitFor({ state: "hidden" });
   }
 
   const radarTab = (page: Page) => view(page).getByRole("tab", { name: "Radar" }).click();
   const dots = (page: Page) => view(page).locator("svg [data-set-id]");
-  /** The distance of a skill's dot from the centre of the radar, which is (260, 270) in the drawing. */
+  /** The distance of a skill's dot from the centre of the radar, which is (380, 270) in the drawing. */
   async function distanceOf(page: Page, name: string) {
     const transform = await view(page).locator("svg [data-set-id]").filter({ has: page.locator(`title`, { hasText: name }) }).first().getAttribute("transform");
     const [x, y] = /translate\(([-\d.]+) ([-\d.]+)\)/.exec(transform ?? "")!.slice(1).map(Number);
-    return Math.hypot(x - 260, y - 270);
+    return Math.hypot(x - 380, y - 270);
   }
   /** The ring (0 to 3, from the centre) a distance falls in. */
   const ringAt = (distance: number) => [0.38, 0.58, 0.8, 1].findIndex((end) => distance <= end * 230);
@@ -983,13 +1037,13 @@ describe("the Skills Library sample Module", () => {
 
   const radarPanel = (page: Page) => view(page).locator(".sl-radar-panel");
 
-  /** A set in a ring and a quadrant, with a scored skill and a skill not evaluated. */
+  /** A set in a ring and a topic, with a scored skill and a skill not evaluated. */
   async function addBundle(page: Page, name: string, ring: string, quadrant: string) {
     await addByHand(page, name);
     const panel = panelOf(page, name);
     await panel.waitFor();
     await panel.getByRole("radio", { name: ring }).check();
-    await panel.getByLabel("Quadrant").selectOption({ label: quadrant });
+    await panel.getByLabel("Topic").selectOption({ label: quadrant });
     await addSkill(page, panel, `${name} first`);
     await addSkill(page, panel, `${name} second`);
     const first = section(panel, `${name} first`);
@@ -1000,7 +1054,7 @@ describe("the Skills Library sample Module", () => {
     await panel.waitFor({ state: "hidden" });
   }
 
-  test("hovering a point shows its set, its ring, its quadrant and its skills with their stars; leaving closes it", async () => {
+  test("hovering a point shows its set, its ring, its topic and its skills with their stars; leaving closes it", async () => {
     const page = await host.newPage();
     await install(page);
     await addBundle(page, "Bundle", "Try", "Code & tests");
@@ -1013,7 +1067,7 @@ describe("the Skills Library sample Module", () => {
     await panel.waitFor();
     assert.equal(await panel.getByRole("button", { name: "Bundle" }).count(), 1);
     assert.match(await panel.innerText(), /Ring\s*Try/i);
-    assert.match(await panel.innerText(), /Quadrant\s*Code & tests/i);
+    assert.match(await panel.innerText(), /Topic\s*Code & tests/i);
     const lines = panel.getByRole("listitem");
     assert.equal(await lines.count(), 2);
     assert.match(await lines.nth(0).innerText(), /Bundle first/);
