@@ -13,7 +13,7 @@ A composable web app: the User builds their space from Modules, each one a sandb
 | `packages/host-core` | The Host's protocol, storage and Module registry, without a browser. |
 | `packages/host` | The Host: the static web app (`src/`), its build and dev server (`scripts/`), its browser tests (`e2e/`). |
 | `examples/` | Example Modules written by hand (`notes`, `meteo`, `prometheus`): the folder *is* the package. |
-| `sample-modules/` | Sample Modules built from sources (`survival-kit`, in Svelte): the package is written to `dist/`. |
+| `sample-modules/` | Sample Modules built from sources, in Svelte (`diagram`, `skills-library`, `survival-kit`, `watch-later`): the package is written to `dist/`. |
 | `.scratch/` | Spec and tickets (see `docs/agents/issue-tracker.md`). |
 
 ## Prerequisites
@@ -57,20 +57,24 @@ cd examples/notes && zip -r ../../notes.zip . && cd -
 
 **Local Prometheus** (`examples/prometheus`) shows the state of a Prometheus running at `http://localhost:9090` (`prometheus --config.file=prometheus.yml`; its default CORS setting accepts Tessello). Served from `127.0.0.1`, the Host is itself local, so the browser does not ask before reaching the local network; deployed, Chrome and Edge ask once (Convention §3.1, ADR 0012).
 
-### The Survival Kit (`sample-modules/survival-kit`)
+### The sample Modules (`sample-modules/`)
 
-Build it first; the package is written to `sample-modules/survival-kit/dist/` (not versioned):
+A sample Module must be built before it is installed, and built again after each change to its sources: its `dist/` and its `.zip` are not versioned, and nothing rebuilds them on their own (the browser tests build their own copy elsewhere). With [just](https://github.com/casey/just), give the name of its folder:
 
 ```sh
-npm run build -w @craftskillz/survival-kit
-cd sample-modules/survival-kit/dist && zip -r ../survival-kit.zip . && cd -
+just module skills-library            # one Module
+just module skills-library diagram    # several, one after the other
 ```
 
-Then drop `sample-modules/survival-kit/survival-kit.zip` onto the Host, or copy `dist/` into your Modules folder.
+For each Module, this builds the package into `sample-modules/<name>/dist/`, replaces `sample-modules/<name>/<name>.zip` with a fresh one, and runs the Validator on it. Then drop the `.zip` onto the Host, or copy `dist/` into your Modules folder.
+
+**After a change to its sources**: run `just module <name>` again, then either drop the `.zip` again (an update, data kept), or copy `dist/` again over the folder in your Modules folder and come back to the Host window.
+
+### The Survival Kit (`sample-modules/survival-kit`)
+
+Build it with `just module survival-kit`.
 
 Its User guide (ⓘ, then **User guide**) explains everything, with screenshots; its source is `sample-modules/survival-kit/guide/guide.md`. To try it: open **Survival Kit** from the Launcher (tasks, notes, links, **Import a kit** for a `.survival-kit.json` of living-documentation); click **Tessello** to see its L Widget on the Home, where you can check an urgent task, open the View filtered on Urgent from the "N urgent" count, or click "open kit".
-
-**After a change to its sources**: build again, then either zip and drop it again (an update, data kept), or copy `dist/` again over the folder in your Modules folder and come back to the Host window.
 
 ## Check a Module
 
@@ -97,7 +101,7 @@ The browser tests build the sample Modules themselves, in a temporary folder. Th
 ```sh
 npm run build:host     # builds the Host into packages/host/dist/
 npm run build:sdk      # writes the SDK's single-file copy (tessello-sdk.js) into the example Modules
-npm run build:samples  # builds every sample Module into its dist/
+npm run build:samples  # builds every sample Module into its dist/, without zipping (see `just module`)
 ```
 
 ## Moving data to the `@craftskillz` Module IDs

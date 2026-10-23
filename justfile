@@ -23,6 +23,19 @@ start:
 e2e:
     npm run test:browser
 
+# Builds sample Modules into dist/, zips each into sample-modules/<name>/<name>.zip and validates it, e.g. `just module skills-library diagram`
+module +names:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    for name in {{ names }}; do
+        dir="sample-modules/$name"
+        (cd "$dir" && npm run build --silent)
+        # zip -r adds to an existing archive, so a file removed from dist/ would stay in an old one.
+        rm -f "$dir/$name.zip"
+        (cd "$dir/dist" && zip -qr "../$name.zip" .)
+        node packages/cli/src/cli.ts validate "$dir/dist"
+    done
+
 # Browser tests of the given files only, e.g. `just e2e-only home watch-later`
 e2e-only +names: build
     node --test --test-concurrency=1 {{ prepend("packages/host/e2e/", append(".test.ts", names)) }}
