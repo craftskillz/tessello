@@ -577,6 +577,24 @@ describe("the Skills Library sample Module", () => {
     assert.equal((await stored(page, (sets) => sets.length === 1))[0].skills.length, 4);
   });
 
+  test("a refresh that finds no skill any more says so and marks none removed upstream", async () => {
+    const page = await host.newPage();
+    const answers = structuredClone(PACK);
+    await fakeGitHub(page, undefined, answers);
+    await install(page);
+    await enter(page, "https://github.com/acme/pack/tree/main/skills");
+    await importPreview(page);
+    await view(page).getByRole("listitem").filter({ hasText: "pack" }).getByText("4 skills (4 not evaluated)").waitFor();
+
+    answers.api![PACK_API] = [];
+    const panel = await openPanel(page, "pack");
+    await panel.getByRole("button", { name: "Refresh from GitHub" }).click();
+    await panel.getByRole("status").getByText("No skill found at this URL any more. Nothing was changed.").waitFor();
+    assert.equal(await panel.getByText("Removed upstream", { exact: true }).count(), 0);
+    const [set] = await stored(page, (sets) => sets.length === 1);
+    assert.ok(set.skills.every((skill: any) => !skill.goneUpstream));
+  });
+
   // The edit panel, the quadrants and the filters (skills-library ticket 03).
 
   const panelOf = (page: Page, name: string) => view(page).getByRole("dialog", { name });

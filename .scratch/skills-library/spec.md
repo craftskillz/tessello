@@ -99,7 +99,7 @@ Ces termes sont propres au Module ; ils n'entrent pas dans `GLOSSARY.md`.
 ### Trouver les skills d'une URL (un seul niveau)
 
 - `discoverSkills(parsed, fetchFn) → { kind: "set", skills } | { kind: "single", skill } | { kind: "empty" } | { kind: "error", reason }`.
-  1. Si l'URL pointe un `SKILL.md`, ou si `<chemin>/SKILL.md` existe sur raw : c'est **une seule skill** (le dossier est une skill ; ses sous-dossiers ne sont pas regardés).
+  1. Si l'URL pointe un `SKILL.md`, ou si `<chemin>/SKILL.md` existe sur raw : c'est **une seule skill** (le dossier est une skill ; ses sous-dossiers ne sont pas regardés). Une URL qui pointe un `SKILL.md` absent (404 sur raw) donne l'erreur « introuvable » : son dossier n'est pas listé.
   2. Sinon, la liste du dossier est demandée à l'API des contenus : `GET https://api.github.com/repos/<o>/<r>/contents/<chemin>?ref=<ref>` (sans `ref` quand il vaut `HEAD`). Pour chaque entrée `type: "dir"`, `<chemin>/<enfant>/SKILL.md` est lu sur raw : trouvé, c'est une Skill (nom et description par `readSkillFrontmatter`, nom par défaut le nom du dossier) ; 404, le dossier est ignoré. Les requêtes vers raw partent en parallèle, au plus 6 à la fois.
   3. **Un seul niveau** : `<chemin>/<enfant>/SKILL.md`, jamais plus profond. Un dossier sans aucune Skill directe donne `empty`.
 - Chaque Skill trouvée a pour `sourceUrl` l'URL de son dossier (`…/tree/<ref>/<chemin>/<enfant>`).
@@ -120,7 +120,7 @@ Ces termes sont propres au Module ; ils n'entrent pas dans `GLOSSARY.md`.
 
 - « Refresh from GitHub » (Ensemble avec une `sourceUrl` GitHub) relance la découverte sur la `sourceUrl` de l'Ensemble.
 - Une Skill trouvée dont la `sourceUrl` n'est dans aucune Skill de l'Ensemble est ajoutée, *non évaluée*. Une Skill de l'Ensemble (avec `sourceUrl` dans ce dossier) qui n'est plus trouvée reçoit `goneUpstream: true` : elle reste, avec ses Notes, marquée « Removed upstream » ; l'Utilisateur la retire s'il le veut. Une Skill retrouvée perd `goneUpstream`. Les noms et descriptions des Skills existantes ne sont pas écrasés.
-- Le résultat est résumé (« 2 skills added, 1 removed upstream ») ; une erreur de découverte ne change rien.
+- Le résultat est résumé (« 2 skills added, 1 removed upstream ») ; une erreur de découverte ne change rien. Une découverte `empty` ne change rien non plus et le dit (« No skill found at this URL any more. Nothing was changed. ») : un dossier vidé ou déplacé ne marque pas tout l'Ensemble « Removed upstream ». L'Utilisateur retire les Skills à la main s'il le veut.
 
 ### Doublons
 
