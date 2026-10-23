@@ -10,7 +10,7 @@ import {
   type ValidationReport,
   WIDGET_SIZES,
 } from "@tessello/convention";
-import type { Persistence, RegisteredModule } from "./persistence.ts";
+import type { Persistence, Provenance, RegisteredModule } from "./persistence.ts";
 
 export interface Icon {
   path: string;
@@ -59,8 +59,11 @@ export type Inspection =
       installed: { name: string; version: string; folder: string };
       /** The Permissions the incoming version declares that the User has not granted: only these are presented. */
       added: Permissions;
+      /** Where the incoming package comes from; null when it is local. The Accept screen of a Marketplace package carries the warning of ADR 0015. */
+      provenance: Provenance | null;
       /**
-       * Replaces the Module's code with the package's and keeps its storage. Accepting the update grants `added`;
+       * Replaces the Module's code with the package's and keeps its storage. Accepting the update grants `added`, and
+       * the Module takes the package's provenance (a local one removes it);
        * declining is not calling it, and leaves the installed version in place.
        */
       update(): Promise<void>;
@@ -71,6 +74,8 @@ export type Inspection =
       report: ValidationReport;
       manifest: Manifest;
       icon: Icon;
+      /** Where the package comes from; null when it is local. The Accept screen of a Marketplace package carries the warning of ADR 0015. */
+      provenance: Provenance | null;
       /** Activates the Module: it is registered with the Permissions its Manifest declares (ADR 0004). */
       install(): Promise<void>;
     };
@@ -233,9 +238,15 @@ export function createModules(persistence: Persistence) {
     return candidate;
   }
 
-  async function addToRegistry(manifest: Manifest, folder: string) {
+  async function addToRegistry(manifest: Manifest, folder: string, provenance: Provenance | null = null) {
     const registered = await registry.read();
-    registered.push({ id: manifest.id, folder, version: manifest.version, permissions: manifest.permissions ?? {} });
+    registered.push({
+      id: manifest.id,
+      folder,
+      version: manifest.version,
+      permissions: manifest.permissions ?? {},
+      ...(provenance && { provenance }),
+    });
     await registry.write(registered);
   }
 
@@ -302,8 +313,10 @@ export function createModules(persistence: Persistence) {
         };
       }
       if (manifest.version !== module.version) {
+        // The folder is no longer the package whose hash was checked: the Module is local from now on.
         await changeRegistered(id, (registered) => {
           registered.version = manifest.version;
+          delete registered.provenance;
         });
       }
       return { status: "ready", manifest, files, permissions: module.permissions };
@@ -326,13 +339,13 @@ export function createModules(persistence: Persistence) {
       if (checked.status === "invalid") return checked;
       const { report, manifest, icon, registered } = checked;
       if (registered) return { status: "conflict", manifest, folder: registered.folder };
-      return { status: "valid", report, manifest, icon, install: () => addToRegistry(manifest, folder) };
+      return { status: "valid", report, manifest, icon, provenance: null, install: () => addToRegistry(manifest, folder) };
     },
     /**
      * Checks a `.zip` package with the Validator; nothing is written until `install()` is called on a valid one, or
-     * `update()` on one whose Module ID is installed.
+     * `update()` on one whose Module ID is installed. `provenance` is what the caller established about the package.
      */
-    async inspectZip(zip: Uint8Array): Promise<Inspection> {
+    async inspectZip(zip: Uint8Array, provenance: Provenance | null = null): Promise<Inspection> {
       const { report: zipReport, files } = readZip(zip);
       if (!files) return { status: "invalid", report: zipReport };
       const checked = await check(files, zipReport);
@@ -344,10 +357,11 @@ export function createModules(persistence: Persistence) {
           report,
           manifest,
           icon,
+          provenance,
           install: async () => {
             const folder = await freeFolderName(manifest.id.slice(manifest.id.indexOf("/") + 1));
             await folders.create(folder, files);
-            await addToRegistry(manifest, folder);
+            await addToRegistry(manifest, folder, provenance);
           },
         };
       }
@@ -361,6 +375,7 @@ export function createModules(persistence: Persistence) {
         icon,
         installed: { name: name ?? registered.id, version: registered.version, folder },
         added: addedPermissions(manifest.permissions, registered.permissions),
+        provenance,
         // Looked for again: the folder may have been renamed or removed since the User was shown the update.
         update: async () => {
           const target = await folderToUpdate(registered);
@@ -369,6 +384,8 @@ export function createModules(persistence: Persistence) {
             module.folder = target;
             module.version = manifest.version;
             module.permissions = union(module.permissions, manifest.permissions ?? {});
+            if (provenance) module.provenance = provenance;
+            else delete module.provenance;
           });
         },
       };

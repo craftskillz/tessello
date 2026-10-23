@@ -2,6 +2,26 @@
 // the tests.
 
 import type { PackageFiles, Permissions } from "@tessello/convention";
+import type { MarketplaceIndex } from "@tessello/marketplace";
+
+/**
+ * Where a Module's package comes from when the Host can vouch for it. Only the Marketplace exists: a package whose
+ * SHA-256 is that of a version of the Marketplace index (ADR 0018). A Module without provenance is local: it came from
+ * the Modules folder, a `.zip` file, or a link whose package the index does not know.
+ */
+export interface Provenance {
+  source: "marketplace";
+  version: string;
+  /** The SHA-256 of the package, lowercase hex, as the index lists it. */
+  sha256: string;
+}
+
+/** The last index the Host received, kept for when the Marketplace cannot be reached. */
+export interface MarketplaceCopy {
+  index: MarketplaceIndex;
+  /** ISO 8601 date the Host received it. */
+  receivedAt: string;
+}
 
 /** A Module the User activated, as `.tessello/modules.json` records it. */
 export interface RegisteredModule {
@@ -11,6 +31,8 @@ export interface RegisteredModule {
   version: string;
   /** What the User granted: the CSP follows it, never the Manifest read again from disk. */
   permissions: Permissions;
+  /** Absent for a local Module (ADR 0018). */
+  provenance?: Provenance;
 }
 
 export interface Persistence {
@@ -25,6 +47,12 @@ export interface Persistence {
     /** The Module IDs of the Widgets, in the order the User arranged them; [] before the first arrangement. */
     read(): Promise<string[]>;
     write(order: string[]): Promise<void>;
+  };
+  /** `.tessello/marketplace.json`: the last copy of the Marketplace index. */
+  marketplace: {
+    /** The last copy received, or null before the first time the Marketplace was reached. */
+    read(): Promise<MarketplaceCopy | null>;
+    write(copy: MarketplaceCopy): Promise<void>;
   };
   /** The folders of the Modules folder, one per Module. */
   folders: {
@@ -66,6 +94,7 @@ export function createMemoryPersistence(): MemoryPersistence {
   const disk = new Map<string, Map<string, Uint8Array>>();
   let registry: RegisteredModule[] = [];
   let home: string[] = [];
+  let marketplace: MarketplaceCopy | null = null;
   const storages = new Map<string, Map<string, string>>();
   const storageOf = (moduleId: string) => {
     let storage = storages.get(moduleId);
@@ -88,6 +117,14 @@ export function createMemoryPersistence(): MemoryPersistence {
       },
       async write(order) {
         home = [...order];
+      },
+    },
+    marketplace: {
+      async read() {
+        return structuredClone(marketplace);
+      },
+      async write(copy) {
+        marketplace = structuredClone(copy);
       },
     },
     folders: {

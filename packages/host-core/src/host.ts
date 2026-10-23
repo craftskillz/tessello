@@ -1,12 +1,14 @@
 // The Host side of the message protocol (CONVENTION.md §5, §6), one surface (View or Widget) at a time.
 
 import { LIMITS } from "@tessello/convention";
+import type { IndexRelease } from "@tessello/marketplace";
 import { paramsOf } from "./navigation.ts";
 import { payloadObject } from "./payload.ts";
 import type { Persistence } from "./persistence.ts";
 import { ProtocolError } from "./protocol-error.ts";
 import { createHome, type HomeWidget } from "./home.ts";
 import { createModules, type Inspection, type ModuleEntry, type Opening } from "./modules.ts";
+import { checkRelease, createMarketplace, type MarketplaceReading, type MarketplaceOptions } from "./marketplace.ts";
 import { createSpace, type SpaceExport, type SpaceInspection } from "./space.ts";
 import { createStorage } from "./storage.ts";
 
@@ -45,6 +47,8 @@ export interface HostOptions {
    * If a View of this Module is already mounted, it has already been given the params; otherwise mount one with them.
    */
   openView(request: { module: ModuleRef; params: Record<string, string> }): void;
+  /** Where the Marketplace index comes from (ADR 0017). Without it, the Marketplace is `unavailable`. */
+  marketplace?: MarketplaceOptions;
 }
 
 /** What the Host's interface keeps to drive one mounted View or Widget. */
@@ -64,13 +68,31 @@ export interface Host {
   home(): Promise<HomeWidget[]>;
   /** Saves the order of the Home's Widgets, given as the Module IDs, in `.tessello/home.json`. */
   arrangeHome(order: string[]): Promise<void>;
+  /**
+   * Called when the Marketplace screen opens: downloads the index and keeps it, or, when the Marketplace cannot be
+   * reached, returns the last copy with its date.
+   */
+  readMarketplace(): Promise<MarketplaceReading>;
   /** Checks a folder of the Modules folder with the Validator; it is activated only when `install()` is called. */
   inspectFolder(folder: string): Promise<Inspection>;
   /**
    * Checks a `.zip` package with the Validator; it is unpacked into a new folder only when `install()` is called. A
    * package whose Module ID is installed is an `update`, which replaces nothing until `update()` is called.
+   *
+   * With `url` (an install link), the Host reads the Marketplace index: when a version of it has this URL and the
+   * package's SHA-256, the package is from the Marketplace (ADR 0018); otherwise it is an ordinary URL install. Without
+   * `url` the package is local and the index is not read.
    */
-  inspectZip(zip: Uint8Array): Promise<Inspection>;
+  inspectZip(zip: Uint8Array, options?: { url?: string }): Promise<Inspection>;
+  /**
+   * Checks the package the Marketplace screen downloaded for `release`: its SHA-256 must be the release's, else it is
+   * refused and nothing is written ("this package no longer matches the Marketplace"). Otherwise it is inspected like
+   * any `.zip`, with the provenance of the release.
+   */
+  inspectRelease(
+    release: IndexRelease,
+    zip: Uint8Array,
+  ): Promise<Inspection | { status: "mismatch"; expected: string; actual: string }>;
   /**
    * Uninstalls a registered Module, once the User has confirmed: removes its folder, its storage, its registration and
    * its place on the Home.
@@ -112,6 +134,7 @@ interface Surface extends SurfaceOptions {
 export function createHost(options: HostOptions): Host {
   const surfaces = new Map<unknown, Surface>();
   const storage = createStorage(options.persistence);
+  const marketplace = createMarketplace(options.persistence, options.marketplace);
   const modules = createModules(options.persistence);
   const home = createHome(options.persistence, modules.scan);
   const space = createSpace(options.persistence, modules, home.widgets);
@@ -153,11 +176,20 @@ export function createHost(options: HostOptions): Host {
     send(surface, { type: "response", id: request.id, ok: false, error: { code, message } });
 
   return {
+    readMarketplace: marketplace.readMarketplace,
     modules: modules.scan,
     home: home.widgets,
     arrangeHome: home.arrange,
     inspectFolder: modules.inspectFolder,
-    inspectZip: modules.inspectZip,
+    async inspectZip(zip, zipOptions) {
+      const provenance = zipOptions?.url === undefined ? null : await marketplace.provenanceOfLink(zip, zipOptions.url);
+      return modules.inspectZip(zip, provenance);
+    },
+    async inspectRelease(release, zip) {
+      const checked = await checkRelease(release, zip);
+      if ("mismatch" in checked) return { status: "mismatch", ...checked.mismatch };
+      return modules.inspectZip(zip, checked.provenance);
+    },
     open: modules.open,
     exportSpace: space.exportSpace,
     inspectSpace: space.inspectSpace,

@@ -9,6 +9,7 @@ export type { GeneratedIndex, IndexInput, IndexModule, IndexRelease, Marketplace
 export { PERMISSION_FILTERS, permissionFilter } from "./permission-filter.ts";
 export { declaredPermissions, searchModules } from "./search.ts";
 export type { SearchOptions } from "./search.ts";
+export { sha256 } from "./sha256.ts";
 export { renderSite } from "./site.ts";
 export type { SiteOptions } from "./site.ts";
 export { checkPullRequest } from "./pull-request.ts";

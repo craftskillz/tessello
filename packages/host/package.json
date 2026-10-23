@@ -8,6 +8,7 @@
   "dependencies": {
     "@tessello/convention": "0.1.0",
     "@tessello/host-core": "0.1.0",
+    "@tessello/marketplace": "0.1.0",
     "es-module-lexer": "^3.0.4",
     "fflate": "^0.8.2",
     "marked": "^18.1.1"

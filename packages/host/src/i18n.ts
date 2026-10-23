@@ -234,6 +234,35 @@ const en = {
   httpFailed: (status: number) => `The server answered with the error ${status}. Check the URL, or ask the Module's Creator where it is published.`,
   tooLarge: "It is too large to be a Tessello Module. Nothing was installed.",
   installLinkUnusable: "This install link can't be used",
+
+  // The Marketplace (ADR 0015, 0017, 0018).
+  marketplace: "Marketplace",
+  marketplaceSearch: "Search",
+  marketplacePermissions: "Permissions",
+  /** The labels of the Permission filter, by value (the Marketplace's own labels are English). */
+  permissionFilters: {
+    any: "Any Permissions",
+    "no-internet": "No internet access",
+    "no-local-network": "No local network access",
+    none: "No Permissions",
+  } as Record<string, string>,
+  marketplaceLoading: "Loading the Marketplace…",
+  marketplaceOffline: (date: string) => `Offline: showing the Marketplace as of ${date}.`,
+  marketplaceUnavailable: "The Marketplace can't be reached, and Tessello has no earlier copy of it to show. Check your connection, then open the Marketplace again.",
+  marketplaceNoMatch: "No Module matches.",
+  backToMarketplace: "Back to the Marketplace",
+  creator: "Creator",
+  license: "License",
+  sourceRepository: "Source repository",
+  sourceRepositoryIs: (link: Part): Part[] => ["Source repository: ", link],
+  widget: "Widget",
+  widgetSize: (size: string) => `Size ${size}`,
+  noWidget: "None",
+  screenshots: "Screenshots",
+  screenshotOf: (name: string, number: number) => `Screenshot ${number} of ${name}`,
+  install: "Install",
+  marketplaceRisk: "Admitted to the Marketplace at its first publication. Updates are not reviewed. The Creator answers for this code, and you install it at your own risk.",
+  noLongerMatches: "This package no longer matches the Marketplace. Nothing was installed.",
 };
 
 export type Messages = typeof en;
@@ -440,6 +469,34 @@ const fr: Messages = {
   httpFailed: (status) => `Le serveur a répondu par l’erreur ${status}. Vérifiez l’URL, ou demandez au Créateur du Module où il est publié.`,
   tooLarge: "Il est trop volumineux pour être un Module Tessello. Rien n’a été installé.",
   installLinkUnusable: "Ce lien d’installation ne peut pas être utilisé",
+
+  // La Marketplace (ADR 0015, 0017, 0018).
+  marketplace: "Marketplace",
+  marketplaceSearch: "Rechercher",
+  marketplacePermissions: "Permissions",
+  permissionFilters: {
+    any: "Toutes les Permissions",
+    "no-internet": "Sans accès à internet",
+    "no-local-network": "Sans accès au réseau local",
+    none: "Sans Permission",
+  } as Record<string, string>,
+  marketplaceLoading: "Chargement de la Marketplace…",
+  marketplaceOffline: (date) => `Hors ligne${NBSP}: la Marketplace telle qu’elle était le ${date}.`,
+  marketplaceUnavailable: "La Marketplace est injoignable, et Tessello n’en a pas de copie plus ancienne à montrer. Vérifiez votre connexion, puis rouvrez la Marketplace.",
+  marketplaceNoMatch: "Aucun Module ne correspond.",
+  backToMarketplace: "Retour à la Marketplace",
+  creator: "Créateur",
+  license: "Licence",
+  sourceRepository: "Dépôt source",
+  sourceRepositoryIs: (link) => [`Dépôt source${NBSP}: `, link],
+  widget: "Widget",
+  widgetSize: (size) => `Taille ${size}`,
+  noWidget: "Aucun",
+  screenshots: "Captures d’écran",
+  screenshotOf: (name, number) => `Capture ${number} de ${name}`,
+  install: "Installer",
+  marketplaceRisk: "Admis dans la Marketplace à sa première publication. Les mises à jour ne sont pas relues. Le Créateur répond de ce code, et vous l’installez à vos risques.",
+  noLongerMatches: "Ce paquet ne correspond plus à la Marketplace. Rien n’a été installé.",
 };
 
 export const messagesOf = (language: Language): Messages => (language === "fr" ? fr : en);

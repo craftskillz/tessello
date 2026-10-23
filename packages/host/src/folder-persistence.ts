@@ -3,11 +3,12 @@
 // every Module, one indented JSON file per key.
 
 import type { PackageFiles } from "@tessello/convention";
-import type { Persistence, RegisteredModule } from "@tessello/host-core";
+import type { MarketplaceCopy, Persistence, RegisteredModule } from "@tessello/host-core";
 
 const TESSELLO = ".tessello";
 const REGISTRY = "modules.json";
 const HOME = "home.json";
+const MARKETPLACE = "marketplace.json";
 const DATA = "data";
 /** Left out when reading a Module's files: a Creator's repository, and what archivers add. */
 const IGNORED_FOLDERS = new Set([".git", "__MACOSX"]);
@@ -138,6 +139,23 @@ export function createFolderPersistence(root: FileSystemDirectoryHandle): Persis
       },
       async write(order) {
         await writeFile(await tessello(), HOME, json({ widgets: order }));
+      },
+    },
+    marketplace: {
+      async read() {
+        const folder = await folderAt(root, [TESSELLO]);
+        const bytes = folder && (await readBytes(folder, MARKETPLACE));
+        if (!bytes) return null;
+        // Edited by hand into something else, the copy is lost: the next time the Marketplace is reached replaces it.
+        try {
+          const copy = JSON.parse(new TextDecoder().decode(bytes)) as MarketplaceCopy;
+          return Array.isArray(copy?.index?.modules) && typeof copy.receivedAt === "string" ? copy : null;
+        } catch {
+          return null;
+        }
+      },
+      async write(copy) {
+        await writeFile(await tessello(), MARKETPLACE, json(copy));
       },
     },
     folders: {

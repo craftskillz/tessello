@@ -1,20 +1,26 @@
 // The Host's interface: the Modules folder, the Launcher, the Home and its Widgets, the View area, installing or
-// updating a Module from a dropped or chosen .zip file, from a URL or an install link, or from a folder placed in the
-// Modules folder, uninstalling, and the Settings: the theme and the language of the interface.
+// updating a Module from a dropped or chosen .zip file, from a URL or an install link, from the Marketplace, or from a
+// folder placed in the Modules folder, uninstalling, and the Settings: the theme and the language of the interface.
 
 import type { Issue, Manifest, Permissions } from "@tessello/convention";
 import {
+  type MarketplaceReading,
   createHost,
   type HomeWidget,
   type Host,
   type Icon,
+  type IndexModule,
+  type IndexRelease,
   type Inspection,
   type ModuleEntry,
   type MountedSurface,
   type Opening,
+  type Persistence,
 } from "@tessello/host-core";
+import { PERMISSION_FILTERS, permissionFilter } from "@tessello/marketplace";
 import { copyModulesFolder, createFolderPersistence } from "./folder-persistence.ts";
 import { GUIDE_SANDBOX, guideDocument } from "./guide.ts";
+import { assetUrl, createHttpIndexSource, MARKETPLACE_INDEX_URL } from "./marketplace-index.ts";
 import { type Language, languageOf, LANGUAGES, type Messages, messagesOf } from "./i18n.ts";
 import { checkPackageUrl, downloadPackage } from "./package-url.ts";
 import { canUseFolders, hasTesselloFolder, isGranted, pickFolder, reconnect, rememberedFolder, rememberFolder } from "./modules-folder.ts";
@@ -22,8 +28,10 @@ import { buildView, dataUrl, typeOf, type ViewDocument, VIEW_SANDBOX, WIDGET_SAN
 import { THEME_CHOICES, type ThemeChoice, themeChoiceOf, themeOf } from "./theme.ts";
 
 // The User's theme and language, kept by this browser for this address of Tessello. Storage may be refused, as in a
-// private window: the choice then lasts until the page is closed.
-const PREFERENCES = { theme: "tessello.theme", language: "tessello.language" };
+// private window: the choice then lasts until the page is closed. `marketplace` is not a choice of the User: it is the
+// address of the Marketplace's index.json, which the tests (and a Maintainer's trials) set to a local one; unset, the
+// Host reads the Marketplace inscribed in it.
+const PREFERENCES = { theme: "tessello.theme", language: "tessello.language", marketplace: "tessello.marketplace" };
 
 function readPreference(name: keyof typeof PREFERENCES): string | null {
   try {
@@ -235,6 +243,8 @@ let themeChoice: ThemeChoice = themeChoiceOf(readPreference("theme"));
 let theme = themeOf(themeChoice, systemDark.matches);
 /** Renders again the User guide shown, if any, in the current theme. */
 let renderGuideFrame: (() => void) | null = null;
+/** The same for the User guide in the listing of a Module of the Marketplace, which is not in the dialog. */
+let renderListingGuide: (() => void) | null = null;
 
 /** Applies the theme to the interface, the Views and Widgets mounted, and the User guide shown. */
 function applyTheme() {
@@ -246,6 +256,7 @@ function applyTheme() {
   root.dataset.mode = theme.mode;
   host?.setTheme(theme);
   renderGuideFrame?.();
+  renderListingGuide?.();
 }
 
 systemDark.addEventListener("change", applyTheme);
@@ -288,6 +299,8 @@ function showSettings() {
 // The Host, once its Modules folder is usable.
 
 let host: Host;
+/** The Host's persistence, read by the interface for the copy of the Marketplace index only. */
+let persistence: Persistence;
 let entries: ModuleEntry[] = [];
 /**
  * What the stage shows besides the Home: a View, or a message in its place. Behind the Home, a View stays loaded and
@@ -296,12 +309,16 @@ let entries: ModuleEntry[] = [];
 let current: { id: string; surface?: MountedSurface; element: HTMLElement } | null = null;
 /** The latest View asked for: a View whose document is still being built when another one is asked for is dropped. */
 let requested: object | null = null;
+/** Where the Host reads the Marketplace index from; its asset paths resolve against it. */
+const marketplaceIndexUrl = readPreference("marketplace") ?? MARKETPLACE_INDEX_URL;
 
 async function start(folder: FileSystemDirectoryHandle) {
+  persistence = createFolderPersistence(folder);
   host = createHost({
-    persistence: createFolderPersistence(folder),
+    persistence,
     locale: language,
     theme,
+    marketplace: { source: createHttpIndexSource(marketplaceIndexUrl) },
     openView: ({ module, params }) => {
       // A View of this Module behind the Home has already been given the params.
       if (current?.id === module.id && current.surface && current.element.hidden) bringBackView();
@@ -341,6 +358,7 @@ function updateVisibility() {
 }
 
 function clearStage() {
+  renderListingGuide = null;
   current?.surface?.unmount();
   current?.element.remove();
   current = null;
@@ -980,12 +998,13 @@ async function showInspection(source: string, pending: Promise<Inspection>, kind
     return;
   }
   if (inspection.status === "update") {
-    showUpdate(inspection, downloadedFrom);
+    await showUpdate(inspection, downloadedFrom);
     return;
   }
 
   const { manifest, icon, report } = inspection;
   const warnings = report.issues.filter((issue) => issue.severity === "warning");
+  const risk = inspection.provenance ? await marketplaceRisk(manifest.id) : [];
   // Every Permission or none (ADR 0004): accepting them all, or cancelling, are the only choices.
   const confirm = el("button", { type: "button", className: "primary" }, kind === "zip" ? t.acceptAndInstall : t.acceptAndActivate);
   confirm.addEventListener("click", async () => {
@@ -1000,6 +1019,7 @@ async function showInspection(source: string, pending: Promise<Inspection>, kind
     ...(kind === "folder" ? [el("p", {}, t.foundIn(source))] : []),
     moduleSummary(manifest, icon, downloadedFrom),
     permissionSummary(manifest.name, manifest.permissions ?? {}),
+    ...risk,
     ...(warnings.length > 0 ? [el("p", {}, t.warningsInstall), issueList(warnings)] : []),
     el("div", { className: "actions" }, button(t.cancel, () => dialog.close()), confirm),
   );
@@ -1010,8 +1030,9 @@ async function showInspection(source: string, pending: Promise<Inspection>, kind
  * A package of an installed Module: the Host cannot tell an update from another Module reusing its Module ID, so the
  * User sees both names and versions (ADR 0003), and only the Permissions that are added (ADR 0004).
  */
-function showUpdate(inspection: Extract<Inspection, { status: "update" }>, downloadedFrom?: string) {
+async function showUpdate(inspection: Extract<Inspection, { status: "update" }>, downloadedFrom?: string) {
   const { manifest, installed, added, report } = inspection;
+  const risk = inspection.provenance ? await marketplaceRisk(manifest.id) : [];
   const warnings = report.issues.filter((issue) => issue.severity === "warning");
   const hasAdded = Object.keys(added).length > 0;
   const confirm = el("button", { type: "button", className: "primary" }, hasAdded ? t.acceptAndUpdate : t.update);
@@ -1044,6 +1065,7 @@ function showUpdate(inspection: Extract<Inspection, { status: "update" }>, downl
     ...(hasAdded
       ? [el("p", {}, t.updateNewPermissions), permissionSummary(manifest.name, added, t.whatCanNowAlsoDo(manifest.name))]
       : [el("p", {}, t.noNewPermission)]),
+    ...risk,
     ...(warnings.length > 0 ? [el("p", {}, t.warningsUpdate), issueList(warnings)] : []),
     el("div", { className: "actions" }, button(t.cancel, () => dialog.close()), confirm),
   );
@@ -1095,9 +1117,11 @@ function showUrlForm() {
 /** The download in progress: a new one, or closing its dialog, stops it. */
 let downloading = new AbortController();
 
-/** Downloads a package from an accepted URL, then goes on as for a .zip file, the URL shown under the Module. */
-async function installFromUrl(url: string) {
-  const name = fileNameOf(url);
+/**
+ * Downloads a package from an accepted URL, in a dialog that the User can cancel. Its bytes, or null when the download
+ * was cancelled or the dialog now explains why there are none. `name` names the package in the messages.
+ */
+async function downloadWithDialog(url: string, name = fileNameOf(url)): Promise<Uint8Array | null> {
   downloading.abort();
   const stop = (downloading = new AbortController());
   const { signal } = stop;
@@ -1112,10 +1136,10 @@ async function installFromUrl(url: string) {
   try {
     download = await downloadPackage(url, { signal });
   } catch (error) {
-    if (signal.aborted) return;
+    if (signal.aborted) return null;
     throw error;
   }
-  if (signal.aborted) return;
+  if (signal.aborted) return null;
   stop.abort();
   if (download.status === "unreachable") {
     showDialog(
@@ -1128,15 +1152,25 @@ async function installFromUrl(url: string) {
   } else if (download.status === "too-large") {
     showDialog(t.cantBeInstalled(name), el("p", {}, t.tooLarge), errorList([download.issue]));
   } else {
-    await showInspection(name, host.inspectZip(download.bytes), "zip", url);
+    return download.bytes;
   }
+  return null;
+}
+
+/**
+ * Downloads a package from an accepted URL, then goes on as for a .zip file, the URL shown under the Module. For an
+ * install link (`link`), the Host also looks the URL up in the Marketplace's index, to note where the Module comes from.
+ */
+async function installFromUrl(url: string, { link = false } = {}) {
+  const bytes = await downloadWithDialog(url);
+  if (bytes) await showInspection(fileNameOf(url), link ? host.inspectZip(bytes, { url }) : host.inspectZip(bytes), "zip", url);
 }
 
 /** The Module of an install link: downloaded, then installed only once the User accepts, as from the field. */
 function installLinked(url: string) {
   const check = checkPackageUrl(url);
   if (check.status === "refused") showDialog(t.installLinkUnusable, el("p", {}, t.urlRefused(check)));
-  else void installFromUrl(check.url);
+  else void installFromUrl(check.url, { link: true });
 }
 
 /**
@@ -1152,6 +1186,178 @@ function takeInstallLink(): string | null {
   } catch {
     return encoded;
   }
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// The Marketplace (ADR 0015, 0017, 0018): a screen in the stage, like a View, with the Home hidden. It lists the Modules
+// of the index, opens the listing of one, and installs it through the usual Accept screen.
+
+/** A link to the Creator's source repository, opened in a new tab; the index's address is only trusted when it is https:. */
+function sourceLink(source: string): Node {
+  if (!/^https:\/\//.test(source)) return el("code", {}, source);
+  return el("a", { href: source, target: "_blank", rel: "noopener noreferrer" }, source.replace(/^https:\/\//, ""));
+}
+
+/**
+ * The ADR 0015 text, and the link to the source repository, for the Accept screen of a package from the Marketplace.
+ * The source comes from the copy of the index the Host has just kept: the Accept screen downloads nothing more.
+ */
+async function marketplaceRisk(id: string): Promise<Node[]> {
+  const module = (await persistence.marketplace.read())?.index.modules.find((candidate) => candidate.id === id);
+  return [
+    el(
+      "div",
+      { className: "marketplace-risk" },
+      el("p", {}, t.marketplaceRisk),
+      ...(module ? [el("p", {}, ...t.sourceRepositoryIs(sourceLink(module.source)))] : []),
+    ),
+  ];
+}
+
+/** Opens the Marketplace screen: the index is downloaded now, or the last copy shown. */
+async function showMarketplace() {
+  const screen = el("section", { className: "marketplace", "aria-label": t.marketplace }, el("h1", {}, t.marketplace), el("p", {}, t.marketplaceLoading));
+  clearStage();
+  stage.append(screen);
+  const self = (current = { id: "marketplace", element: screen });
+  renderLauncher();
+  const reading = await host.readMarketplace();
+  if (current !== self) return;
+  showModuleList(screen, reading);
+}
+
+/** The list of the Modules, with the search and the Permission filter, which filter it as the User types. */
+function showModuleList(screen: HTMLElement, reading: MarketplaceReading) {
+  renderListingGuide = null;
+  screen.setAttribute("aria-label", t.marketplace);
+  if (reading.status === "unavailable") {
+    screen.replaceChildren(el("h1", {}, t.marketplace), el("p", { className: "note", role: "status" }, t.marketplaceUnavailable));
+    return;
+  }
+  const query = el("input", { type: "search", name: "query", autocomplete: "off" });
+  const filter = el(
+    "select",
+    { name: "permissions" },
+    ...PERMISSION_FILTERS.map(({ value }) => el("option", { value }, t.permissionFilters[value] ?? value)),
+  );
+  const results = el("ul", { className: "market-results" });
+  const update = () => {
+    const accepts = permissionFilter(filter.value);
+    const found = reading.search({ query: query.value, ...(accepts ? { accepts } : {}) });
+    results.replaceChildren(
+      ...(found.length === 0
+        ? [el("li", { className: "note" }, t.marketplaceNoMatch)]
+        : found.map((module) => {
+            const release = module.latest!;
+            const card = el(
+              "button",
+              { type: "button", className: "market-card" },
+              el("img", { src: assetUrl(marketplaceIndexUrl, release.icon), alt: t.iconOf(release.name) }),
+              el("span", { className: "name" }, release.name),
+              el("span", { className: "creator" }, module.creator),
+              ...(release.description ? [el("span", { className: "description" }, release.description)] : []),
+            );
+            card.addEventListener("click", () => showListing(screen, reading, module, release));
+            return el("li", {}, card);
+          })),
+    );
+  };
+  query.addEventListener("input", update);
+  filter.addEventListener("change", update);
+  screen.replaceChildren(
+    el("h1", {}, t.marketplace),
+    ...(reading.status === "offline"
+      ? [el("p", { className: "note", role: "status" }, t.marketplaceOffline(new Intl.DateTimeFormat(language, { dateStyle: "long", timeStyle: "short" }).format(new Date(reading.receivedAt))))]
+      : []),
+    el("div", { className: "market-filters" }, el("label", {}, t.marketplaceSearch, query), el("label", {}, t.marketplacePermissions, filter)),
+    results,
+  );
+  update();
+}
+
+/** The User guide of a release, rendered by the Host from the index: its images are downloaded; one that fails is left out. */
+async function listingGuideFiles(release: IndexRelease): Promise<Map<string, Uint8Array>> {
+  const files = new Map<string, Uint8Array>([[release.guide.path, new TextEncoder().encode(release.guide.markdown)]]);
+  await Promise.all(
+    Object.entries(release.guide.images).map(async ([path, asset]) => {
+      try {
+        const response = await fetch(assetUrl(marketplaceIndexUrl, asset));
+        if (response.ok) files.set(path, new Uint8Array(await response.arrayBuffer()));
+      } catch {
+        // Left out: the guide shows the image as missing.
+      }
+    }),
+  );
+  return files;
+}
+
+/** The listing of a Module: what the Creator and the index say of it, its User guide, and the button to install it. */
+function showListing(screen: HTMLElement, reading: MarketplaceReading, module: IndexModule, release: IndexRelease) {
+  const title = t.guideTitle(release.name);
+  const frame = el("iframe", { className: "listing-guide-frame", title, sandbox: GUIDE_SANDBOX });
+  void listingGuideFiles(release).then((files) => {
+    if (!frame.isConnected) return;
+    renderListingGuide = () => (frame.srcdoc = guideDocument({ files, guide: release.guide.path, title, theme }));
+    renderListingGuide();
+  });
+  screen.setAttribute("aria-label", release.name);
+  screen.replaceChildren(
+    el("div", { className: "actions start" }, button(t.backToMarketplace, () => showModuleList(screen, reading))),
+    el(
+      "div",
+      { className: "module-summary" },
+      el("img", { src: assetUrl(marketplaceIndexUrl, release.icon), alt: t.iconOf(release.name) }),
+      el(
+        "dl",
+        {},
+        el("dt", {}, t.name),
+        el("dd", {}, el("h1", {}, release.name)),
+        el("dt", {}, t.version),
+        el("dd", {}, release.version),
+        el("dt", {}, t.creator),
+        el("dd", {}, module.creator),
+        el("dt", {}, t.license),
+        el("dd", {}, module.license),
+        el("dt", {}, t.sourceRepository),
+        el("dd", {}, sourceLink(module.source)),
+        el("dt", {}, t.widget),
+        el("dd", {}, release.widget ? t.widgetSize(release.widget.size) : t.noWidget),
+        ...(release.description ? [el("dt", {}, t.description), el("dd", {}, release.description)] : []),
+      ),
+    ),
+    permissionSummary(release.name, release.permissions),
+    el("h2", {}, t.userGuide),
+    frame,
+    ...(module.screenshots.length > 0
+      ? [
+          el("h2", {}, t.screenshots),
+          el(
+            "div",
+            { className: "screenshots" },
+            ...module.screenshots.map((path, index) => el("img", { src: assetUrl(marketplaceIndexUrl, path), alt: t.screenshotOf(release.name, index + 1) })),
+          ),
+        ]
+      : []),
+    el("p", { className: "marketplace-risk" }, t.marketplaceRisk),
+    el("div", { className: "actions" }, button(t.install, () => void installFromMarketplace(release), "primary")),
+  );
+}
+
+/** Downloads the package of a release, which must be the one the index lists, then goes on to the Accept screen. */
+async function installFromMarketplace(release: IndexRelease) {
+  const check = checkPackageUrl(release.url);
+  if (check.status === "refused") {
+    showDialog(t.cantBeDownloaded(release.name), el("p", {}, t.urlRefused(check)));
+    return;
+  }
+  const bytes = await downloadWithDialog(check.url, release.name);
+  if (!bytes) return;
+  const inspection = await host.inspectRelease(release, bytes);
+  if (inspection.status === "mismatch") {
+    showDialog(t.cantBeInstalled(release.name), el("p", {}, t.noLongerMatches));
+    return;
+  }
+  await showInspection(release.name, Promise.resolve(inspection), "zip", check.url);
 }
 
 // Dropping a file anywhere on the Host installs it.
@@ -1175,6 +1381,7 @@ fileInput.addEventListener("change", () => {
   if (file) void installZip(file);
 });
 byId<HTMLButtonElement>("install-url-button").addEventListener("click", showUrlForm);
+byId<HTMLButtonElement>("marketplace-button").addEventListener("click", () => void showMarketplace());
 byId<HTMLButtonElement>("home-button").addEventListener("click", showHome);
 // A choice made with the pointer in the drawer sends it away, until the pointer comes back near the left edge.
 launcher.addEventListener("click", (event) => {

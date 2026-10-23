@@ -27,6 +27,8 @@ export interface PageOptions {
   choose?: boolean;
   /** Opens the Host at this fragment, such as an install link's "#install=…". */
   hash?: string;
+  /** A script run in the page before the Host starts, such as one setting a preference in the local storage. */
+  init?: string;
 }
 
 export interface HostOptions {
@@ -65,9 +67,10 @@ export function useHost({ public: publicSite = false }: HostOptions = {}) {
       return state.url;
     },
     /** A page in a new browser context, so no folder or IndexedDB data is shared with other tests. */
-    async newPage({ unsupported = false, choose = true, hash = "" }: PageOptions = {}): Promise<Page> {
+    async newPage({ unsupported = false, choose = true, hash = "", init }: PageOptions = {}): Promise<Page> {
       const page = await (await browser.newContext()).newPage();
       await page.addInitScript(unsupported ? "delete window.showDirectoryPicker;" : FOLDER_PICKER);
+      if (init) await page.addInitScript(init);
       await page.goto(state.url + hash);
       if (!unsupported && choose) await chooseFolder(page);
       return page;
@@ -243,6 +246,54 @@ export function usePackageServer() {
     serve(name: string, bytes: Uint8Array) {
       packages.set(name, bytes);
       return { cors: `${state.url}/cors/${name}`, noCors: `${state.url}/no-cors/${name}` };
+    },
+  };
+}
+
+/** The script setting the Marketplace's address for the Host, in place of the production one: a local storage entry. */
+export const marketplaceAt = (indexUrl: string) => `localStorage.setItem("tessello.marketplace", ${JSON.stringify(indexUrl)});`;
+
+/**
+ * Serves a Marketplace from another origin, as its static site does: `/index.json` and the assets it points to, with the
+ * CORS header the Host needs. While `offline` is true every request is answered 503, as when the Marketplace is down.
+ */
+export function useMarketplaceServer() {
+  const files = new Map<string, { type: string; body: string | Uint8Array }>();
+  const state = { url: "", offline: false };
+  let close: () => void;
+  before(async () => {
+    const server = createServer((request, response) => {
+      const path = new URL(request.url ?? "/", "http://marketplace").pathname.slice(1);
+      const cors = { "Access-Control-Allow-Origin": "*" };
+      const file = files.get(path);
+      if (state.offline) return void response.writeHead(503, cors).end();
+      if (!file) return void response.writeHead(404, cors).end();
+      response.writeHead(200, { "Content-Type": file.type, ...cors });
+      response.end(file.body);
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    state.url = `http://127.0.0.1:${typeof address === "object" && address ? address.port : 0}`;
+    close = () => server.close();
+  });
+  after(() => close?.());
+  const typeOfAsset = (path: string) => (path.endsWith(".svg") ? "image/svg+xml" : path.endsWith(".png") ? "image/png" : "application/octet-stream");
+  return {
+    get url() {
+      return state.url;
+    },
+    /** The address of index.json, to give the Host. */
+    get indexUrl() {
+      return `${state.url}/index.json`;
+    },
+    set offline(value: boolean) {
+      state.offline = value;
+    },
+    /** Publishes an index and its assets (path relative to index.json → bytes), replacing what was published. */
+    publish(index: object, assets: ReadonlyMap<string, Uint8Array>) {
+      files.clear();
+      files.set("index.json", { type: "application/json", body: JSON.stringify(index) });
+      for (const [path, body] of assets) files.set(path, { type: typeOfAsset(path), body });
     },
   };
 }
