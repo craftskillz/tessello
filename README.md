@@ -64,11 +64,12 @@ A sample Module must be built before it is installed, and built again after each
 ```sh
 just module skills-library            # one Module
 just module skills-library diagram    # several, one after the other
+just module skills-library minor      # raise the version first: major, minor, patch (or fix)
 ```
 
-For each Module, this builds the package into `sample-modules/<name>/dist/`, replaces `sample-modules/<name>/<name>.zip` with a fresh one, and runs the Validator on it. Then drop the `.zip` onto the Host, or copy `dist/` into your Modules folder.
+For each Module, this builds the package into `sample-modules/<name>/dist/`, replaces `sample-modules/<name>/<name>.zip` with a fresh one, and runs the Validator on it. Then drop the `.zip` onto the Host, or copy `dist/` into your Modules folder. With `major`, `minor`, `patch` or `fix` (the same as `patch`) anywhere among the names, the version of each Module named is raised first, in its `package.json`, its `manifest.json` and `package-lock.json`; without it, the version does not change. Commit these files with the change.
 
-**After a change to its sources**: run `just module <name>` again, then either drop the `.zip` again (an update, data kept), or copy `dist/` again over the folder in your Modules folder and come back to the Host window.
+**After a change to its sources**: run `just module <name>` again, then either drop the `.zip` again (an update, data kept), or copy `dist/` again over the folder in your Modules folder and come back to the Host window. The Host treats any package of an installed Module as an update, whatever its version, and shows both versions: raise it to tell them apart.
 
 ### The Survival Kit (`sample-modules/survival-kit`)
 
