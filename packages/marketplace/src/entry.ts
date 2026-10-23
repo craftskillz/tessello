@@ -272,6 +272,11 @@ export function issue(code: string, message: string, extra: Partial<Issue> = {})
   return { code, message, file: ENTRY, ...extra };
 }
 
+/** An issue about something other than entry.json (the pull request, a package's Manifest): it names a file only when given one. */
+export function issueNotInEntry(code: string, message: string, extra: Partial<Issue> = {}): Issue {
+  return { code, message, ...extra };
+}
+
 export function show(value: unknown): string {
   return JSON.stringify(value) ?? String(value);
 }

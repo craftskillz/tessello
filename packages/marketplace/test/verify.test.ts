@@ -313,13 +313,13 @@ describe("the package of a new version", () => {
 
   test("must have the entry's id as Manifest id", async () => {
     const verdict = await verdictFor(zip({ id: "@yassine/forecast" }));
-    assert.deepEqual(verdict.issues.map((issue) => issue.code), ["version/id-mismatch"]);
+    assert.deepEqual(verdict.issues.map((issue) => [issue.code, issue.file]), [["version/id-mismatch", undefined]]);
     assert.equal(verdict.issues[0]!.version, "1.0.0");
   });
 
   test("must have the listed version as Manifest version", async () => {
     const verdict = await verdictFor(zip({ version: "1.0.1" }));
-    assert.deepEqual(verdict.issues.map((issue) => issue.code), ["version/version-mismatch"]);
+    assert.deepEqual(verdict.issues.map((issue) => [issue.code, issue.file]), [["version/version-mismatch", undefined]]);
   });
 
   test("is not checked when its SHA-256 differs", async () => {

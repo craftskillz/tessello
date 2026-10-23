@@ -2,7 +2,7 @@ import { OSI_LICENSES } from "./licenses.ts";
 import { readZip } from "@tessello/convention";
 import { compareVersions } from "./semver.ts";
 import { sha256 } from "./sha256.ts";
-import { issue, parseEntry, show, type Entry, type Issue } from "./entry.ts";
+import { issue, issueNotInEntry, parseEntry, show, type Entry, type Issue } from "./entry.ts";
 
 /** namespaces.json: namespace (without "@") → its GitHub account. */
 export type Namespaces = Readonly<Record<string, NamespaceRecord>>;
@@ -219,9 +219,9 @@ function checkPackage(bytes: Uint8Array, entry: Entry, version: string, issues: 
   const { manifest } = report;
   if (!manifest) return;
   if (manifest.id !== entry.id) {
-    issues.push(issue("version/id-mismatch", `The Manifest of version ${show(version)} has id ${show(manifest.id)}, but the entry is ${show(entry.id)}.`, { version }));
+    issues.push(issueNotInEntry("version/id-mismatch", `The Manifest of version ${show(version)} has id ${show(manifest.id)}, but the entry is ${show(entry.id)}.`, { version }));
   }
   if (manifest.version !== version) {
-    issues.push(issue("version/version-mismatch", `The Manifest of version ${show(version)} says version ${show(manifest.version)}.`, { version }));
+    issues.push(issueNotInEntry("version/version-mismatch", `The Manifest of version ${show(version)} says version ${show(manifest.version)}.`, { version }));
   }
 }

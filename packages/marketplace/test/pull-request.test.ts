@@ -170,14 +170,14 @@ describe("the changed files", () => {
   test("in two listing folders are refused", async () => {
     const changed = [{ path: `${FOLDER}/entry.json` }, { path: "modules/yassine/forecast/entry.json" }];
     const { result } = await run({ changed });
-    assert.deepEqual(result.issues.map((i) => i.code), ["pull-request/several-listings"]);
+    assert.deepEqual(result.issues.map((i) => [i.code, i.file]), [["pull-request/several-listings", undefined]]);
     assert.equal(result.folder, null);
     assert.equal(result.decision, "refuse");
   });
 
   test("none at all are refused", async () => {
     const { result } = await run({ changed: [] });
-    assert.deepEqual(result.issues.map((i) => i.code), ["pull-request/no-listing"]);
+    assert.deepEqual(result.issues.map((i) => [i.code, i.file]), [["pull-request/no-listing", undefined]]);
     assert.equal(result.decision, "refuse");
   });
 });
@@ -390,6 +390,12 @@ describe("the acceptance of the terms", () => {
       assert.equal(result.decision, "refuse");
       assert.equal(result.namespace, null);
     }
+  });
+
+  test("is about the description, not a file of the listing", async () => {
+    const { result } = await run({ body: "" });
+    assert.deepEqual(result.issues.map((i) => [i.code, i.file]), [[MISSING, undefined]]);
+    assert.ok(!result.comment.includes("entry.json"), result.comment);
   });
 
   test("is reported next to the other issues, without skipping the verification", async () => {

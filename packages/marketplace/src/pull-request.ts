@@ -1,4 +1,4 @@
-import { issue, parseEntry, show, type Entry, type Issue } from "./entry.ts";
+import { issue, issueNotInEntry, parseEntry, show, type Entry, type Issue } from "./entry.ts";
 import { verifyEntry, type ChangeType, type GitHubFacts, type NamespaceRecord, type Namespaces } from "./verify.ts";
 
 /** A file the pull request changes. `previousPath` is set for a rename. */
@@ -46,7 +46,7 @@ const ZERO_WIDTH_SPACE = "​";
 export async function checkPullRequest(input: { author: { login: string; id: number }; body: string; source: PullRequestSource }): Promise<PullRequestCheck> {
   const { author, body, source } = input;
   // The Creator's acceptance of PUBLISHING.md (ADR 0015) is a refusal like any issue, reported whatever else is wrong.
-  const terms = TERMS_TICKED.test(body) ? [] : [issue("pull-request/terms-not-accepted", `Tick the box "${TERMS}" in the pull request description.`)];
+  const terms = TERMS_TICKED.test(body) ? [] : [issueNotInEntry("pull-request/terms-not-accepted", `Tick the box "${TERMS}" in the pull request description.`)];
   /** `namespace` is the record to add should the pull request await the Approval. */
   const result = (folder: string | null, found: Issue[], change: ChangeType | null, namespace: PullRequestCheck["namespace"] = null): PullRequestCheck => {
     const issues = [...found, ...terms];
@@ -62,7 +62,7 @@ export async function checkPullRequest(input: { author: { login: string; id: num
   const issues: Issue[] = [];
   const head = await source.folder("head", path);
   for (const name of head.others) {
-    issues.push(issue("pull-request/unexpected-file", `${show(name)} is not a file: a listing folder holds only files.`, { file: name }));
+    issues.push(issueNotInEntry("pull-request/unexpected-file", `${show(name)} is not a file: a listing folder holds only files.`, { file: name }));
   }
   const raw = head.files.get("entry.json") ?? (await source.file("head", `${path}/entry.json`));
   if (!raw) {
@@ -116,10 +116,10 @@ function locateListing(changed: ChangedFile[]): { folder: string } | { issues: I
   for (const path of paths) {
     const match = LISTING_FILE.exec(path);
     if (match) folders.add(`${match[1]}/${match[2]}`);
-    else issues.push(issue("pull-request/outside-listing", `${show(path)} is not a file of a listing folder: a pull request only touches modules/<namespace>/<name>/<file>.`, { file: path }));
+    else issues.push(issueNotInEntry("pull-request/outside-listing", `${show(path)} is not a file of a listing folder: a pull request only touches modules/<namespace>/<name>/<file>.`, { file: path }));
   }
-  if (folders.size > 1) issues.push(issue("pull-request/several-listings", `A pull request touches one listing folder only, and this one touches ${[...folders].map((f) => `modules/${f}`).join(", ")}.`));
-  if (paths.size === 0) issues.push(issue("pull-request/no-listing", "The pull request changes no file of a listing folder."));
+  if (folders.size > 1) issues.push(issueNotInEntry("pull-request/several-listings", `A pull request touches one listing folder only, and this one touches ${[...folders].map((f) => `modules/${f}`).join(", ")}.`));
+  if (paths.size === 0) issues.push(issueNotInEntry("pull-request/no-listing", "The pull request changes no file of a listing folder."));
   if (issues.length > 0) return { issues };
   return { folder: [...folders][0]! };
 }
