@@ -11,3 +11,5 @@ export { declaredPermissions, searchModules } from "./search.ts";
 export type { SearchOptions } from "./search.ts";
 export { renderSite } from "./site.ts";
 export type { SiteOptions } from "./site.ts";
+export { checkPullRequest } from "./pull-request.ts";
+export type { ChangedFile, Decision, PullRequestCheck, PullRequestSource } from "./pull-request.ts";

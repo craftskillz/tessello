@@ -51,6 +51,41 @@ The CI downloads each new version's package, reads the facts it needs from GitHu
 
 The change type drives the merge: `new-module` awaits the Maintainer's Approval; `new-version` and `metadata` (tags or screenshots) merge automatically when `ok`; `other` goes to the Maintainer.
 
+## The pull request check
+
+```ts
+const check = await checkPullRequest({ author: { login, id }, body, source });
+// check.folder, check.issues, check.change, check.decision, check.namespace, check.comment
+```
+
+`checkPullRequest` is the glue the CI runs: it takes everything it needs from an injected `PullRequestSource` (the changed files, the files and folders at the base and the head, GitHub accounts, memberships and repositories, and downloads), so it is pure and network-free. It checks that the pull request touches a single listing folder, reads the base (`namespaces.json` and the previous `entry.json`, both trusted: unreadable ones make it throw), downloads only the new versions' `https:` packages, runs the Verifier and decides:
+
+| `decision` | When | What happens |
+| --- | --- | --- |
+| `merge` | No issue, `new-version` or `metadata` | Merged automatically. |
+| `approval` | No issue, `new-module` | Awaits the Maintainer's Approval. |
+| `maintainer` | No issue, `other` | The change goes to the Maintainer. |
+| `refuse` | Any issue | The Creator fixes the issues and pushes again. |
+
+`check.comment` is the Markdown the CI posts: it starts with `<!-- tessello-marketplace-check -->` so the CI can update it instead of posting again. Text coming from the pull request is neutralised (`<`, `>` and `&` escaped, `@` mentions broken), so the comment never pings anyone or renders HTML.
+
+For an acceptable new Module whose namespace is not yet in `namespaces.json`, `check.namespace` holds the record its Approval adds (the CI writes it into `namespaces.json`).
+
+`body` is the pull request description. Its template holds the line `- [ ] I have read PUBLISHING.md and accept its terms.`: ticking it (`- [x]` or `* [X]`, leading spaces allowed) is the Creator's acceptance (ADR 0015). Without it the pull request is refused with `pull-request/terms-not-accepted`, in addition to whatever else is found.
+
+### Running it in the CI
+
+```
+GITHUB_TOKEN=… node .tessello/packages/marketplace/scripts/check-pull-request.ts --repository "$GITHUB_REPOSITORY" --pull-request "$PULL_REQUEST" --out "$RUNNER_TEMP/check"
+```
+
+`scripts/check-pull-request.ts` is the real `PullRequestSource`, over the GitHub REST API (`GITHUB_API_URL` overrides the API address). It never checks the pull request out: the files are read through the contents API, at the base branch and at the head commit's SHA, and packages are downloaded over `https:` only, without credentials, within 60 s and 50 MB. A failing API call (other than a 404) throws, so the job fails rather than give a wrong verdict. It exits 2 on a usage error and 0 otherwise: the workflow fails the job itself on `refuse`. `--out` receives:
+
+- `comment.md`, the comment to post.
+- `result.json`: `decision`, `folder`, `change`, `head` (the head commit's SHA), `namespace` (`null`, or `{ name, record }` as in `check.namespace`) and `issues` (`{ code, message, version?, file? }`).
+
+`openPullRequest(options)` and `runCheck({ ...options, out })` are exported for tests, which run them against a local fake GitHub.
+
 ### Issue codes
 
 Every issue is an error and has a stable code.
@@ -78,6 +113,11 @@ Every issue is an error and has a stable code.
 | `version/id-mismatch`, `version/version-mismatch` | The Manifest's `id` or `version` differs from the listing. |
 | `screenshot/missing`, `screenshot/too-large`, `screenshot/invalid-image` | A listed screenshot is absent, over 500 KB, or not a PNG or WebP image. |
 | Validator codes (`package/…`, `manifest/…`, …) | The Validator's errors on a new version's package, with their own codes (Convention §9). |
+| `pull-request/outside-listing` | A changed file (or a rename's previous path) is not directly in `modules/<namespace>/<name>/`. |
+| `pull-request/several-listings`, `pull-request/no-listing` | The pull request touches several listing folders, or none. |
+| `pull-request/unexpected-file` | The listing folder holds a sub-folder, a symlink or a submodule. |
+| `pull-request/terms-not-accepted` | The description does not tick the box accepting PUBLISHING.md's terms. |
+| `pull-request/listing-removed` | `entry.json` is gone: a listing is withdrawn, never deleted. |
 
 ## The index: `index.json`
 
