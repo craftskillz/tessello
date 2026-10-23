@@ -16,7 +16,7 @@ L'Utilisateur découvre chaque jour de nouvelles skills d'agent (des dossiers av
 
 Le Module **Skills Library** (`@craftskillz/skills-library`, `sample-modules/skills-library/`) est la bibliothèque personnelle des skills de l'Utilisateur, rangées en **Ensembles**. Il importe un Ensemble en collant l'URL GitHub du dossier qui contient les skills (chaque sous-dossier direct qui a un `SKILL.md` est une Skill ; son nom et sa description sont lus dans le frontmatter), ou il le crée à la main. Pour chaque Ensemble, il choisit un **Anneau** (son verdict) et écrit des **Notes** ; pour chaque Skill de l'Ensemble, il choisit un **Thème**, donne une **Note** de 1 à 5 (ou la laisse *non évaluée*) et écrit des **Notes** en Markdown : à quoi elle sert, pourquoi, comment.
 
-Quand il le décide, il **publie une Édition** : un instantané numéroté, daté et figé de sa bibliothèque, comparé à l'Édition précédente (Ensembles nouveaux, déplacés, mis à jour, retirés). Chaque Édition se télécharge en `.zip` qui reproduit l'arborescence du blog : un billet Markdown en français, avec le radar en SVG, et son image de couverture.
+Quand il le décide, il **publie une Édition** : un instantané numéroté, daté et figé de sa bibliothèque, comparé à l'Édition précédente (Ensembles nouveaux, déplacés, mis à jour, retirés). Chaque Édition se télécharge en `.zip` qui reproduit l'arborescence du blog : un billet Markdown en anglais, avec le radar en SVG, et son image de couverture.
 
 Le radar s'inspire du Technology Radar de Thoughtworks, sans en reprendre le nom, les anneaux ni le dessin. Le billet le dit en note de bas de page. Chaque point du radar est un Ensemble dans un Thème : un Ensemble qui couvre plusieurs Thèmes a un point dans chacun. Survoler un point montre les Skills de l'Ensemble dans ce Thème, et leurs Notes.
 
@@ -28,7 +28,7 @@ Ces termes sont propres au Module ; ils n'entrent pas dans `GLOSSARY.md`.
 
 - **Ensemble** (*Set*) : un groupe de Skills jugé comme un tout, nommé par l'Utilisateur (« Matt Pocock skills », « Obra Superpowers »). C'est l'Ensemble qui a un Anneau et qui apparaît sur le radar, une fois par Thème de ses Skills. Il n'a pas de Thème à lui. Un Ensemble d'une seule Skill reste un Ensemble ; un Ensemble sans Skill n'est pas sur le radar.
 - **Skill** : une skill d'agent référencée dans un Ensemble (pas son contenu, seulement ses métadonnées et le jugement de l'Utilisateur). Elle a un Thème, et un seul ; elle n'a pas d'Anneau.
-- **Anneau** (*Ring*) : le verdict de l'Utilisateur sur un Ensemble : *Recommended*, *Try*, *Watch*, *Deprecated* (dans le billet : *Recommandé*, *À essayer*, *À surveiller*, *Déconseillé*).
+- **Anneau** (*Ring*) : le verdict de l'Utilisateur sur un Ensemble : *Recommended*, *Try*, *Watch*, *Deprecated* (mêmes libellés dans le billet).
 - **Note** (*Score*) : une évaluation de 1 à 5 étoiles d'une Skill, indépendante de l'Anneau de son Ensemble. Une Skill sans Note est *non évaluée*. Un Ensemble n'a pas de Note.
 - **Thème** (*Topic*) : l'une des 5 familles qui partagent le radar en secteurs. Anciennement **Quadrant**, quand il y en avait 4.
 - **Notes** (*Notes*) : le texte Markdown de l'Utilisateur, sur un Ensemble ou sur une Skill.
@@ -84,7 +84,7 @@ Ces termes sont propres au Module ; ils n'entrent pas dans `GLOSSARY.md`.
 - `sample-modules/skills-library/`, identifiant `@craftskillz/skills-library`, Svelte 5, construit par esbuild comme Watch Later (`scripts/build.ts`, `dist/` non versionné).
 - Permissions : `"network": ["https://raw.githubusercontent.com", "https://api.github.com"]`. `api.github.com` sert seulement à lister le dossier d'une URL (une requête par import ou rafraîchissement, sans authentification : 60 requêtes par heure suffisent) ; les `SKILL.md` sont lus sur `raw.githubusercontent.com`.
 - La Vue et le Widget (taille **M**) respectent §4 : ni `localStorage`, ni `alert`/`confirm`/`prompt`, ni frame imbriquée. Les confirmations sont des boîtes de dialogue du Module. Les liens vers les skills s'ouvrent par `<a href target="_blank" rel="noopener">`.
-- L'interface est en anglais. Le thème suit celui de l'Hôte. Le billet généré est en français.
+- L'interface est en anglais. Le thème suit celui de l'Hôte. Le texte généré du billet, de son radar et de sa couverture est toujours en anglais, quelle que soit la langue de la Vue.
 - La Vue s'adapte de 360 px à la largeur d'un ordinateur (§7.2).
 - Le `.zip` est fait avec `fflate` (déjà utilisé par l'Hôte), embarqué dans le paquet. Le téléchargement passe par un lien `download` vers un `blob:` (ADR 0013), depuis la Vue seulement.
 
@@ -147,7 +147,7 @@ Ces termes sont propres au Module ; ils n'entrent pas dans `GLOSSARY.md`.
   #### Suggestions for improvement
   ```
 
-  Le modèle est en anglais, comme l'interface du Module (décision du Mainteneur, 2026-10-23). Les Notes sont publiées telles quelles dans le billet en français : les titres remplis y apparaissent donc en anglais.
+  Le modèle est en anglais, comme l'interface du Module (décision du Mainteneur, 2026-10-23). Les Notes sont publiées telles quelles dans le billet en anglais : les titres remplis y apparaissent donc en anglais.
 - L'ordre des Skills d'un Ensemble est celui de la découverte (ordre alphabétique du dossier), les Skills ajoutées ensuite à la fin.
 - **Thèmes** : 5 noms, par défaut *Design & planning*, *Code & tests*, *Writing & docs*, *Tooling & workflow*, *Learning & upskilling*. Renommer ne change pas l'indice des Skills. Un nom est requis (1 à 40 caractères). Le billet utilise les noms tels que l'Utilisateur les a écrits.
 
@@ -188,7 +188,7 @@ Ces termes sont propres au Module ; ils n'entrent pas dans `GLOSSARY.md`.
 - Chaque couple (**Ensemble**, Thème d'une de ses Skills) est un point. La position (angle dans le secteur, rayon dans l'Anneau) est **dérivée d'un hachage de l'`id` de l'Ensemble et de l'indice du Thème**, avec une marge pour ne pas toucher les bords : elle reste la même d'une Édition à l'autre tant que l'Ensemble ne change pas d'Anneau et garde une Skill dans ce Thème. Deux points trop proches sont écartés de façon déterministe. Un Ensemble sans Skill n'a pas de point.
 - Marqueurs : ● inchangé ou mis à jour, ◆ nouveau ou de retour, ▲ déplacé vers *Recommended*, ▼ déplacé vers *Deprecated*. Tous les points d'un Ensemble ont le même. Une légende des marqueurs accompagne le radar.
 - Numérotation : **un numéro par Ensemble**, porté par tous ses points. Ordre : par premier Thème de l'Ensemble (le plus petit indice), puis par Anneau (du centre vers l'extérieur), puis par nom. Les numéros sont propres à chaque Édition.
-- Chaque point porte un `<title>` (infobulle native, sans JavaScript) : « <n>. <Ensemble> — <Anneau> · <Thème> », puis une ligne par Skill **de ce Thème** : « <nom> ★★★★☆ » ou « <nom> (not evaluated) » (dans le billet : « (pas encore évaluée) »). Chaque point porte aussi `data-set-id`, `data-number` et `data-topic` (l'indice), pour qu'un script du blog puisse l'enrichir sans changer le Module.
+- Chaque point porte un `<title>` (infobulle native, sans JavaScript) : « <n>. <Ensemble> — <Anneau> · <Thème> », puis une ligne par Skill **de ce Thème** : « <nom> ★★★★☆ » ou « <nom> (not evaluated) » (même libellé dans le billet). Chaque point porte aussi `data-set-id`, `data-number` et `data-topic` (l'indice), pour qu'un script du blog puisse l'enrichir sans changer le Module.
 - Couleurs : une teinte par Thème (5), lisible sur fond clair et sombre (le blog a un thème sombre). Le SVG ne dépend d'aucune feuille de style externe.
 
 ### Billet du blog (fonction pure) et `.zip`
@@ -197,7 +197,7 @@ Ces termes sont propres au Module ; ils n'entrent pas dans `GLOSSARY.md`.
 - Slug : `skills-radar-edition-<n>`. Frontmatter :
 
   ```yaml
-  title: "Skills Radar — Édition <n>"
+  title: "Skills Radar — Edition <n>"
   excerpt: "<premier paragraphe de l'introduction, en texte brut>"
   coverImage: "/assets/blog/skills-radar-edition-<n>/cover.png"
   date: "<publishedAt>"
@@ -211,14 +211,15 @@ Ces termes sont propres au Module ; ils n'entrent pas dans `GLOSSARY.md`.
 - Corps, dans l'ordre :
   1. l'introduction ;
   2. le radar en SVG **sur une seule ligne** (une ligne vide couperait le bloc HTML pour Markdown), suivi de la légende numérotée, une ligne par Ensemble (numéro, nom de l'Ensemble, Anneau, ses Thèmes, nombre de Skills) ;
-  3. `## Ce qui bouge` : chaque Ensemble *nouveau*, *de retour* ou *déplacé*, groupé par Anneau (paragraphe en gras), en **fiche complète** :
-     - `### <n>. <Ensemble>`, un badge (*Nouveau*, *De retour*, *Déplacé : À essayer → Recommandé*), l'explication du déplacement, la description, un lien vers `sourceUrl`, les Notes de l'Ensemble ;
-     - pour un Ensemble *déplacé*, le détail des Skills : « Ajoutées : … », « Retirées : … », « Notes : <nom> ★★☆☆☆ → ★★★★☆ » ;
-     - un tableau des Skills, rangées par Thème puis dans leur ordre : nom (en lien vers sa `sourceUrl`), Thème, étoiles pleines et vides ou *Pas encore évaluée*, description ;
+  3. `## What's changed` : chaque Ensemble *nouveau*, *de retour* ou *déplacé*, groupé par Anneau (paragraphe en gras), en **fiche complète** :
+     - `### <n>. <Ensemble>`, un badge (*New*, *Back*, *Moved: Try → Recommended*), l'explication du déplacement, la description, un lien vers `sourceUrl`, les Notes de l'Ensemble ;
+     - pour un Ensemble *déplacé*, le détail des Skills : « Added: … », « Removed: … », « Scores: <nom> ★★☆☆☆ → ★★★★☆ » ;
+     - un tableau des Skills, rangées par Thème puis dans leur ordre : nom (en lien vers sa `sourceUrl`), Thème, étoiles pleines et vides ou *Not evaluated*, description ;
      - pour chaque Skill dont les Notes ne sont pas vides (ou réduites au modèle sans contenu), `#### <nom de la Skill>` puis ses Notes ;
-  4. `## Le reste du radar` : les Ensembles *inchangés* et *mis à jour*, groupés par Anneau, en liste compacte : `- **<n>.** <Ensemble en lien> (<k> skills)`, et *mis à jour* le cas échéant, suivi du détail des Skills changées sur la même ligne ;
-  5. `## Retirés du radar` (s'il y en a) : nom de l'Ensemble et Anneau quitté ;
-  6. une note de bas de page : « Inspiré du Technology Radar de Thoughtworks. »
+  4. `## The rest of the radar` : les Ensembles *inchangés* et *mis à jour*, groupés par Anneau, en liste compacte : `- **<n>.** <Ensemble en lien> (<k> skills)`, et *updated* le cas échéant, suivi du détail des Skills changées sur la même ligne ;
+  5. `## Retired from the radar` (s'il y en a) : nom de l'Ensemble et Anneau quitté ;
+  6. une note de bas de page : « Inspired by Thoughtworks' Technology Radar. »
+- Décision du Mainteneur (2026-10-23) : tous les libellés générés sont en anglais. Introduction, noms, descriptions, Thèmes et Notes restent tels que saisis.
 - Une section vide est omise. Les titres des Notes de l'Ensemble sont décalés pour que le plus haut soit `####` ; ceux des Notes d'une Skill, pour que le plus haut soit `#####` (sous le `####` de la Skill). Le reste des Notes est publié tel quel, hors des blocs de code.
 - À la première Édition, tous les Ensembles sont *nouveaux* : tous ont leur fiche complète.
 - **Couverture** : le radar seul, rendu en PNG 1200 × 630 sur un fond plein (comme `src/view/png.ts` de Diagram : SVG → image → canvas → `toBlob`).

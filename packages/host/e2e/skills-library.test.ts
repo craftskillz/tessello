@@ -1399,7 +1399,7 @@ describe("the Skills Library sample Module", () => {
       assert.deepEqual([...cover.subarray(0, 8)], [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], "the cover is a PNG");
       assert.deepEqual([cover.readUInt32BE(16), cover.readUInt32BE(20)], [1200, 630]);
       const post = matter(strFromU8(files[`_posts/${slug}.md`]));
-      assert.equal(post.data.title, `Skills Radar — Édition ${n}`);
+      assert.equal(post.data.title, `Skills Radar — Edition ${n}`);
       assert.equal(post.data.coverImage, `/assets/blog/${slug}/cover.png`);
       assert.equal(post.data.ogImage.url, `/assets/blog/${slug}/cover.png`);
       assert.match(String(post.data.date instanceof Date ? post.data.date.toISOString() : post.data.date), /^\d{4}-\d{2}-\d{2}/);
@@ -1408,16 +1408,16 @@ describe("the Skills Library sample Module", () => {
 
     const first = await zipOf(1);
     assert.match(first, /First edition/);
-    assert.match(first, /## Ce qui bouge/);
+    assert.match(first, /## What's changed/);
     assert.match(first, /### 1\. Alpha/);
     assert.match(first, /### 2\. Bravo/);
-    assert.doesNotMatch(first, /## Retirés du radar/);
+    assert.doesNotMatch(first, /## Retired from the radar/);
 
     const second = await zipOf(2);
     assert.match(second, /Second edition/);
-    assert.match(second, /Déplacé : À essayer → Recommandé/);
+    assert.match(second, /Moved: Try → Recommended/);
     assert.match(second, /Used it for a month/);
-    assert.match(second, /## Retirés du radar\n\n- Bravo — À surveiller/);
+    assert.match(second, /## Retired from the radar\n\n- Bravo — Watch/);
   });
 
   test("the Editions tab says so when nothing is published", async () => {
@@ -1676,17 +1676,17 @@ describe("the Skills Library sample Module", () => {
     await view(page).getByRole("tab", { name: "Editions" }).click();
     const file = await downloaded(page, () => view(page).getByRole("button", { name: "Download edition 1 as .zip" }).click());
     const post = matter(strFromU8(unzipSync(new Uint8Array(file.bytes))["_posts/skills-radar-edition-1.md"])).content;
-    assert.match(post, /1\. Bundle — Recommandé · Design &amp; planning \(3 skills\)/);
+    assert.match(post, /1\. Bundle — Recommended · Design &amp; planning \(3 skills\)/);
     assert.match(post, /### 1\. Bundle\n/);
     assert.ok(post.includes("| [Alpha skill](https://example.com/alpha) | Design &amp; planning | ★★★★☆ | The first |"));
     assert.ok(post.includes("| Beta skill | Design &amp; planning | ★★☆☆☆ | The second |"));
-    assert.ok(post.includes("| Gamma skill | Design &amp; planning | *Pas encore évaluée* |"));
+    assert.ok(post.includes("| Gamma skill | Design &amp; planning | *Not evaluated* |"));
     // Only the skill whose notes say more than the template has its card, its headings under its own.
     assert.match(post, /#### Alpha skill\n\n##### À quoi ça sert\n\nIt grills plans\./);
     assert.doesNotMatch(post, /#### Beta skill|#### Gamma skill/);
     const svg = post.split("\n").find((line) => line.includes("<svg"))!;
     assert.ok(svg.includes("</svg>"), "the SVG is on one line");
     assert.ok(svg.includes(`data-number="1"`));
-    assert.ok(svg.includes("<title>1. Bundle — Recommandé · Design &amp; planning&#10;Alpha skill ★★★★☆&#10;Beta skill ★★☆☆☆&#10;Gamma skill (pas encore évaluée)</title>"));
+    assert.ok(svg.includes("<title>1. Bundle — Recommended · Design &amp; planning&#10;Alpha skill ★★★★☆&#10;Beta skill ★★☆☆☆&#10;Gamma skill (not evaluated)</title>"));
   });
 });
