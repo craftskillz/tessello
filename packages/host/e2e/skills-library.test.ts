@@ -13,6 +13,8 @@ before(async () => {
   skillsLibrary = await zipSample("skills-library");
 });
 
+const TOPICS = ["Design & planning", "Code & tests", "Writing & docs", "Tooling & workflow", "Learning & upskilling"];
+
 const DATA = "modules/.tessello/data/@craftskillz/skills-library";
 
 const view = (page: Page) => page.frameLocator("iframe[title='Skills Library']");
@@ -31,6 +33,7 @@ interface StoredSkill {
   name: string;
   sourceUrl?: string;
   description: string;
+  topic: number;
   score?: number;
   notes: string;
   addedAt: string;
@@ -41,7 +44,6 @@ interface StoredSet {
   name: string;
   sourceUrl?: string;
   description: string;
-  quadrant: number;
   ring: string;
   notes: string;
   skills: StoredSkill[];
@@ -173,7 +175,7 @@ describe("the Skills Library sample Module", () => {
     await row.waitFor();
     await row.getByText("Watch", { exact: true }).waitFor();
     await row.getByText("0 skills", { exact: true }).waitFor();
-    await row.getByText("Design & planning").waitFor();
+    await row.getByText("No skill — not on the radar").waitFor();
     const link = row.getByRole("link", { name: "Grill me" });
     assert.equal(await link.getAttribute("href"), "https://raw.githubusercontent.com/acme/skills/main/grill/SKILL.md");
     assert.equal(await link.getAttribute("target"), "_blank");
@@ -184,7 +186,7 @@ describe("the Skills Library sample Module", () => {
     assert.equal(set.sourceUrl, "https://raw.githubusercontent.com/acme/skills/main/grill/SKILL.md");
     assert.equal(set.description, "Questions until it is clear");
     assert.equal(set.ring, "watch");
-    assert.equal(set.quadrant, 0);
+    assert.equal("quadrant" in set, false);
     assert.equal(set.notes, "");
     assert.deepEqual(set.skills, []);
     assert.equal(set.archived, false);
@@ -445,6 +447,79 @@ describe("the Skills Library sample Module", () => {
     assert.ok(set.skills.every((skill) => skill.score === undefined));
   });
 
+  test("a set is imported into a topic, one skill moves to another, the radar draws two points of the same number, and the Library finds the set by the second topic", async () => {
+    const page = await host.newPage();
+    await fakeGitHub(page, undefined, PACK);
+    await install(page);
+
+    await enter(page, "https://github.com/acme/pack/tree/main/skills");
+    const preview = previewOf(page);
+    const topic = preview.getByLabel("Topic");
+    await topic.waitFor();
+    assert.equal(await topic.locator("option").count(), 5);
+    assert.equal(await topic.inputValue(), "0", "the first topic is selected by default");
+    await topic.selectOption({ label: "Code & tests" });
+    await importPreview(page);
+    const [imported] = await stored(page, (sets) => sets.length === 1);
+    assert.deepEqual(imported.skills.map((skill) => skill.topic), [1, 1, 1, 1]);
+    await view(page).getByRole("listitem").filter({ hasText: "pack" }).getByText("Code & tests", { exact: true }).waitFor();
+
+    const panel = panelOf(page, "pack");
+    await panel.waitFor();
+    await setSkillTopic(panel, "gamma", "Writing & docs");
+    await stored(page, ([item]) => item?.skills.some((skill) => skill.name === "gamma" && skill.topic === 2));
+    await panel.getByRole("button", { name: "Close" }).click();
+    await view(page).getByRole("listitem").filter({ hasText: "pack" }).getByText("Code & tests, Writing & docs", { exact: true }).waitFor();
+
+    await radarTab(page);
+    const points = view(page).locator(`svg [data-set-id="${imported.id}"]`);
+    await points.nth(1).waitFor();
+    assert.equal(await points.count(), 2);
+    assert.deepEqual(await points.evaluateAll((all) => all.map((point) => point.getAttribute("data-topic"))), ["1", "2"]);
+    assert.deepEqual(await points.evaluateAll((all) => all.map((point) => point.getAttribute("data-number"))), ["1", "1"]);
+    assert.equal(await view(page).getByRole("button", { name: /^\d+\. / }).count(), 1, "one line in the legend for the set");
+
+    await view(page).getByRole("tab", { name: "Library" }).click();
+    await view(page).getByRole("button", { name: "Writing & docs", exact: true }).click();
+    await view(page).getByRole("listitem").filter({ hasText: "pack" }).waitFor();
+    await view(page).getByRole("button", { name: "Learning & upskilling", exact: true }).click();
+    await view(page).getByRole("button", { name: "Writing & docs", exact: true }).click();
+    await view(page).getByText("No set matches these filters.").waitFor();
+  });
+
+  test("a stored set with an old quadrant is converted: its skills get that topic, and the file loses the quadrant", async () => {
+    const page = await host.newPage();
+    await install(page);
+    await addByHand(page, "Anything");
+    await panelOf(page, "Anything").getByRole("button", { name: "Close" }).click();
+    await stored(page, (sets) => sets.length === 1);
+    const skill = (id: string, name: string, extra = {}) => ({ id, name, description: "", score: 3, notes: "", addedAt: "2026-01-01T00:00:00.000Z", ...extra });
+    await writeFolder(page, DATA, {
+      "sets.json": {
+        key: "sets",
+        value: [
+          {
+            id: "old-set",
+            name: "Old set",
+            description: "",
+            quadrant: 2,
+            ring: "try",
+            notes: "",
+            skills: [skill("s1", "First"), skill("s2", "Second", { topic: 4 })],
+            addedAt: "2026-01-01T00:00:00.000Z",
+            updatedAt: "2026-01-01T00:00:00.000Z",
+            archived: false,
+          },
+        ],
+      },
+    });
+    await page.reload();
+    await openFromLauncher(page);
+    await view(page).getByRole("listitem").filter({ hasText: "Old set" }).getByText("Writing & docs, Learning & upskilling", { exact: true }).waitFor();
+    const [set] = await stored(page, (sets) => sets.length === 1 && !("quadrant" in sets[0]));
+    assert.deepEqual(set.skills.map((item) => item.topic), [2, 4], "a skill with a topic of its own is left alone");
+  });
+
   test("the four skills of a set can all be imported, and Cancel adds nothing", async () => {
     const page = await host.newPage();
     await fakeGitHub(page, undefined, PACK);
@@ -624,16 +699,17 @@ describe("the Skills Library sample Module", () => {
     await panelOf(page, "Grill me").waitFor();
     await page.keyboard.press("Escape");
     await panelOf(page, "Grill me").waitFor({ state: "hidden" });
-    await view(page).getByRole("listitem").getByText("Design & planning").click();
+    await view(page).getByRole("listitem").getByText("No skill — not on the radar").click();
     const panel = panelOf(page, "Grill me");
     await panel.waitFor();
 
     await panel.getByLabel("Description").fill("Questions until it is clear");
     await panel.getByRole("radio", { name: "Recommended" }).check();
-    await panel.getByLabel("Topic").selectOption({ label: "Code & tests" });
+    await addSkill(page, panel, "Question");
+    await setSkillTopic(panel, "Question", "Code & tests");
     await panel.getByLabel("Set notes").fill("# Great\n\nUse it **often**.");
 
-    const [set] = await stored(page, ([item]) => item?.ring === "recommended" && item.quadrant === 1 && item.notes.startsWith("# Great") && item.description !== "");
+    const [set] = await stored(page, ([item]) => item?.ring === "recommended" && item.skills[0]?.topic === 1 && item.notes.startsWith("# Great") && item.description !== "");
     assert.equal(set.description, "Questions until it is clear");
     assert.ok(set.updatedAt > set.addedAt);
 
@@ -708,15 +784,15 @@ describe("the Skills Library sample Module", () => {
     await stored(page, (sets) => sets.length === 1);
     const panel = panelOf(page, "Élégant plan");
     await panel.getByRole("radio", { name: "Try" }).check();
-    await panel.getByLabel("Topic").selectOption({ label: "Writing & docs" });
     await addSkill(page, panel, "Zebra crossing");
+    await setSkillTopic(panel, "Zebra crossing", "Writing & docs");
     await panel.getByRole("radio", { name: "4 out of 5" }).check({ force: true });
     await setField(panel, "Set notes").fill("kept");
     await panel.getByRole("button", { name: "Close" }).click();
     await new Promise((resolve) => setTimeout(resolve, 20));
     await addByHand(page, "Other thing");
     await panelOf(page, "Other thing").getByRole("button", { name: "Close" }).click();
-    const before = await stored(page, (sets) => sets.length === 2 && sets.some((item) => item.notes === "kept" && item.quadrant === 2 && item.ring === "try" && item.skills[0]?.score === 4));
+    const before = await stored(page, (sets) => sets.length === 2 && sets.some((item) => item.notes === "kept" && item.skills[0]?.topic === 2 && item.ring === "try" && item.skills[0]?.score === 4));
     const plan = before.find((item) => item.name === "Élégant plan")!;
     assert.ok(plan.updatedAt > plan.addedAt);
 
@@ -755,7 +831,7 @@ describe("the Skills Library sample Module", () => {
     assert.deepEqual(settings.filters, { rings: [], topics: [2], query: "elegant", archived: false });
     assert.deepEqual(settings.topics, ["Design & planning", "Code & tests", "Prose", "Tooling & workflow", "Learning & upskilling"]);
     const after = await stored(page, () => true);
-    assert.deepEqual(after.map((item) => item.quadrant).sort(), [0, 2], "renaming moved no set");
+    assert.deepEqual(after.flatMap((item) => item.skills.map((skill) => skill.topic)), [2], "renaming moved no skill");
 
     await page.reload();
     await openFromLauncher(page);
@@ -767,7 +843,8 @@ describe("the Skills Library sample Module", () => {
     assert.ok(await reopened.getByRole("radio", { name: "Try" }).isChecked());
     await reopened.locator("summary", { hasText: "Zebra crossing" }).click();
     assert.ok(await reopened.getByRole("radio", { name: "4 out of 5" }).isChecked());
-    assert.equal(await reopened.getByLabel("Topic").inputValue(), "2");
+    assert.equal(await section(reopened, "Zebra crossing").getByLabel("Topic").inputValue(), "2");
+    await section(reopened, "Zebra crossing").locator("summary").getByText("Prose").waitFor();
     assert.equal(await setField(reopened, "Set notes").inputValue(), "kept");
   });
 
@@ -781,9 +858,11 @@ describe("the Skills Library sample Module", () => {
     await dialog.getByRole("button", { name: "Close" }).click();
     await addByHand(page, "Helper");
     const panel = panelOf(page, "Helper");
-    assert.equal(await panel.getByLabel("Topic").locator("option").count(), 5);
-    await panel.getByLabel("Topic").selectOption({ label: "Agents" });
-    await stored(page, ([item]) => item?.quadrant === 4);
+    await addSkill(page, panel, "Helper skill");
+    await panel.locator("details", { hasText: "Helper skill" }).getByLabel("Topic").locator("option").first().waitFor({ state: "attached" });
+    assert.equal(await panel.locator("details", { hasText: "Helper skill" }).getByLabel("Topic").locator("option").count(), 5);
+    await setSkillTopic(panel, "Helper skill", "Agents");
+    await stored(page, ([item]) => item?.skills[0]?.topic === 4);
     await panel.getByRole("button", { name: "Close" }).click();
     await view(page).getByRole("listitem").filter({ hasText: "Helper" }).getByText("Agents").waitFor();
 
@@ -933,13 +1012,22 @@ describe("the Skills Library sample Module", () => {
 
   // The radar (skills-library ticket 05).
 
-  /** Adds a set and puts it in a ring and a topic, through its panel. */
+  /** Moves a skill of the set whose panel is open into a topic, through its unfolding section. */
+  async function setSkillTopic(panel: Locator, skill: string, topic: string) {
+    const skillSection = panel.locator("details", { hasText: skill });
+    if (!(await skillSection.evaluate((details) => (details as HTMLDetailsElement).open))) await skillSection.locator("summary").click();
+    await skillSection.getByLabel("Topic").selectOption({ label: topic });
+  }
+
+  /** Adds a set with one skill, and puts it in a ring and the skill in a topic, through its panel. */
   async function addJudged(page: Page, name: string, ring: string, quadrant: string) {
     await addByHand(page, name);
     const panel = panelOf(page, name);
     await panel.waitFor();
     await panel.getByRole("radio", { name: ring }).check();
-    await panel.getByLabel("Topic").selectOption({ label: quadrant });
+    await addSkill(page, panel, `${name} skill`);
+    await setSkillTopic(panel, `${name} skill`, quadrant);
+    await stored(page, (sets) => sets.some((item) => item.name === name && item.skills[0]?.topic !== undefined && item.skills[0].topic === TOPICS.indexOf(quadrant)));
     await panel.getByRole("button", { name: "Close" }).click();
     await panel.waitFor({ state: "hidden" });
   }
@@ -1043,11 +1131,12 @@ describe("the Skills Library sample Module", () => {
     const panel = panelOf(page, name);
     await panel.waitFor();
     await panel.getByRole("radio", { name: ring }).check();
-    await panel.getByLabel("Topic").selectOption({ label: quadrant });
     await addSkill(page, panel, `${name} first`);
     await addSkill(page, panel, `${name} second`);
+    await setSkillTopic(panel, `${name} first`, quadrant);
+    await setSkillTopic(panel, `${name} second`, quadrant);
     const first = section(panel, `${name} first`);
-    await first.locator("summary").click();
+    if (!(await first.evaluate((details) => (details as HTMLDetailsElement).open))) await first.locator("summary").click();
     await first.getByRole("radio", { name: "4 out of 5" }).check({ force: true });
     await stored(page, (sets) => sets.some((item) => item.name === name && item.skills[0]?.score === 4));
     await panel.getByRole("button", { name: "Close" }).click();
@@ -1428,6 +1517,8 @@ describe("the Skills Library sample Module", () => {
     assert.equal(migrated.skills.length, 1);
     assert.equal(migrated.skills[0].score, 4);
     assert.equal(migrated.skills[0].notes, "Notes of Alpha");
+    assert.equal(migrated.skills[0].topic, 0);
+    assert.equal(sets.find((set) => set.id === "legacy-b")!.skills[0].topic, 1);
     const files = await readFolder(page, DATA);
     assert.deepEqual(JSON.parse(files["skills.json"]).value, [alpha, bravo], "the old skills are left as they were");
 
@@ -1535,7 +1626,7 @@ describe("the Skills Library sample Module", () => {
 
     await radarTab(page);
     const title = await dots(page).first().locator("title").textContent();
-    assert.equal(title, "1. Bundle — Recommended\nAlpha skill ★★★★☆\nBeta skill ★★☆☆☆\nGamma skill (not evaluated)");
+    assert.equal(title, "1. Bundle — Recommended · Design & planning\nAlpha skill ★★★★☆\nBeta skill ★★☆☆☆\nGamma skill (not evaluated)");
     assert.equal(await dots(page).first().getAttribute("data-number"), "1");
 
     await publishEdition(page, 1, "Sets");
@@ -1553,6 +1644,6 @@ describe("the Skills Library sample Module", () => {
     const svg = post.split("\n").find((line) => line.includes("<svg"))!;
     assert.ok(svg.includes("</svg>"), "the SVG is on one line");
     assert.ok(svg.includes(`data-number="1"`));
-    assert.ok(svg.includes("<title>1. Bundle — Recommandé&#10;Alpha skill ★★★★☆&#10;Beta skill ★★☆☆☆&#10;Gamma skill (pas encore évaluée)</title>"));
+    assert.ok(svg.includes("<title>1. Bundle — Recommandé · Design &amp; planning&#10;Alpha skill ★★★★☆&#10;Beta skill ★★☆☆☆&#10;Gamma skill (pas encore évaluée)</title>"));
   });
 });
