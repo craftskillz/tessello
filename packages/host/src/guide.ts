@@ -4,9 +4,8 @@
 // document a CSP that allows only `data:` images and inline styles, so the result is inert even if the rendering let
 // something through.
 
-import { GUIDE_IMAGE_EXTENSIONS, guideImagePath, type PackageFiles } from "@tessello/convention";
+import { escapeHtml, renderGuide as renderMarkdown, slug, type PackageFiles } from "@tessello/convention";
 import type { Theme } from "@tessello/host-core";
-import { Marked, type Tokens } from "marked";
 import { dataUrl, typeOf } from "./srcdoc.ts";
 
 /** The `sandbox` attribute of the guide's iframe: links may open a tab, nothing may run. */
@@ -14,53 +13,15 @@ export const GUIDE_SANDBOX = "allow-popups allow-popups-to-escape-sandbox";
 
 const CSP = "default-src 'none'; img-src data:; style-src 'unsafe-inline'";
 
-const escapeHtml = (text: string) =>
-  text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 
-/** A heading's id, as GitHub writes it: lowercase, punctuation removed, spaces turned into "-". */
-export const slug = (text: string) =>
-  text
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}\s_-]/gu, "")
-    .trim()
-    .replace(/\s/g, "-");
+export { slug };
 
 /** The HTML of a User guide: `guide` is its package path, against which its images are resolved. */
 export function renderGuide(files: PackageFiles, guide: string): string {
-  const ids = new Map<string, number>();
-  const uniqueId = (text: string) => {
-    const id = slug(text);
-    const count = ids.get(id) ?? 0;
-    ids.set(id, count + 1);
-    return count === 0 ? id : `${id}-${count}`;
-  };
-  const marked = new Marked({
-    gfm: true,
-    renderer: {
-      html: ({ text }: Tokens.HTML | Tokens.Tag) => escapeHtml(text),
-      heading({ tokens, depth }: Tokens.Heading) {
-        const id = uniqueId(this.parser.parseInline(tokens, this.parser.textRenderer));
-        return `<h${depth} id="${escapeHtml(id)}">${this.parser.parseInline(tokens)}</h${depth}>\n`;
-      },
-      image({ href, title, text }: Tokens.Image) {
-        const path = guideImagePath(guide, href);
-        const bytes = path === null || !GUIDE_IMAGE_EXTENSIONS.some((ext) => path.toLowerCase().endsWith(ext)) ? undefined : files.get(path);
-        if (!bytes) return `<span class="missing-image">${escapeHtml(text)}</span>`;
-        const titleAttribute = title ? ` title="${escapeHtml(title)}"` : "";
-        return `<img src="${dataUrl(typeOf(path!), bytes)}" alt="${escapeHtml(text)}"${titleAttribute}>`;
-      },
-      link({ href, title, tokens }: Tokens.Link) {
-        const content = this.parser.parseInline(tokens);
-        const titleAttribute = title ? ` title="${escapeHtml(title)}"` : "";
-        if (href.startsWith("#")) return `<a href="${escapeHtml(href)}"${titleAttribute}>${content}</a>`;
-        if (/^(?:https?:|mailto:)/i.test(href)) {
-          return `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer"${titleAttribute}>${content}</a>`;
-        }
-        return `<span>${content}</span>`;
-      },
-    },
+  return renderMarkdown(new TextDecoder().decode(files.get(guide)), guide, (path) => {
+    const bytes = files.get(path);
+    return bytes ? dataUrl(typeOf(path), bytes) : null;
   });
-  return marked.parse(new TextDecoder().decode(files.get(guide)), { async: false });
 }
 
 /**

@@ -1,4 +1,4 @@
-export { GUIDE_IMAGE_EXTENSIONS, guideImagePath, guideImageSources } from "./guide.ts";
+export { escapeHtml, GUIDE_IMAGE_EXTENSIONS, guideImagePath, guideImageSources, renderGuide, slug } from "./guide.ts";
 export { LIMITS, SUPPORTED_CONVENTIONS, WIDGET_SIZES } from "./limits.ts";
 export { invalidEntryReason, isCovered, isLocalHost, PERMISSION_NAMES } from "./permissions.ts";
 export type { Permissions } from "./permissions.ts";

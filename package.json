@@ -12,6 +12,7 @@
     "typecheck": "tsc -p .",
     "build:sdk": "node packages/sdk/scripts/build-local-copy.ts",
     "build:host": "node packages/host/scripts/build.ts",
+    "build:marketplace": "node packages/marketplace/scripts/build-site.ts",
     "start:host": "npm run build:host && node packages/host/scripts/serve.ts",
     "test:browser": "npm run build:host && node --test --test-concurrency=1 \"packages/*/e2e/*.test.ts\"",
     "build:samples": "npm run build --workspaces --if-present"

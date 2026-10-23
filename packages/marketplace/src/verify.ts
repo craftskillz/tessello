@@ -1,6 +1,7 @@
 import { OSI_LICENSES } from "./licenses.ts";
 import { readZip } from "@tessello/convention";
 import { compareVersions } from "./semver.ts";
+import { sha256 } from "./sha256.ts";
 import { issue, parseEntry, show, type Entry, type Issue } from "./entry.ts";
 
 /** namespaces.json: namespace (without "@") → its GitHub account. */
@@ -223,9 +224,4 @@ function checkPackage(bytes: Uint8Array, entry: Entry, version: string, issues: 
   if (manifest.version !== version) {
     issues.push(issue("version/version-mismatch", `The Manifest of version ${show(version)} says version ${show(manifest.version)}.`, { version }));
   }
-}
-
-async function sha256(bytes: Uint8Array): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", bytes as Uint8Array<ArrayBuffer>);
-  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }

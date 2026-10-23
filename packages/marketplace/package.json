@@ -1,7 +1,7 @@
 {
   "name": "@tessello/marketplace",
   "version": "0.1.0",
-  "description": "Tessello Marketplace: entry format and entry Verifier.",
+  "description": "Tessello Marketplace: entry format, entry Verifier and Index Generator.",
   "license": "MIT",
   "type": "module",
   "exports": "./src/index.ts",
