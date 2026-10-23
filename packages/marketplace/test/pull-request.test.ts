@@ -62,6 +62,8 @@ interface Scenario {
   changed: ChangedFile[];
   accounts: Record<string, { login: string; id: number; type: "User" | "Organization" }>;
   members: string[];
+  /** Logins with write access to the Marketplace repository. */
+  maintainers: string[];
   repositories: Record<string, { private: boolean; license: string | null }>;
   downloads: Map<string, Uint8Array>;
   /** The pull request description. */
@@ -80,6 +82,7 @@ function scenario(overrides: Partial<Scenario> = {}): Scenario {
     changed: [{ path: `${FOLDER}/entry.json` }],
     accounts: { yassine: { login: "yassine", id: 42, type: "User" } },
     members: [],
+    maintainers: [],
     repositories: { "yassine/weather": { private: false, license: "MIT" } },
     downloads: PACKAGES,
     body: TERMS_TICKED,
@@ -119,6 +122,10 @@ async function run(overrides: Partial<Scenario> = {}, author = { login: "yassine
     async isPublicMember(organization, login) {
       calls.push(`member ${organization} ${login}`);
       return s.members.includes(login);
+    },
+    async isMaintainer(login) {
+      calls.push(`maintainer ${login}`);
+      return s.maintainers.includes(login);
     },
     async repository(owner, name) {
       return s.repositories[`${owner}/${name}`] ?? null;
@@ -307,9 +314,33 @@ describe("the decision", () => {
     assert.equal(result.decision, "merge");
   });
 
-  test("any other change goes to the Maintainer", async () => {
+  test("a withdrawal by the owner merges automatically", async () => {
     const result = await decide(entry({ withdrawn: true }));
+    assert.equal(result.change, "withdrawal");
+    assert.equal(result.decision, "merge");
+  });
+
+  test("any other change goes to the Maintainer", async () => {
+    const withdrawn = { [`${FOLDER}/entry.json`]: json(entry({ withdrawn: true })) };
+    const result = (await run({ base: withdrawn, head: { [`${FOLDER}/entry.json`]: json(entry()) } })).result;
     assert.equal(result.change, "other");
+    assert.equal(result.decision, "maintainer");
+  });
+
+  test("a Ban by a non-maintainer is refused", async () => {
+    const result = await decide(entry({ banned: "malware" }));
+    assert.equal(result.change, "ban");
+    assert.equal(result.decision, "refuse");
+    assert.deepEqual(result.issues.map((i) => i.code), ["ban/maintainer-only"]);
+  });
+
+  test("a Ban by the Maintainer, in someone else's namespace, goes to the Maintainer", async () => {
+    const { result } = await run(
+      { base, head: { [`${FOLDER}/entry.json`]: json(entry({ banned: "malware" })) }, maintainers: ["boss"] },
+      { login: "boss", id: 1 },
+    );
+    assert.deepEqual(result.issues, []);
+    assert.equal(result.change, "ban");
     assert.equal(result.decision, "maintainer");
   });
 
@@ -350,11 +381,25 @@ describe("the comment", () => {
     const merged = (await run({ base, head: { [`${FOLDER}/entry.json`]: json(entry({ tags: ["weather"] })) } })).result.comment;
     assert.match(merged, /merged automatically/);
 
-    const maintainer = (await run({ base, head: { [`${FOLDER}/entry.json`]: json(entry({ withdrawn: true })) } })).result.comment;
+    const maintainer = (await run({ base: { [`${FOLDER}/entry.json`]: json(entry({ withdrawn: true })) }, head: { [`${FOLDER}/entry.json`]: json(entry()) } })).result.comment;
     assert.match(maintainer, /goes to the Maintainer/);
 
     const refused = (await run({ changed: [] })).result.comment;
     assert.match(refused, /fix the issues and push again/i);
+  });
+
+  test("tells a frozen Namespace to the Maintainer", async () => {
+    const namespaces: Namespaces = { yassine: { account: "yassine", id: 7, state: "active" } };
+    const { result } = await run({ base: { "namespaces.json": json(namespaces) } });
+    assert.equal(result.decision, "refuse");
+    assert.equal(result.freeze, "yassine");
+    assert.match(result.comment, /frozen/);
+    assert.match(result.comment, /Maintainer is notified/);
+  });
+
+  test("a Namespace that is not frozen has no freeze", async () => {
+    assert.equal((await run()).result.freeze, null);
+    assert.equal((await run({ changed: [] })).result.freeze, null);
   });
 
   test("lists the issues with their code and version or file", async () => {

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { describe, test } from "node:test";
 import { strToU8, zipSync } from "fflate";
-import { buildIndex, describedVersion, searchModules, type IndexInput, type Entry, type EntryVersion } from "../src/index.ts";
+import { buildIndex, describedVersion, searchModules, type IndexInput, type Entry, type EntryVersion, type Namespaces } from "../src/index.ts";
 
 const READY_VIEW = `<!doctype html><script>parent.postMessage({ tessello: 1, type: "ready", id: "1" }, "*")</script>`;
 const PNG = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
@@ -44,8 +44,10 @@ const listed = (id: string, version: string, bytes: Uint8Array, extra: Partial<E
 function input(
   listings: Array<{ entry: Entry; files?: Map<string, Uint8Array> }>,
   packages: Array<[string, Uint8Array]> = [],
+  namespaces?: Namespaces,
 ): IndexInput {
   return {
+    ...(namespaces ? { namespaces } : {}),
     listings: listings.map(({ entry, files }) => ({ entry, files: files ?? new Map() })),
     packages: new Map(packages),
     generatedAt: GENERATED_AT,
@@ -141,6 +143,52 @@ describe("from a listing to the index", () => {
     assert.equal(index.modules[0].reason, "Exfiltrates data.");
     assert.equal(index.modules[0].latest?.version, "1.0.0");
     assert.deepEqual(searchModules(index.modules), []);
+  });
+
+  describe("the state of its Namespace", () => {
+    const record = (state: "active" | "frozen" | "banned", reason?: string) => ({
+      yassine: { account: "yassine", id: 1, state, ...(reason !== undefined ? { reason } : {}) },
+    });
+    const build = (entry: Entry, namespaces: Namespaces) =>
+      buildIndex(input([{ entry }], [["@yassine/weather@1.0.0", WEATHER_1]], namespaces));
+
+    test("bans a listed Module of a banned Namespace, with the Namespace's reason", async () => {
+      const { index } = await build(weather(), record("banned", "Impersonation."));
+      assert.equal(index.modules[0].state, "banned");
+      assert.equal(index.modules[0].reason, "Impersonation.");
+      assert.equal(index.modules[0].latest?.version, "1.0.0");
+      assert.deepEqual(searchModules(index.modules), []);
+    });
+
+    test("keeps the Module's own Ban reason over the Namespace's", async () => {
+      const { index } = await build(weather({ banned: "Exfiltrates data." }), record("banned", "Impersonation."));
+      assert.equal(index.modules[0].reason, "Exfiltrates data.");
+    });
+
+    test("bans a withdrawn Module of a banned Namespace", async () => {
+      const { index } = await build(weather({ withdrawn: true }), record("banned", "Impersonation."));
+      assert.equal(index.modules[0].state, "banned");
+      assert.equal(index.modules[0].reason, "Impersonation.");
+    });
+
+    test("gives a reason when the banned Namespace has none", async () => {
+      const { index } = await build(weather(), record("banned"));
+      assert.equal(index.modules[0].reason, "The Namespace @yassine is banned.");
+    });
+
+    test("changes nothing for an active or frozen Namespace", async () => {
+      for (const state of ["active", "frozen"] as const) {
+        const { index } = await build(weather(), record(state, "ignored"));
+        assert.equal(index.modules[0].state, "listed");
+        assert.equal(index.modules[0].reason, undefined);
+        assert.equal(searchModules(index.modules).length, 1);
+      }
+    });
+
+    test("leaves the Modules of other Namespaces alone", async () => {
+      const { index } = await build(weather(), { other: { account: "other", id: 2, state: "banned", reason: "x" } });
+      assert.equal(index.modules[0].state, "listed");
+    });
   });
 
   test("keeps a withdrawn Module with its state", async () => {

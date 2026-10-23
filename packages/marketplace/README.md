@@ -38,18 +38,23 @@ A version has `version` (semver), `url` (the `.zip`, served over `https:` with C
 
 ## `namespaces.json`
 
-The Maintainer's record of the Namespaces already approved: namespace (without `@`) → `{ "account": "<GitHub login>", "id": <numeric GitHub id>, "state": "active" | "frozen" | "banned", "reason"?: "<why>" }`. A new Namespace is added at its first Approval.
+The Maintainer's record of the Namespaces already approved: namespace (without `@`) → `{ "account": "<GitHub login>", "id": <numeric GitHub id>, "state": "active" | "frozen" | "banned", "reason"?: "<why>" }`. A new Namespace is added at its first Approval. The Maintainer edits it by hand to freeze, ban or reinstate a Namespace: a `frozen` or `banned` Namespace accepts no pull request, and a `banned` one bans all its Modules in the index.
 
 ## The Verifier
 
 ```ts
 const verdict = await verifyEntry({ folder, entry, previous, packages, files, github, namespaces });
-// verdict.ok, verdict.issues, verdict.change: "new-module" | "new-version" | "metadata" | "other" | null
+// verdict.ok, verdict.issues, verdict.freeze,
+// verdict.change: "new-module" | "new-version" | "metadata" | "withdrawal" | "ban" | "other" | null
 ```
 
-The CI downloads each new version's package, reads the facts it needs from GitHub (the pull request's author, the account named like the Namespace and the author's public membership, the source repository's visibility and licence) and passes everything in. The Verifier reads packages as archives and never runs them.
+The CI downloads each new version's package, reads the facts it needs from GitHub (the pull request's author, whether the author is the Maintainer, the account named like the Namespace and the author's public membership, the source repository's visibility and licence) and passes everything in. The Verifier reads packages as archives and never runs them.
 
-The change type drives the merge: `new-module` awaits the Maintainer's Approval; `new-version` and `metadata` (tags or screenshots) merge automatically when `ok`; `other` goes to the Maintainer.
+The change type drives the merge: `new-module` awaits the Maintainer's Approval; `new-version`, `metadata` (tags or screenshots) and `withdrawal` merge automatically when `ok`; `ban` and `other` go to the Maintainer.
+
+- **`withdrawal`**: the listing is unchanged but for `withdrawn: true` added to the Module or to versions, and none lifted. The source and licence are not checked, so a Creator can always withdraw; the Namespace is.
+- **`ban`**: a `banned` mark (of the Module or of a version) is added, changed or lifted. Only the Maintainer may (`authorIsMaintainer`), otherwise `ban/maintainer-only`: this is what refuses a Withdrawal that erases a Ban. The Maintainer's Ban comes alone (`ban/not-alone`), and skips the Namespace, source, licence and screenshot checks, so it works in any Namespace.
+- **Freeze**: `verdict.freeze` is true when the Namespace is recorded in `namespaces.json` but no account has its name any more (`namespace/account-gone`), or the account with its name has another id (`namespace/id-mismatch`), such as a new account taking an old name. The pull request is refused and the Maintainer decides by hand in `namespaces.json`.
 
 ## The pull request check
 
@@ -64,12 +69,15 @@ const check = await checkPullRequest({ author: { login, id }, body, source });
 | --- | --- | --- |
 | `merge` | No issue, `new-version` or `metadata` | Merged automatically. |
 | `approval` | No issue, `new-module` | Awaits the Maintainer's Approval. |
-| `maintainer` | No issue, `other` | The change goes to the Maintainer. |
+| `merge` | No issue, `withdrawal` | Merged automatically. |
+| `maintainer` | No issue, `ban` or `other` | The change goes to the Maintainer. |
 | `refuse` | Any issue | The Creator fixes the issues and pushes again. |
 
 `check.comment` is the Markdown the CI posts: it starts with `<!-- tessello-marketplace-check -->` so the CI can update it instead of posting again. Text coming from the pull request is neutralised (`<`, `>` and `&` escaped, `@` mentions broken), so the comment never pings anyone or renders HTML.
 
 For an acceptable new Module whose namespace is not yet in `namespaces.json`, `check.namespace` holds the record its Approval adds (the CI writes it into `namespaces.json`).
+
+`check.freeze` is the namespace (without `@`) when the Verifier finds it frozen (see above), else `null`; the comment then says the Maintainer is notified, and the CI adds the label `namespace-changed`.
 
 `body` is the pull request description. Its template holds the line `- [ ] I have read PUBLISHING.md and accept its terms.`: ticking it (`- [x]` or `* [X]`, leading spaces allowed) is the Creator's acceptance (ADR 0015). Without it the pull request is refused with `pull-request/terms-not-accepted`, in addition to whatever else is found.
 
@@ -79,10 +87,10 @@ For an acceptable new Module whose namespace is not yet in `namespaces.json`, `c
 GITHUB_TOKEN=… node .tessello/packages/marketplace/scripts/check-pull-request.ts --repository "$GITHUB_REPOSITORY" --pull-request "$PULL_REQUEST" --out "$RUNNER_TEMP/check"
 ```
 
-`scripts/check-pull-request.ts` is the real `PullRequestSource`, over the GitHub REST API (`GITHUB_API_URL` overrides the API address). It never checks the pull request out: the files are read through the contents API, at the base branch and at the head commit's SHA, and packages are downloaded over `https:` only, without credentials, within 60 s and 50 MB. A failing API call (other than a 404) throws, so the job fails rather than give a wrong verdict. It exits 2 on a usage error and 0 otherwise: the workflow fails the job itself on `refuse`. `--out` receives:
+`scripts/check-pull-request.ts` is the real `PullRequestSource`, over the GitHub REST API (`GITHUB_API_URL` overrides the API address). The Maintainer is whoever has `write`, `maintain` or `admin` permission on the Marketplace repository (`GET /repos/{repository}/collaborators/{login}/permission`): the Maintainer gives that access to no one else. It never checks the pull request out: the files are read through the contents API, at the base branch and at the head commit's SHA, and packages are downloaded over `https:` only, without credentials, within 60 s and 50 MB. A failing API call (other than a 404) throws, so the job fails rather than give a wrong verdict. It exits 2 on a usage error and 0 otherwise: the workflow fails the job itself on `refuse`. `--out` receives:
 
 - `comment.md`, the comment to post.
-- `result.json`: `decision`, `folder`, `change`, `head` (the head commit's SHA), `namespace` (`null`, or `{ name, record }` as in `check.namespace`) and `issues` (`{ code, message, version?, file? }`).
+- `result.json`: `decision`, `folder`, `change`, `head` (the head commit's SHA), `namespace` (`null`, or `{ name, record }` as in `check.namespace`), `freeze` (as in `check.freeze`) and `issues` (`{ code, message, version?, file? }`).
 
 `openPullRequest(options)` and `runCheck({ ...options, out })` are exported for tests, which run them against a local fake GitHub.
 
@@ -102,7 +110,12 @@ Every issue is an error and has a stable code.
 | `namespace/reserved` | `@tessello` is reserved. |
 | `namespace/no-account` | No GitHub account has the Namespace's name. |
 | `namespace/not-owner` | The author is not that account, nor a public member of that organisation. |
-| `namespace/id-mismatch` | The account now holding the name is not the one recorded in `namespaces.json`. |
+| `namespace/id-mismatch` | The account now holding the name is not the one recorded in `namespaces.json` (freeze). |
+| `namespace/account-gone` | The Namespace is recorded but no GitHub account has its name any more (freeze). |
+| `namespace/frozen`, `namespace/banned` | `namespaces.json` records the Namespace as frozen, or banned (with its reason). |
+| `ban/maintainer-only` | The pull request adds, changes or lifts a `banned` mark, and its author is not the Maintainer. |
+| `ban/not-alone` | The Maintainer's Ban changes something other than `banned` marks. |
+| `module/banned` | The Module is banned: it accepts no new version. |
 | `source/not-found`, `source/private` | The source repository is missing or private. |
 | `license/not-osi`, `license/not-reported`, `license/mismatch` | The licence is not OSI-approved, GitHub reports none, or GitHub reports another one. |
 | `version/published-removed`, `version/published-changed` | A published version was removed, or its `url` or `sha256` changed. |
@@ -123,7 +136,7 @@ Every issue is an error and has a stable code.
 
 `index.json` and the assets must be served with `Access-Control-Allow-Origin: *`, since the Host fetches them from another origin (set up with the deployment).
 
-`buildIndex({ listings, packages, generatedAt })` turns the accepted listings and the packages of the versions they describe (`"<id>@<version>"` → `.zip`) into `{ index, assets, issues }`. The CI writes `JSON.stringify(index)` as `index.json` and each entry of `assets` as a file next to it; the Host fetches both and reuses `searchModules`. It never throws: a problem is an `issue` and costs the Module its `latest`, or a screenshot.
+`buildIndex({ listings, packages, generatedAt, namespaces })` turns the accepted listings and the packages of the versions they describe (`"<id>@<version>"` → `.zip`) into `{ index, assets, issues }`. The CI writes `JSON.stringify(index)` as `index.json` and each entry of `assets` as a file next to it; the Host fetches both and reuses `searchModules`. It never throws: a problem is an `issue` and costs the Module its `latest`, or a screenshot.
 
 ```json
 {
@@ -155,7 +168,7 @@ Every issue is an error and has a stable code.
 ```
 
 - `format` is `1`; a change that breaks readers bumps it. `generatedAt` is an ISO 8601 date. `modules` is sorted by `id`.
-- Every listed, withdrawn or banned Module is in the index, so that Hosts that installed it know. `state` is `"banned"` (with `reason`) when the listing is banned (a Ban wins), `"withdrawn"` when the Creator withdrew it, `"listed"` otherwise. `versions` are copied as listed (oldest first) with their `withdrawn` and `banned` marks.
+- Every listed, withdrawn or banned Module is in the index, so that Hosts that installed it know. `state` is `"banned"` (with `reason`) when the listing is banned or its Namespace is banned in `namespaces.json` (a Ban wins; the listing's own reason before the Namespace's), `"withdrawn"` when the Creator withdrew it, `"listed"` otherwise. A frozen Namespace changes nothing in the index. `versions` are copied as listed (oldest first) with their `withdrawn` and `banned` marks.
 - `creator` is the namespace with its `@`. `tags` is `[]` when the listing has none.
 - `latest` is what the package of the newest version that is neither withdrawn nor banned says of itself (`name`, `description`, `icon`, `convention`, `permissions` (`{}` when none), `widget` (`null` when none) and the `guide`). It is `null` when there is no such version, or when its package is missing (`index/package-missing`), is not the listed one (`index/sha256-mismatch`: never describe code that is not the listed one) or is not a valid Module (`index/invalid-package`). A banned or withdrawn Module keeps its `latest` as far as it can be computed.
 - Asset paths are relative to `index.json`. The icon and the guide images found in the package (extensions of `GUIDE_IMAGE_EXTENSIONS`) are at `modules/<namespace>/<name>/<version>/<package path>`; `guide.images` maps a package path to its asset path, and `guide.path` is the `guide` argument of `renderGuide`. Screenshots are at `modules/<namespace>/<name>/<file>`; a listed screenshot absent from the folder is left out (`index/screenshot-missing`). The namespace is written without `@`.
@@ -178,4 +191,4 @@ Every link and asset URL is relative (a Module page reaches the root with `../..
 npm run build:marketplace -- --repo <marketplace checkout> --out <dir> --host https://tessello.app/ [--packages <dir>]
 ```
 
-reads `modules/<namespace>/<name>/entry.json` and the files next to it, gets the package of the described version (`describedVersion`) from `<packages>/<namespace>/<name>/<version>.zip` when `--packages` is given, otherwise by downloading its URL, then empties `--out` and writes `index.json`, the assets, the pages and `search.js`. Problems (an unreadable listing, or what `buildIndex` reports) are printed as warnings and do not fail the build; `buildSite(options)` returns them.
+reads `namespaces.json` (when present) and `modules/<namespace>/<name>/entry.json` and the files next to it, gets the package of the described version (`describedVersion`) from `<packages>/<namespace>/<name>/<version>.zip` when `--packages` is given, otherwise by downloading its URL, then empties `--out` and writes `index.json`, the assets, the pages and `search.js`. Problems (an unreadable listing or `namespaces.json` (`site/unreadable-namespaces`, then read as empty), or what `buildIndex` reports) are printed as warnings and do not fail the build; `buildSite(options)` returns them.

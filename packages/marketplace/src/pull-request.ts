@@ -16,6 +16,8 @@ export interface PullRequestSource {
   folder(side: "base" | "head", path: string): Promise<{ files: Map<string, Uint8Array>; others: string[] }>;
   account(login: string): Promise<{ login: string; id: number; type: "User" | "Organization" } | null>;
   isPublicMember(organization: string, login: string): Promise<boolean>;
+  /** Whether the login has write access to the Marketplace repository: the Maintainer, and no one else. */
+  isMaintainer(login: string): Promise<boolean>;
   repository(owner: string, name: string): Promise<{ private: boolean; license: string | null } | null>;
   /** The bytes at an https URL, or null when the download fails. */
   download(url: string): Promise<Uint8Array | null>;
@@ -31,6 +33,8 @@ export interface PullRequestCheck {
   decision: Decision;
   /** For an acceptable new Module whose namespace is not in namespaces.json: the record its Approval adds. Else null. */
   namespace: { name: string; record: NamespaceRecord } | null;
+  /** The namespace (without "@") whose GitHub account changed since it was recorded: the Namespace is frozen and the Maintainer decides. Else null. */
+  freeze: string | null;
   /** The Markdown comment the CI posts on the pull request. */
   comment: string;
 }
@@ -48,10 +52,10 @@ export async function checkPullRequest(input: { author: { login: string; id: num
   // The Creator's acceptance of PUBLISHING.md (ADR 0015) is a refusal like any issue, reported whatever else is wrong.
   const terms = TERMS_TICKED.test(body) ? [] : [issueNotInEntry("pull-request/terms-not-accepted", `Tick the box "${TERMS}" in the pull request description.`)];
   /** `namespace` is the record to add should the pull request await the Approval. */
-  const result = (folder: string | null, found: Issue[], change: ChangeType | null, namespace: PullRequestCheck["namespace"] = null): PullRequestCheck => {
+  const result = (folder: string | null, found: Issue[], change: ChangeType | null, namespace: PullRequestCheck["namespace"] = null, freeze: string | null = null): PullRequestCheck => {
     const issues = [...found, ...terms];
     const decision = decide(issues, change);
-    return { folder, issues, change, decision, namespace: decision === "approval" ? namespace : null, comment: renderComment(folder, issues, decision) };
+    return { folder, issues, change, decision, namespace: decision === "approval" ? namespace : null, freeze, comment: renderComment(folder, issues, decision, freeze) };
   };
 
   const located = locateListing(await source.changedFiles());
@@ -89,6 +93,7 @@ export async function checkPullRequest(input: { author: { login: string; id: num
     author,
     namespaceAccount: account,
     authorIsPublicMember: account?.type === "Organization" ? await source.isPublicMember(namespace, author.login) : false,
+    authorIsMaintainer: await source.isMaintainer(author.login),
     source: await findRepository(source, json),
   };
 
@@ -105,7 +110,7 @@ export async function checkPullRequest(input: { author: { login: string; id: num
   const verdict = await verifyEntry({ folder, entry: json, previous, packages, files, github, namespaces });
   issues.push(...verdict.issues);
   const record: NamespaceRecord | null = account && !(namespace in namespaces) ? { account: account.login, id: account.id, state: "active" } : null;
-  return result(folder, issues, verdict.change, record && { name: namespace, record });
+  return result(folder, issues, verdict.change, record && { name: namespace, record }, verdict.freeze ? namespace : null);
 }
 
 /** The one listing folder the pull request touches, or the issues saying why there is not exactly one. */
@@ -151,7 +156,8 @@ async function findRepository(source: PullRequestSource, json: unknown): Promise
 function decide(issues: Issue[], change: ChangeType | null): Decision {
   if (issues.length > 0) return "refuse";
   if (change === "new-module") return "approval";
-  return change === "new-version" || change === "metadata" ? "merge" : "maintainer";
+  if (change === "new-version" || change === "metadata" || change === "withdrawal") return "merge";
+  return "maintainer";
 }
 
 const SENTENCES: Record<Decision, string> = {
@@ -162,9 +168,12 @@ const SENTENCES: Record<Decision, string> = {
   refuse: "This pull request does not pass the check: fix the issues and push again.",
 };
 
-function renderComment(folder: string | null, issues: Issue[], decision: Decision): string {
+function renderComment(folder: string | null, issues: Issue[], decision: Decision, freeze: string | null): string {
   const subject = folder ? ` for ${code(`@${folder}`)}` : "";
   const lines = [MARKER, `## Marketplace check${subject}: ${decision}`, "", SENTENCES[decision]];
+  if (freeze !== null) {
+    lines.push("", `The GitHub account of the namespace ${code(`@${freeze}`)} changed since it was recorded: the Namespace is frozen, and the Maintainer is notified and decides.`);
+  }
   if (issues.length > 0) {
     lines.push("");
     for (const found of issues) {

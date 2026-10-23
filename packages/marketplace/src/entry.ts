@@ -277,6 +277,11 @@ export function issueNotInEntry(code: string, message: string, extra: Partial<Is
   return { code, message, ...extra };
 }
 
+/** The namespace of a listing, without its "@". */
+export function namespaceOf(entry: Entry): string {
+  return entry.id.slice(1, entry.id.indexOf("/"));
+}
+
 export function show(value: unknown): string {
   return JSON.stringify(value) ?? String(value);
 }

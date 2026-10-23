@@ -94,6 +94,10 @@ export async function openPullRequest(options: GitHubOptions): Promise<{ author:
     async isPublicMember(organization, login) {
       return (await get(`/orgs/${encodeURIComponent(organization)}/public_members/${encodeURIComponent(login)}`)) !== null;
     },
+    async isMaintainer(login) {
+      const found = await getJson(`${repo}/collaborators/${encodeURIComponent(login)}/permission`);
+      return ["admin", "maintain", "write"].includes(found?.permission);
+    },
     async repository(owner, name) {
       const found = await getJson(`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}`);
       if (!found) return null;
@@ -133,13 +137,13 @@ export async function download(url: string, options: { fetch?: typeof fetch; max
   }
 }
 
-/** Runs the check and writes result.json ({ decision, folder, change, head, namespace, issues }) and comment.md into `out`. Returns the check. */
+/** Runs the check and writes result.json ({ decision, folder, change, head, namespace, freeze, issues }) and comment.md into `out`. Returns the check. */
 export async function runCheck(options: GitHubOptions & { out: string }): Promise<PullRequestCheck> {
   const { author, head, body, source } = await openPullRequest(options);
   const check = await checkPullRequest({ author, body, source });
   await mkdir(options.out, { recursive: true });
-  const { decision, folder, change, namespace, issues } = check;
-  await writeFile(join(options.out, "result.json"), `${JSON.stringify({ decision, folder, change, head, namespace, issues }, null, 2)}\n`);
+  const { decision, folder, change, namespace, freeze, issues } = check;
+  await writeFile(join(options.out, "result.json"), `${JSON.stringify({ decision, folder, change, head, namespace, freeze, issues }, null, 2)}\n`);
   await writeFile(join(options.out, "comment.md"), check.comment);
   return check;
 }

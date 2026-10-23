@@ -6,7 +6,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { build } from "esbuild";
-import { buildIndex, describedVersion, parseEntry, renderSite, type IndexInput, type Issue } from "../src/index.ts";
+import { buildIndex, describedVersion, parseEntry, renderSite, type IndexInput, type Issue, type Namespaces } from "../src/index.ts";
 
 const SEARCH_ENTRY = fileURLToPath(new URL("../src/site/search.ts", import.meta.url));
 
@@ -59,7 +59,8 @@ export async function buildSite(options: BuildSiteOptions): Promise<Issue[]> {
     }
   }
 
-  const generated = await buildIndex({ listings, packages, generatedAt: options.now ?? new Date() });
+  const namespaces = await readNamespaces(options.repo, issues);
+  const generated = await buildIndex({ listings, packages, namespaces, generatedAt: options.now ?? new Date() });
   issues.push(...generated.issues);
 
   await rm(options.out, { recursive: true, force: true });
@@ -81,6 +82,20 @@ export async function buildSite(options: BuildSiteOptions): Promise<Issue[]> {
     logLevel: "warning",
   });
   return issues;
+}
+
+/** The Maintainer's namespaces.json at the root of the repository: none when absent, none (with an issue) when unreadable. */
+async function readNamespaces(repo: string, issues: Issue[]): Promise<Namespaces> {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(await readFile(join(repo, "namespaces.json"), "utf8"));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return {};
+    raw = undefined;
+  }
+  if (typeof raw === "object" && raw !== null && !Array.isArray(raw)) return raw as Namespaces;
+  issues.push({ code: "site/unreadable-namespaces", message: "namespaces.json is not a readable JSON object: it is ignored.", file: "namespaces.json" });
+  return {};
 }
 
 /** The sub-folders of a folder, or none when it does not exist. */

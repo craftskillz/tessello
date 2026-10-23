@@ -6,7 +6,8 @@ import {
   type Permissions,
 } from "@tessello/convention";
 import { sha256 } from "./sha256.ts";
-import { issue, type Entry, type EntryVersion, type Issue } from "./entry.ts";
+import type { Namespaces } from "./verify.ts";
+import { issue, namespaceOf, type Entry, type EntryVersion, type Issue } from "./entry.ts";
 
 /** The version of the index.json format. */
 export const INDEX_FORMAT = 1;
@@ -67,6 +68,8 @@ export interface IndexInput {
   /** "<id>@<version>" → the downloaded .zip. Only the version each listing describes needs to be there. */
   packages: ReadonlyMap<string, Uint8Array>;
   generatedAt: Date;
+  /** The Maintainer's namespaces.json; a Module of a banned Namespace is banned. Absent means none. */
+  namespaces?: Namespaces;
 }
 
 export interface GeneratedIndex {
@@ -84,7 +87,11 @@ export async function buildIndex(input: IndexInput): Promise<GeneratedIndex> {
   const modules: IndexModule[] = [];
   for (const { entry, files } of input.listings) {
     const folder = `modules/${entry.id.slice(1)}`;
-    const state: ModuleState = entry.banned !== undefined ? "banned" : entry.withdrawn ? "withdrawn" : "listed";
+    const namespace = namespaceOf(entry);
+    const recorded = input.namespaces?.[namespace];
+    const namespaceBan = recorded?.state === "banned" ? (recorded.reason ?? `The Namespace @${namespace} is banned.`) : undefined;
+    const banned = entry.banned ?? namespaceBan;
+    const state: ModuleState = banned !== undefined ? "banned" : entry.withdrawn ? "withdrawn" : "listed";
     const module: IndexModule = {
       id: entry.id,
       creator: entry.id.slice(0, entry.id.indexOf("/")),
@@ -96,7 +103,7 @@ export async function buildIndex(input: IndexInput): Promise<GeneratedIndex> {
       state,
       latest: null,
     };
-    if (entry.banned !== undefined) module.reason = entry.banned;
+    if (banned !== undefined) module.reason = banned;
 
     for (const file of entry.screenshots ?? []) {
       const bytes = files.get(file);

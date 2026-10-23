@@ -72,6 +72,10 @@ function route(req: IncomingMessage): { status: number; body?: unknown; raw?: Ui
   if (path === "/users/acme") return { status: 200, body: { login: "acme", id: 5, type: "Organization" } };
   if (path === "/users/robot") return { status: 200, body: { login: "robot", id: 6, type: "Bot" } };
   if (path === "/orgs/acme/public_members/yassine") return { status: 204 };
+  if ((match = /^\/repos\/market\/place\/collaborators\/([^/]+)\/permission$/.exec(path))) {
+    const permission = { boss: "admin", lead: "maintain", writer: "write", triager: "triage", reader: "read", "a b": "write" }[match[1]!];
+    return permission ? { status: 200, body: { permission } } : { status: 404, body: { message: "Not Found" } };
+  }
   if (path === "/repos/yassine/weather") return { status: 200, body: { private: false, license: { spdx_id: "MIT" } } };
   if (path === "/repos/yassine/noassertion") return { status: 200, body: { private: true, license: { spdx_id: "NOASSERTION" } } };
   if (path === "/repos/yassine/nolicense") return { status: 200, body: { private: false, license: null } };
@@ -112,11 +116,26 @@ describe("running the check", () => {
       change: "new-module",
       head: HEAD,
       namespace: { name: "yassine", record: { account: "yassine", id: 42, state: "active" } },
+      freeze: null,
       issues: [],
     });
     const comment = await readFile(join(out, "comment.md"), "utf8");
     assert.equal(comment, check.comment);
     assert.match(comment, /^<!-- tessello-marketplace-check -->/);
+  });
+
+  test("writes the frozen namespace into result.json", async () => {
+    refs[BASE]!["namespaces.json"] = { type: "file", bytes: strToU8(JSON.stringify({ yassine: { account: "yassine", id: 7, state: "active" } })) };
+    try {
+      const out = join(await mkdtemp(join(tmpdir(), "tessello-check-")), "check");
+      const check = await runCheck({ ...options, out });
+      assert.equal(check.decision, "refuse");
+      const result = JSON.parse(await readFile(join(out, "result.json"), "utf8"));
+      assert.equal(result.freeze, "yassine");
+      assert.equal(result.decision, "refuse");
+    } finally {
+      delete refs[BASE]!["namespaces.json"];
+    }
   });
 
   test("refuses a pull request whose description does not accept the terms", async () => {
@@ -244,6 +263,19 @@ describe("the GitHub facts", () => {
     const { source } = await openPullRequest(options);
     assert.equal(await source.isPublicMember("acme", "yassine"), true);
     assert.equal(await source.isPublicMember("acme", "ghost"), false);
+  });
+
+  test("the Maintainer is whoever has write, maintain or admin access to the repository", async () => {
+    const { source } = await openPullRequest(options);
+    for (const login of ["boss", "lead", "writer", "a b"]) assert.equal(await source.isMaintainer(login), true, login);
+    for (const login of ["triager", "reader", "ghost"]) assert.equal(await source.isMaintainer(login), false, login);
+  });
+
+  test("the permission of the author is asked with the login encoded", async () => {
+    requests.length = 0;
+    const { source } = await openPullRequest(options);
+    await source.isMaintainer("a b");
+    assert.ok(requests.some((r) => r.url === "/repos/market/place/collaborators/a%20b/permission"));
   });
 
   test("repositories give their visibility and SPDX licence, null when unknown or not asserted", async () => {

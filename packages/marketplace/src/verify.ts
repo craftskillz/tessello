@@ -2,7 +2,7 @@ import { OSI_LICENSES } from "./licenses.ts";
 import { readZip } from "@tessello/convention";
 import { compareVersions } from "./semver.ts";
 import { sha256 } from "./sha256.ts";
-import { issue, issueNotInEntry, parseEntry, show, type Entry, type Issue } from "./entry.ts";
+import { issue, issueNotInEntry, parseEntry, show, namespaceOf, type Entry, type EntryVersion, type Issue } from "./entry.ts";
 
 /** namespaces.json: namespace (without "@") → its GitHub account. */
 export type Namespaces = Readonly<Record<string, NamespaceRecord>>;
@@ -25,6 +25,8 @@ export interface GitHubFacts {
   namespaceAccount: { login: string; id: number; type: "User" | "Organization" } | null;
   /** Whether the author is a public member of `namespaceAccount`, when it is an organisation. */
   authorIsPublicMember: boolean;
+  /** Whether the author has write access to the Marketplace repository, which makes them the Maintainer. */
+  authorIsMaintainer: boolean;
   /** The source repository, or null when GitHub does not find it. `license` is the SPDX id GitHub reports, or null. */
   source: { private: boolean; license: string | null } | null;
 }
@@ -44,7 +46,7 @@ export interface VerifyInput {
   namespaces: Namespaces;
 }
 
-export type ChangeType = "new-module" | "new-version" | "metadata" | "other";
+export type ChangeType = "new-module" | "new-version" | "metadata" | "withdrawal" | "ban" | "other";
 
 export interface Verdict {
   /** True when there is no issue. */
@@ -52,6 +54,8 @@ export interface Verdict {
   issues: Issue[];
   /** What the pull request changes; null when entry.json cannot be read. */
   change: ChangeType | null;
+  /** True when the namespace is recorded and its GitHub account is gone or now has another id: the Maintainer decides. */
+  freeze: boolean;
 }
 
 const RESERVED_NAMESPACE = "tessello";
@@ -62,32 +66,56 @@ const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 /** Says whether a pull request's listing is acceptable, and what kind of change it is. Never throws. */
 export async function verifyEntry(input: VerifyInput): Promise<Verdict> {
   const parsed = parseEntry(input.entry);
-  if (!parsed.entry) return { ok: false, issues: parsed.issues, change: null };
+  if (!parsed.entry) return { ok: false, issues: parsed.issues, change: null, freeze: false };
   const entry = parsed.entry;
   const issues: Issue[] = [];
+  const change = changeType(input.previous, entry);
+  const isMaintainer = input.github.authorIsMaintainer;
+  const maintainerBan = change === "ban" && isMaintainer;
 
   if (entry.id !== `@${input.folder}`) {
     issues.push(issue("entry/folder-mismatch", `entry.json: "id" is ${show(entry.id)} but the listing folder is modules/${input.folder}, which holds "@${input.folder}".`));
   }
 
-  checkNamespace(input, entry, issues);
-  checkSource(input.github.source, entry, issues);
-  checkPublishedVersions(input.previous, entry, issues);
-  await checkNewVersions(input, entry, issues);
-  checkScreenshots(input.files, entry, issues);
+  if (!isMaintainer && banMarksDiffer(input.previous, entry)) {
+    issues.push(issue("ban/maintainer-only", "Only the Maintainer adds, changes or lifts a Ban."));
+  }
+  if (isMaintainer && banMarksDiffer(input.previous, entry) && (!input.previous || !sameWithout(["banned"], input.previous, entry))) {
+    issues.push(issue("ban/not-alone", "A Ban must come alone: the pull request changes something else in entry.json."));
+  }
 
-  return { ok: issues.length === 0, issues, change: changeType(input.previous, entry) };
+  if (!maintainerBan) {
+    checkNamespace(input, entry, issues);
+    if (change !== "withdrawal") checkSource(input.github.source, entry, issues);
+  }
+  checkPublishedVersions(input.previous, entry, issues);
+  checkBannedModule(input.previous, entry, issues);
+  await checkNewVersions(input, entry, issues);
+  if (!maintainerBan) checkScreenshots(input.files, entry, issues);
+
+  return { ok: issues.length === 0, issues, change, freeze: isFrozen(input, entry) };
+}
+
+/** A recorded namespace whose account is gone or now has another id. */
+function isFrozen(input: VerifyInput, entry: Entry): boolean {
+  const recorded = input.namespaces[namespaceOf(entry)];
+  return !!recorded && (!input.github.namespaceAccount || input.github.namespaceAccount.id !== recorded.id);
 }
 
 function checkNamespace(input: VerifyInput, entry: Entry, issues: Issue[]): void {
-  const namespace = entry.id.slice(1, entry.id.indexOf("/"));
+  const namespace = namespaceOf(entry);
   if (namespace === RESERVED_NAMESPACE) {
     issues.push(issue("namespace/reserved", `The namespace "@${namespace}" is reserved for Tessello.`));
     return;
   }
   const { author, namespaceAccount, authorIsPublicMember } = input.github;
+  const recorded = input.namespaces[namespace];
   if (!namespaceAccount) {
-    issues.push(issue("namespace/no-account", `The namespace "@${namespace}" must be the name of a GitHub account, and none is named ${show(namespace)}.`));
+    if (recorded) {
+      issues.push(issue("namespace/account-gone", `The namespace "@${namespace}" was recorded for GitHub account id ${recorded.id} (${show(recorded.account)}), but no GitHub account is named ${show(namespace)} any more. It is frozen until the Maintainer decides.`));
+    } else {
+      issues.push(issue("namespace/no-account", `The namespace "@${namespace}" must be the name of a GitHub account, and none is named ${show(namespace)}.`));
+    }
     return;
   }
   const owner = namespaceAccount.type === "User" ? author.id === namespaceAccount.id : authorIsPublicMember;
@@ -95,7 +123,6 @@ function checkNamespace(input: VerifyInput, entry: Entry, issues: Issue[]): void
     const who = namespaceAccount.type === "User" ? "that user" : "a public member of that organisation";
     issues.push(issue("namespace/not-owner", `The namespace "@${namespace}" belongs to the GitHub account ${show(namespaceAccount.login)}, and the pull request author ${show(author.login)} is not ${who}.`));
   }
-  const recorded = input.namespaces[namespace];
   if (recorded && recorded.id !== namespaceAccount.id) {
     issues.push(
       issue(
@@ -103,6 +130,11 @@ function checkNamespace(input: VerifyInput, entry: Entry, issues: Issue[]): void
         `The namespace "@${namespace}" was recorded for GitHub account id ${recorded.id} (${show(recorded.account)}), but the account named ${show(namespace)} now has id ${namespaceAccount.id}.`,
       ),
     );
+  }
+  if (recorded?.state === "frozen") {
+    issues.push(issue("namespace/frozen", `The namespace "@${namespace}" is frozen until the Maintainer decides.`));
+  } else if (recorded?.state === "banned") {
+    issues.push(issue("namespace/banned", `The namespace "@${namespace}" is banned${recorded.reason ? `: ${recorded.reason}` : ""}.`));
   }
 }
 
@@ -123,22 +155,53 @@ function checkSource(source: GitHubFacts["source"], entry: Entry, issues: Issue[
   }
 }
 
+/** Whether a `banned` mark of the Module or of a version is added, changed or lifted. */
+function banMarksDiffer(previous: Entry | null, entry: Entry): boolean {
+  if (previous?.banned !== entry.banned) return true;
+  const versions = new Set([...(previous?.versions ?? []), ...entry.versions].map((v) => v.version));
+  return [...versions].some((version) => versionOf(previous, version)?.banned !== versionOf(entry, version)?.banned);
+}
+
+function versionOf(entry: Entry | null, version: string): EntryVersion | undefined {
+  return entry?.versions.find((v) => v.version === version);
+}
+
+/** Whether two listings are the same once the given marks are left out of the Module and its versions. */
+function sameWithout(marks: ReadonlyArray<"banned" | "withdrawn">, previous: Entry, entry: Entry): boolean {
+  const strip = (fields: object) => Object.fromEntries(Object.entries(fields).filter(([name]) => !marks.includes(name as "banned")).sort(([a], [b]) => (a < b ? -1 : 1)));
+  const stable = (listing: Entry) => JSON.stringify({ ...strip(listing), versions: listing.versions.map(strip) });
+  return stable(previous) === stable(entry);
+}
+
 function changeType(previous: Entry | null, entry: Entry): ChangeType {
   if (!previous) return "new-module";
+  if (banMarksDiffer(previous, entry)) return "ban";
+  // Bans are equal, so the listings then differ by withdrawn flags only: a Withdrawal unless one is lifted.
+  const lifted = (previous.withdrawn && !entry.withdrawn) || previous.versions.some((v) => v.withdrawn && !versionOf(entry, v.version)?.withdrawn);
+  if (!lifted && sameWithout(["banned", "withdrawn"], previous, entry) && !sameWithout(["banned"], previous, entry)) return "withdrawal";
   if (
     entry.id !== previous.id ||
     entry.source !== previous.source ||
     entry.license !== previous.license ||
     entry.withdrawn !== previous.withdrawn ||
-    entry.banned !== previous.banned ||
     previous.versions.some((published) => {
-      const now = entry.versions.find((v) => v.version === published.version);
-      return !now || now.url !== published.url || now.sha256 !== published.sha256 || now.withdrawn !== published.withdrawn || now.banned !== published.banned;
+      const now = versionOf(entry, published.version);
+      return !now || now.url !== published.url || now.sha256 !== published.sha256 || now.withdrawn !== published.withdrawn;
     })
   ) {
     return "other";
   }
   return entry.versions.length > previous.versions.length ? "new-version" : "metadata";
+}
+
+/** A banned Module accepts no more versions. */
+function checkBannedModule(previous: Entry | null, entry: Entry, issues: Issue[]): void {
+  if (!previous?.banned) return;
+  const published = new Set(previous.versions.map((v) => v.version));
+  for (const listed of entry.versions) {
+    if (published.has(listed.version)) continue;
+    issues.push(issue("module/banned", `The Module ${show(entry.id)} is banned (${previous.banned}): it accepts no new version, so ${show(listed.version)} is refused.`, { version: listed.version }));
+  }
 }
 
 /** A published version stays as it is: its package is what users already installed. */

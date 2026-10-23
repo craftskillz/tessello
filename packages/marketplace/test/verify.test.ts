@@ -60,6 +60,7 @@ function input(overrides: Partial<VerifyInput> = {}): VerifyInput {
       author: { login: "yassine", id: 42 },
       namespaceAccount: { login: "yassine", id: 42, type: "User" },
       authorIsPublicMember: false,
+      authorIsMaintainer: false,
       source: { private: false, license: "MIT" },
     },
     namespaces: {},
@@ -264,12 +265,22 @@ describe("the change type", () => {
     assert.equal(await change({ ...previous, id: "@yassine/forecast" }), "other");
   });
 
-  test("is other when a withdrawn or banned flag changes, at module or version level", async () => {
+  test("is withdrawal when withdrawn is only added, at module or version level", async () => {
     const [published] = previous.versions;
-    assert.equal(await change({ ...previous, withdrawn: true }), "other");
-    assert.equal(await change({ ...previous, banned: "malware" }), "other");
-    assert.equal(await change({ ...previous, versions: [{ ...published!, withdrawn: true }] }), "other");
-    assert.equal(await change({ ...previous, versions: [{ ...published!, banned: "malware" }] }), "other");
+    assert.equal(await change({ ...previous, withdrawn: true }), "withdrawal");
+    assert.equal(await change({ ...previous, versions: [{ ...published!, withdrawn: true }] }), "withdrawal");
+  });
+
+  test("is other when a withdrawal is lifted", async () => {
+    const withdrawn = { ...previous, withdrawn: true as const };
+    const verdict = await verifyEntry(input({ entry: previous, previous: withdrawn, files: new Map([["a.png", PNG]]) }));
+    assert.equal(verdict.change, "other");
+  });
+
+  test("is ban when a banned mark changes, at module or version level", async () => {
+    const [published] = previous.versions;
+    assert.equal(await change({ ...previous, banned: "malware" }), "ban");
+    assert.equal(await change({ ...previous, versions: [{ ...published!, banned: "malware" }] }), "ban");
   });
 
   test("is other when a published version is removed or changed, even if a version is added", async () => {
@@ -361,5 +372,137 @@ describe("screenshots", () => {
   test("are all checked, not only the new ones", async () => {
     const verdict = await verifyEntry(input({ entry: entry({ screenshots: ["a.png"] }), previous: entry({ screenshots: ["a.png"] }), files: new Map() }));
     assert.deepEqual(verdict.issues.map((issue) => issue.code), ["screenshot/missing"]);
+  });
+});
+
+describe("withdrawal, ban and freeze", () => {
+  const PACKAGE_1_1_0 = zip({ version: "1.1.0" });
+  const previous = entry();
+  const [v100] = previous.versions;
+  const maintainer = { ...input().github, author: { login: "boss", id: 1 }, authorIsMaintainer: true };
+  const stranger = { ...input().github, author: { login: "mallory", id: 666 } };
+  const noPackages = new Map<string, Uint8Array>();
+  const privateSource = { ...input().github, source: { private: true, license: "MIT" } };
+  const run = (next: Entry, overrides: Partial<VerifyInput> = {}) =>
+    verifyEntry(input({ entry: next, previous, packages: noPackages, ...overrides }));
+  const added = { entry: entry({ versions: [v100!, listed("1.1.0", PACKAGE_1_1_0)] }), packages: new Map([["1.1.0", PACKAGE_1_1_0]]) };
+  const state = (s: "frozen" | "banned") => ({ yassine: { account: "yassine", id: 42, state: s, reason: "spam" } });
+
+  test("a Creator withdraws a Module, even when its source went private", async () => {
+    const verdict = await run({ ...previous, withdrawn: true }, { github: privateSource });
+    assert.deepEqual(verdict.issues, []);
+    assert.equal(verdict.change, "withdrawal");
+  });
+
+  test("a Creator withdraws a version", async () => {
+    const verdict = await run({ ...previous, versions: [{ ...v100!, withdrawn: true }] }, { github: privateSource });
+    assert.deepEqual(verdict.issues, []);
+    assert.equal(verdict.change, "withdrawal");
+  });
+
+  test("a withdrawal by a non-owner is refused", async () => {
+    assert.deepEqual((await run({ ...previous, withdrawn: true }, { github: stranger })).issues.map((i) => i.code), ["namespace/not-owner"]);
+  });
+
+  test("a withdrawal cannot erase a Ban", async () => {
+    const banned = entry({ banned: "malware" });
+    const module = await verifyEntry(input({ entry: entry({ withdrawn: true }), previous: banned, packages: noPackages }));
+    assert.deepEqual(module.issues.map((i) => i.code), ["ban/maintainer-only"]);
+    const bannedVersion = entry({ versions: [{ ...v100!, banned: "malware" }] });
+    const version = await verifyEntry(input({ entry: entry({ versions: [{ ...v100!, withdrawn: true }] }), previous: bannedVersion, packages: noPackages }));
+    assert.deepEqual(version.issues.map((i) => i.code), ["ban/maintainer-only"]);
+  });
+
+  test("a Creator cannot add a Ban", async () => {
+    const verdict = await run({ ...previous, banned: "malware" });
+    assert.deepEqual(verdict.issues.map((i) => i.code), ["ban/maintainer-only"]);
+    assert.equal(verdict.change, "ban");
+  });
+
+  test("a new Module carrying a Ban is refused to a Creator", async () => {
+    assert.deepEqual(await codes({ entry: entry({ banned: "malware" }) }), ["ban/maintainer-only"]);
+  });
+
+  test("the Maintainer bans a Module or a version in someone else's namespace, whatever its source", async () => {
+    const github = { ...maintainer, source: null };
+    const module = await run({ ...previous, banned: "malware" }, { github });
+    assert.deepEqual(module.issues, []);
+    assert.equal(module.change, "ban");
+    assert.deepEqual((await run({ ...previous, versions: [{ ...v100!, banned: "malware" }] }, { github })).issues, []);
+  });
+
+  test("the Maintainer bans in a frozen or banned namespace", async () => {
+    assert.deepEqual((await run({ ...previous, banned: "x" }, { github: maintainer, namespaces: state("frozen") })).issues, []);
+    assert.deepEqual((await run({ ...previous, banned: "x" }, { github: maintainer, namespaces: state("banned") })).issues, []);
+  });
+
+  test("the Maintainer lifts a Ban", async () => {
+    const banned = entry({ banned: "malware" });
+    const verdict = await verifyEntry(input({ entry: previous, previous: banned, packages: noPackages, github: maintainer }));
+    assert.deepEqual(verdict.issues, []);
+    assert.equal(verdict.change, "ban");
+  });
+
+  test("a Ban comes alone", async () => {
+    const verdict = await run({ ...added.entry, banned: "malware" }, { github: maintainer, packages: added.packages });
+    assert.deepEqual(verdict.issues.map((i) => i.code), ["ban/not-alone"]);
+    assert.deepEqual((await run({ ...previous, banned: "m", tags: ["x"] }, { github: maintainer })).issues.map((i) => i.code), ["ban/not-alone"]);
+    assert.deepEqual((await run({ ...previous, banned: "m", withdrawn: true }, { github: maintainer })).issues.map((i) => i.code), ["ban/not-alone"]);
+  });
+
+  test("a Ban never comes with a new Module, even from the Maintainer", async () => {
+    const verdict = await verifyEntry(input({ entry: entry({ banned: "m" }), github: maintainer }));
+    assert.ok(verdict.issues.some((i) => i.code === "ban/not-alone"));
+    assert.equal(verdict.ok, false);
+  });
+
+  test("a Maintainer's Ban still checks the folder", async () => {
+    const verdict = await run({ ...previous, banned: "m" }, { github: maintainer, folder: "yassine/other" });
+    assert.deepEqual(verdict.issues.map((i) => i.code), ["entry/folder-mismatch"]);
+  });
+
+  test("a banned Module accepts no new version", async () => {
+    const banned = entry({ banned: "malware" });
+    const verdict = await verifyEntry(input({ entry: { ...added.entry, banned: "malware" }, packages: added.packages, previous: banned }));
+    assert.deepEqual(verdict.issues.map((i) => [i.code, i.version]), [["module/banned", "1.1.0"]]);
+  });
+
+  test("a frozen namespace accepts neither a new version nor a withdrawal", async () => {
+    const namespaces = state("frozen");
+    assert.deepEqual((await run(added.entry, { ...added, namespaces })).issues.map((i) => i.code), ["namespace/frozen"]);
+    const withdrawal = await run({ ...previous, withdrawn: true }, { namespaces });
+    assert.deepEqual(withdrawal.issues.map((i) => i.code), ["namespace/frozen"]);
+    assert.match(withdrawal.issues[0]!.message, /Maintainer/);
+  });
+
+  test("a banned namespace accepts neither a new version nor a withdrawal, and says why", async () => {
+    const namespaces = state("banned");
+    assert.deepEqual((await run(added.entry, { ...added, namespaces })).issues.map((i) => i.code), ["namespace/banned"]);
+    const withdrawal = await run({ ...previous, withdrawn: true }, { namespaces });
+    assert.deepEqual(withdrawal.issues.map((i) => i.code), ["namespace/banned"]);
+    assert.match(withdrawal.issues[0]!.message, /spam/);
+  });
+
+  test("a new account taking an old name freezes the namespace", async () => {
+    const verdict = await verifyEntry(input({ namespaces: { yassine: { account: "yassine", id: 7, state: "active" } } }));
+    assert.deepEqual(verdict.issues.map((i) => i.code), ["namespace/id-mismatch"]);
+    assert.equal(verdict.freeze, true);
+  });
+
+  test("a recorded account that is gone freezes the namespace", async () => {
+    const github = { ...input().github, namespaceAccount: null };
+    const verdict = await verifyEntry(input({ github, namespaces: { yassine: { account: "yassine", id: 42, state: "active" } } }));
+    assert.deepEqual(verdict.issues.map((i) => i.code), ["namespace/account-gone"]);
+    assert.equal(verdict.freeze, true);
+  });
+
+  test("an unrecorded namespace without account is no freeze", async () => {
+    const verdict = await verifyEntry(input({ github: { ...input().github, namespaceAccount: null } }));
+    assert.deepEqual(verdict.issues.map((i) => i.code), ["namespace/no-account"]);
+    assert.equal(verdict.freeze, false);
+  });
+
+  test("an intact namespace is no freeze", async () => {
+    assert.equal((await verifyEntry(input())).freeze, false);
   });
 });

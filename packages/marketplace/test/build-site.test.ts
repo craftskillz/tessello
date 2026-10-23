@@ -71,3 +71,47 @@ describe("building the site from a repository folder", () => {
     assert.match(issues[0]?.message ?? "", /yassine\/broken/);
   });
 });
+
+describe("building the site with the Namespaces of the repository", () => {
+  let dir: string;
+  before(async () => {
+    dir = await mkdtemp(join(tmpdir(), "tessello-site-ns-"));
+    const weather = zip("@yassine/weather", "Weather");
+    const entry = JSON.stringify({
+      id: "@yassine/weather",
+      source: "https://github.com/yassine/weather",
+      license: "MIT",
+      versions: [{ version: "1.0.0", url: "https://example.org/weather-1.0.0.zip", sha256: createHash("sha256").update(weather).digest("hex") }],
+    });
+    await write(join(dir, "repo/modules/yassine/weather/entry.json"), entry);
+    await write(join(dir, "packages/yassine/weather/1.0.0.zip"), weather);
+  });
+  after(() => rm(dir, { recursive: true, force: true }));
+
+  const run = (out: string) =>
+    buildSite({ repo: join(dir, "repo"), out: join(dir, out), hostUrl: "https://tessello.app/", packages: join(dir, "packages") });
+
+  test("bans the Modules of a banned Namespace: no card on the list, the reason on its page", async () => {
+    await write(join(dir, "repo/namespaces.json"), JSON.stringify({ yassine: { account: "yassine", id: 1, state: "banned", reason: "Impersonation." } }));
+    assert.deepEqual(await run("banned"), []);
+    const index = JSON.parse(await readFile(join(dir, "banned/index.json"), "utf8"));
+    assert.equal(index.modules[0].state, "banned");
+    assert.doesNotMatch(await readFile(join(dir, "banned/index.html"), "utf8"), /data-id="@yassine\/weather"/);
+    assert.match(await readFile(join(dir, "banned/modules/yassine/weather/index.html"), "utf8"), /Impersonation\./);
+  });
+
+  test("warns about an unreadable namespaces.json and builds as if there were none", async () => {
+    await write(join(dir, "repo/namespaces.json"), "{ not json");
+    const issues = await run("invalid");
+    assert.deepEqual(issues.map((i) => i.code), ["site/unreadable-namespaces"]);
+    const index = JSON.parse(await readFile(join(dir, "invalid/index.json"), "utf8"));
+    assert.equal(index.modules[0].state, "listed");
+  });
+
+  test("builds without a namespaces.json", async () => {
+    await rm(join(dir, "repo/namespaces.json"));
+    assert.deepEqual(await run("none"), []);
+    const index = JSON.parse(await readFile(join(dir, "none/index.json"), "utf8"));
+    assert.equal(index.modules[0].state, "listed");
+  });
+});
