@@ -348,6 +348,271 @@ const SAMPLE_LIBRARIES = { libraries: [{ id: "lib-1", name: "Infra", shapes: [{ 
 const json = (name: string, value: unknown) => ({ name, mimeType: "application/json", buffer: Buffer.from(JSON.stringify(value)) });
 
 describe("the Diagram sample Module", () => {
+  test("pulls a connection from a hovered shape while keeping Select, persists it and undoes it as one change", async () => {
+    const page = await host.newPage();
+    await install(page);
+    await newDiagram(page, "Pull connections");
+    await addRectangle(page, -180, 0, "Source");
+    await addRectangle(page, 180, 0, "Target");
+    await tool(page, "Select (S)");
+    await page.keyboard.press("Escape");
+    const source = await at(page, -180, 0);
+    await page.mouse.move(source.x, source.y);
+    const handle = view(page).getByRole("button", { name: "Draw arrow from right" });
+    await handle.waitFor({ timeout: 2000 });
+    // Crossing the gap preserves hover; leaving the source and its handles hides them.
+    await page.mouse.move(source.x + 66, source.y);
+    assert.equal(await handle.count(), 1);
+    await page.mouse.move(source.x, source.y - 100);
+    assert.equal(await handle.count(), 0);
+    await page.mouse.move(source.x, source.y);
+    await saved(page, async () => drag(page, await middleOf(handle), await at(page, 120, 0)));
+    let data = await storedDiagram(page);
+    assert.equal(data.arrows.length, 1);
+    assert.deepEqual(data.arrows[0].from, { shapeId: data.shapes[0].id, port: "E" });
+    assert.deepEqual(data.arrows[0].to, { shapeId: data.shapes[1].id, port: "W" });
+    assert.equal(data.shapes[0].x, -180);
+    assert.equal(await view(page).getByRole("button", { name: "Select (S)" }).getAttribute("aria-pressed"), "true");
+    assert.ok(await isSelected(page, "Arrow from Rectangle Source at E to Rectangle Target at W"));
+    const target = await middleOf(view(page).getByRole("img", { name: "Rectangle Target", exact: true }));
+    const nextHandle = await middleOf(handle);
+    assert.ok(nextHandle.x > target.x, "after release, hover belongs to the target under the pointer");
+    await saved(page, () => page.keyboard.press("ControlOrMeta+z"));
+    assert.equal((await storedDiagram(page)).arrows.length, 0);
+    await saved(page, () => page.keyboard.press("ControlOrMeta+Shift+z"));
+    await page.reload();
+    await openFromLauncher(page);
+    await view(page).getByRole("img", { name: "Arrow from Rectangle Source at E to Rectangle Target at W" }).waitFor();
+    data = await storedDiagram(page);
+    assert.equal(data.arrows.length, 1);
+    assert.equal(data.arrows[0].from.port, "E");
+  });
+
+  test("connection handles cover all four sides, use current defaults and stay the same screen size after zoom and pan", async () => {
+    const page = await host.newPage();
+    await install(page);
+    await newDiagram(page, "Directions");
+    await addRectangle(page, 0, 0, "Source");
+    await tool(page, "Select (S)");
+    await view(page).getByRole("button", { name: "Defaults", exact: true }).click();
+    const dialog = view(page).getByRole("dialog", { name: "Diagram defaults" });
+    await dialog.getByRole("combobox", { name: "Route", exact: true }).selectOption("elbow");
+    await dialog.getByRole("combobox", { name: "Line style", exact: true }).selectOption({ label: "Dashed" });
+    await dialog.getByRole("button", { name: "Save", exact: true }).click();
+    await dialog.waitFor({ state: "detached" });
+    for (const [side, port, x, y] of [["top", "N", -120, -120], ["right", "E", 170, 90], ["bottom", "S", 120, 130], ["left", "W", -180, 70]] as const) {
+      const source = await middleOf(view(page).getByRole("img", { name: "Rectangle Source", exact: true }));
+      await page.mouse.move(source.x, source.y);
+      const from = await middleOf(view(page).getByRole("button", { name: `Draw arrow from ${side}` }));
+      await saved(page, () => drag(page, from, { x: source.x + x, y: source.y + y }));
+      const arrow = (await storedDiagram(page)).arrows.at(-1)!;
+      assert.equal(arrow.from.port, port);
+      assert.equal(arrow.to.shapeId, undefined);
+      assert.equal(arrow.route, "elbow");
+      assert.equal(arrow.dashed, true);
+    }
+    await editStored(page, (diagram) => { Object.assign(diagram.shapes[0], { rotation: 90 }); diagram.arrows = []; });
+    await tool(page, "Select (S)");
+    const zoom = view(page).getByRole("group", { name: "Zoom" });
+    await zoom.getByRole("button", { name: "Zoom in" }).click();
+    await zoom.getByRole("button", { name: "Zoom in" }).click();
+    const center = await middleOf(canvas(page));
+    await page.mouse.move(center.x + 190, center.y + 150);
+    await page.mouse.down({ button: "middle" });
+    await page.mouse.move(center.x + 230, center.y + 170);
+    await page.mouse.up({ button: "middle" });
+    const source = await middleOf(view(page).getByRole("img", { name: "Rectangle Source", exact: true }));
+    await page.mouse.move(source.x, source.y);
+    const handle = view(page).getByRole("button", { name: "Draw arrow from top" });
+    const box = (await handle.boundingBox())!;
+    assert.ok(Math.abs(box.width - 18) < 1 && Math.abs(box.height - 18) < 1);
+    const from = await middleOf(handle);
+    assert.ok(from.x > source.x + 40, "local north rotates to the right");
+    await saved(page, () => drag(page, from, { x: from.x + 120, y: from.y + 60 }));
+    assert.equal((await storedDiagram(page)).arrows[0].from.port, "N");
+    for (const [delta, percent] of [[10000, "10%"], [-10000, "400%"]] as const) {
+      let source = await middleOf(view(page).getByRole("img", { name: "Rectangle Source", exact: true }));
+      await page.mouse.move(source.x, source.y);
+      await page.keyboard.down("ControlOrMeta");
+      await page.mouse.wheel(0, delta);
+      await page.keyboard.up("ControlOrMeta");
+      await zoom.getByText(percent, { exact: true }).waitFor();
+      source = await middleOf(view(page).getByRole("img", { name: "Rectangle Source", exact: true }));
+      await page.mouse.move(source.x, source.y);
+      const handle = view(page).getByRole("button", { name: "Draw arrow from right" });
+      const box = (await handle.boundingBox())!;
+      assert.ok(Math.abs(box.width - 18) < 1 && Math.abs(box.height - 18) < 1);
+      const from = await middleOf(handle);
+      await saved(page, () => drag(page, from, { x: from.x + 100, y: from.y + 65 }));
+      assert.equal((await storedDiagram(page)).arrows.at(-1)!.from.port, "E");
+    }
+  });
+
+  test("abandoned connection gestures change neither selection nor storage, and the next pull still works", async () => {
+    const page = await host.newPage();
+    await install(page);
+    await newDiagram(page, "Abandon");
+    await addRectangle(page, 0, 0, "Source");
+    await tool(page, "Select (S)");
+    for (const abandon of ["click", "small", "return", "escape", "cancel"] as const) {
+      await clickAt(page, 0, 0);
+      const before = await storedIndex(page);
+      const from = await middleOf(view(page).getByRole("button", { name: "Draw arrow from right" }));
+      await page.mouse.move(from.x, from.y);
+      await page.mouse.down();
+      if (abandon === "small") await page.mouse.move(from.x + 2, from.y);
+      if (["return", "escape", "cancel"].includes(abandon)) await page.mouse.move(from.x + 100, from.y + 70);
+      if (abandon === "return") await page.mouse.move(from.x + 1, from.y);
+      if (abandon === "escape") await page.keyboard.press("Escape");
+      if (abandon === "cancel") await canvas(page).dispatchEvent("pointercancel", { pointerId: 1 });
+      await page.mouse.up();
+      assert.equal(await view(page).locator(".dg-arrow-preview").count(), 0);
+      assert.equal((await storedDiagram(page)).arrows.length, 0);
+      assert.deepEqual(await storedIndex(page), before);
+      assert.ok(await isSelected(page, "Rectangle Source"));
+      // After each abandonment, create a new arrow, then undo that single change.
+      const again = await middleOf(view(page).getByRole("button", { name: "Draw arrow from bottom" }));
+      await saved(page, () => drag(page, again, { x: again.x + 100, y: again.y + 60 }));
+      await saved(page, () => page.keyboard.press("ControlOrMeta+z"));
+      assert.equal((await storedDiagram(page)).arrows.length, 0);
+    }
+  });
+
+  test("pulls from real custom anchors on a rotated resized shape, then falls back when anchors or the definition disappear", async () => {
+    const page = await host.newPage();
+    await install(page);
+    await newDiagram(page, "Custom pulls");
+    await addRectangle(page, 0, 0, "Source");
+    const definition = { id: "gateway", name: "Gateway", imageKey: "image:missing", width: 200, height: 80, labelPlacement: "center", showInDiagram: true,
+      anchors: [{ id: "inlet", x: 0.2, y: 0.1 }, { id: "outlet", x: 0.9, y: 0.7 }] };
+    const library = { key: "shapes", value: [{ id: "platform", name: "Platform", shapes: [definition] }] };
+    await writeFolder(page, DATA, { "shapes.json": library });
+    await editStored(page, (diagram) => {
+      Object.assign(diagram.shapes[0], { type: "custom", w: 200, h: 80, rotation: 90,
+        customShapeRef: { libraryId: "platform", shapeId: "gateway", name: "Gateway" }, labelPlacement: "center" });
+    });
+    await tool(page, "Select (S)");
+    await clickAt(page, 0, 0);
+    const from = await middleOf(view(page).getByRole("button", { name: "Draw arrow from right" }));
+    await page.mouse.move(from.x, from.y);
+    await page.mouse.down();
+    const to = await at(page, 220, -100);
+    await page.mouse.move(to.x, to.y);
+    const preview = view(page).locator(".dg-arrow-preview");
+    await preview.waitFor();
+    const [x, y] = (await preview.getAttribute("d"))!.slice(1).split(/[ ,LC]/).map(Number);
+    near({ x, y }, { x: -16, y: 80 });
+    await saved(page, () => page.mouse.up());
+    const shapeId = (await storedDiagram(page)).shapes[0].id;
+    assert.deepEqual((await storedDiagram(page)).arrows[0].from, { shapeId, port: "outlet" });
+    await saved(page, () => page.keyboard.press("ControlOrMeta+z"));
+    assert.equal((await storedDiagram(page)).arrows.length, 0);
+    await saved(page, () => page.keyboard.press("ControlOrMeta+Shift+z"));
+    await page.reload();
+    await openFromLauncher(page);
+    const name = "Arrow from Custom shape Source at outlet to (220, -100)";
+    near((await arrowEnds(page, name)).start, { x: -16, y: 80 });
+    definition.anchors = [];
+    await writeFolder(page, DATA, { "shapes.json": library });
+    await page.reload();
+    await openFromLauncher(page);
+    near((await arrowEnds(page, name)).start, { x: 40, y: -18.18 });
+    for (const missingDefinition of [false, true]) {
+      if (missingDefinition) {
+        library.value[0].shapes = [];
+        await writeFolder(page, DATA, { "shapes.json": library });
+        await page.reload();
+        await openFromLauncher(page);
+      }
+      await tool(page, "Select (S)");
+      await clickAt(page, 0, 0);
+      const handle = await middleOf(view(page).getByRole("button", { name: "Draw arrow from bottom" }));
+      await saved(page, async () => drag(page, handle, await at(page, -220, 130)));
+      assert.deepEqual((await storedDiagram(page)).arrows.at(-1)!.from, { shapeId, port: null });
+    }
+    await page.reload();
+    await openFromLauncher(page);
+    assert.deepEqual((await storedDiagram(page)).arrows.map((arrow) => arrow.from.port), ["outlet", null, null]);
+  });
+
+  test("connection discovery respects tools, text editing, locks, groups and panning priority", async () => {
+    const page = await host.newPage();
+    await install(page);
+    await newDiagram(page, "Priorities");
+    await addRectangle(page, -150, 0, "A");
+    await addRectangle(page, 150, 0, "B");
+    assert.equal(await view(page).locator(".dg-connect").count(), 0);
+    await tool(page, "Select (S)");
+    await clickAt(page, -150, 0);
+    assert.equal(await view(page).locator(".dg-connect").count(), 4);
+    await page.keyboard.down("ControlOrMeta");
+    await clickAt(page, 150, 0);
+    await page.keyboard.up("ControlOrMeta");
+    assert.equal(await view(page).locator(".dg-connect").count(), 0);
+    await saved(page, () => view(page).getByRole("button", { name: "Group selection", exact: true }).click());
+    assert.equal(await view(page).locator(".dg-connect").count(), 0);
+    await page.keyboard.down("Alt");
+    await clickAt(page, -150, 0);
+    await page.keyboard.up("Alt");
+    assert.equal(await view(page).locator(".dg-connect").count(), 4);
+    const handle = await middleOf(view(page).getByRole("button", { name: "Draw arrow from right" }));
+    await page.keyboard.down("Space");
+    await drag(page, handle, { x: handle.x + 45, y: handle.y + 25 });
+    await page.keyboard.up("Space");
+    assert.equal((await storedDiagram(page)).arrows.length, 0);
+    assert.equal((await storedDiagram(page)).shapes[0].x, -150);
+    await view(page).getByRole("button", { name: "Edit text", exact: true }).click();
+    assert.equal(await view(page).locator(".dg-connect").count(), 0);
+    await view(page).getByRole("textbox", { name: "Text of the shape" }).press("Escape");
+    await saved(page, () => view(page).getByRole("button", { name: "Lock", exact: true }).click());
+    assert.equal(await view(page).locator(".dg-connect").count(), 0);
+  });
+
+  test("every built-in shape and image can pull to an automatic target, while locked targets stay free and distinct self ports form loops", async () => {
+    const page = await host.newPage();
+    await install(page);
+    await newDiagram(page, "Attachment rules");
+    await addRectangle(page, -150, 0, "Source");
+    await addRectangle(page, 150, 0, "Target");
+    for (const type of ["rect", "ellipse", "database", "circle", "actor", "postit", "text", "image"]) {
+      await editStored(page, (diagram) => {
+        Object.assign(diagram.shapes[0], { type, rotation: 90 });
+        diagram.arrows = [];
+      });
+      await tool(page, "Select (S)");
+      await clickAt(page, -150, 0);
+      const handle = await middleOf(view(page).getByRole("button", { name: "Draw arrow from right" }));
+      await saved(page, async () => drag(page, handle, await at(page, 150, 0)));
+      const data = await storedDiagram(page);
+      assert.deepEqual(data.arrows[0].from, { shapeId: data.shapes[0].id, port: "E" });
+      assert.deepEqual(data.arrows[0].to, { shapeId: data.shapes[1].id, port: null });
+    }
+    await editStored(page, (diagram) => {
+      Object.assign(diagram.shapes[0], { type: "rect", rotation: 0 });
+      Object.assign(diagram.shapes[1], { locked: true });
+      diagram.arrows = [];
+    });
+    await tool(page, "Select (S)");
+    await clickAt(page, -150, 0);
+    let handle = await middleOf(view(page).getByRole("button", { name: "Draw arrow from right" }));
+    await saved(page, async () => drag(page, handle, await at(page, 150, 0)));
+    assert.equal((await storedDiagram(page)).arrows[0].to.shapeId, undefined);
+    await clickAt(page, -150, 0);
+    handle = await middleOf(view(page).getByRole("button", { name: "Draw arrow from right" }));
+    await saved(page, async () => drag(page, handle, await at(page, -210, 0)));
+    let data = await storedDiagram(page);
+    assert.deepEqual(data.arrows.at(-1)!.to, { shapeId: data.shapes[0].id, port: "W" });
+    await clickAt(page, -150, 0);
+    handle = await middleOf(view(page).getByRole("button", { name: "Draw arrow from bottom" }));
+    await page.keyboard.down("Shift");
+    await saved(page, () => drag(page, handle, { x: handle.x + 90, y: handle.y + 70 }));
+    await page.keyboard.up("Shift");
+    data = await storedDiagram(page);
+    const end = data.arrows.at(-1)!.to;
+    assert.equal(end.shapeId, undefined);
+    assert.ok(Math.abs((end.x! + 150) - (end.y! - 30)) < 1, "Shift keeps a 45 degree angle around the actual source port");
+  });
+
   test("keeps two rectangles connected by an arrow after a reload, and the arrow follows a moved rectangle", async () => {
     const page = await host.newPage();
     await install(page);
