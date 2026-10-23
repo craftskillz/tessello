@@ -49,7 +49,7 @@ Ces termes sont propres au Module ; ils n'entrent pas dans `GLOSSARY.md`.
 
 8. En tant qu'Utilisateur, je veux ranger chaque Ensemble dans un Anneau, afin de dire si je le recommande, s'il est à essayer, à surveiller ou déconseillé.
 9. En tant qu'Utilisateur, je veux donner à chaque Skill une Note de 1 à 5, ou la laisser non évaluée, afin de dire ce qu'elle vaut, indépendamment de mon verdict sur l'Ensemble.
-10. En tant qu'Utilisateur, je veux écrire des Notes en Markdown sur l'Ensemble et sur chaque Skill (pré-remplies avec « À quoi ça sert / Pourquoi / Comment » pour une Skill), afin de garder trace de l'usage que j'en fais.
+10. En tant qu'Utilisateur, je veux écrire des Notes en Markdown sur l'Ensemble et sur chaque Skill (pré-remplies avec « What it's for / Why / How / Suggestions for improvement » pour une Skill), afin de garder trace de l'usage que j'en fais.
 11. En tant qu'Utilisateur, je veux ranger chaque Ensemble dans un des 4 Quadrants, et renommer les Quadrants, afin d'organiser le radar à ma façon.
 12. En tant qu'Utilisateur, je veux filtrer la bibliothèque par Anneau et par Quadrant, et chercher par nom (d'Ensemble ou de Skill), afin de retrouver un Ensemble.
 
@@ -135,14 +135,16 @@ Ces termes sont propres au Module ; ils n'entrent pas dans `GLOSSARY.md`.
 - À la création d'un Ensemble : `ring` vaut `watch`, `quadrant` vaut 0, `notes` est vide. À l'ajout d'une Skill : `score` absent, `notes` contient le modèle :
 
   ```markdown
-  #### À quoi ça sert
+  #### What it's for
 
-  #### Pourquoi
+  #### Why
 
-  #### Comment
+  #### How
+
+  #### Suggestions for improvement
   ```
 
-  Le modèle est en français parce que les Notes sont publiées telles quelles dans le billet.
+  Le modèle est en anglais, comme l'interface du Module (décision du Mainteneur, 2026-10-23). Les Notes sont publiées telles quelles dans le billet en français : les titres remplis y apparaissent donc en anglais.
 - L'ordre des Skills d'un Ensemble est celui de la découverte (ordre alphabétique du dossier), les Skills ajoutées ensuite à la fin.
 - **Quadrants** : 4 noms, par défaut *Design & planning*, *Code & tests*, *Writing & docs*, *Tooling & workflow*. Renommer ne change pas l'indice des Ensembles. Un nom est requis (1 à 40 caractères). Le billet utilise les noms tels que l'Utilisateur les a écrits.
 

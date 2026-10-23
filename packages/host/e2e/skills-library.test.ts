@@ -1393,7 +1393,7 @@ describe("the Skills Library sample Module", () => {
     const [set] = await stored(page, ([item]) => item?.skills.length === 2 && item.skills[0].score === 5);
     assert.deepEqual(set.skills.map((skill) => skill.name), ["Alpha skill", "Beta skill"]);
     assert.equal(set.skills[1].score, undefined);
-    assert.equal(set.skills[0].notes, "#### À quoi ça sert\n\n#### Pourquoi\n\n#### Comment\n");
+    assert.equal(set.skills[0].notes, "#### What it's for\n\n#### Why\n\n#### How\n\n#### Suggestions for improvement\n");
     const row = view(page).getByRole("listitem").filter({ hasText: "Bundle" });
     await row.getByText("2 skills (1 not evaluated)").waitFor();
     await row.getByText("New", { exact: true }).waitFor();
