@@ -40,6 +40,8 @@ Le Widget (taille **L**) est un aperçu des vidéos à voir et un point d'entré
 12. En tant qu'Utilisateur, je veux marquer une vidéo comme vue ou à voir, afin de suivre ce qu'il me reste.
 13. En tant qu'Utilisateur, je veux cacher ou montrer les vidéos vues, et que ce choix soit retenu, afin de ne voir que ce qui reste à regarder.
 14. En tant qu'Utilisateur, je veux supprimer une vidéo (après confirmation), afin de retirer ce qui ne m'intéresse plus.
+17. En tant qu'Utilisateur, je veux donner un score de 0 à 5, et écrire ou corriger la note, quand je marque une vidéo comme vue, afin de garder ce que j'en ai pensé.
+18. En tant qu'Utilisateur, je veux que les vidéos vues soient classées par score décroissant quand je les montre, afin de retrouver d'abord les plus intéressantes.
 
 ### Accueil
 
@@ -64,7 +66,7 @@ Le Widget (taille **L**) est un aperçu des vidéos à voir et un point d'entré
 
 ### Modèle de données
 
-- **Vidéo** : `videoId` (clé, unique), `start?`, `title`, `channel?`, `addedAt` (ISO), `watched` (booléen), `watchedAt?`, `note?`, `tags` (liste de chaînes, sans doublon, comparées sans tenir compte de la casse), `metaStatus` (`ok` | `failed`).
+- **Vidéo** : `videoId` (clé, unique), `start?`, `title`, `channel?`, `addedAt` (ISO), `watched` (booléen), `watchedAt?`, `score?` (entier de 0 à 5, seulement sur une vidéo vue), `note?`, `tags` (liste de chaînes, sans doublon, comparées sans tenir compte de la casse), `metaStatus` (`ok` | `failed`).
 - L'URL ouverte est reconstruite : `https://www.youtube.com/watch?v=<id>` (+ `&t=<start>s`). La miniature est `https://i.ytimg.com/vi/<id>/mqdefault.jpg`.
 - Le titre et la chaîne sont lus **une fois**, à l'ajout, puis gardés : la liste s'affiche hors ligne (sauf les miniatures). Si l'oEmbed échoue, le titre est l'URL, `metaStatus` vaut `failed` et la carte propose « Réessayer ».
 
@@ -73,6 +75,12 @@ Le Widget (taille **L**) est un aperçu des vidéos à voir et un point d'entré
 - Une ligne par tag, par ordre alphabétique, puis une ligne « Sans tag » en dernier. Une vidéo qui a plusieurs tags apparaît dans chaque ligne.
 - Dans une ligne, les vidéos les plus récemment ajoutées viennent en premier. Chaque ligne affiche son nombre de vidéos.
 - Les lignes vides (par exemple quand toutes leurs vidéos sont vues et cachées) ne s'affichent pas.
+
+### Score
+
+- Marquer une vidéo comme vue ouvre une boîte de dialogue du Module : un score de 0 à 5, obligatoire, et la note (le champ `note` existant), facultative. Repasser une vidéo à voir oublie son score. Le score se change dans le panneau de détail.
+- Les vidéos marquées vues avant le score n'en ont pas ; elles restent valides et se classent après le score 0.
+- Quand les vues sont montrées, chaque ligne commence par les vidéos vues, par score décroissant (à score égal, la plus récemment vue d'abord), puis viennent les vidéos à voir dans leur ordre (voir « Déplacer une vidéo »). Le glisser-déposer ne range que les vidéos à voir ; une vidéo vue n'est jamais écrite dans `settings.order`.
 
 ### Groupes de tags
 

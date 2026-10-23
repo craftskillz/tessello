@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 import type { Page } from "playwright";
-import { dropFile, readFolder, showLauncher, useHost, zipSample } from "./browser.ts";
+import { dropFile, readFolder, showLauncher, useHost, writeFolder, zipSample } from "./browser.ts";
 
 const host = useHost();
 
@@ -50,7 +50,7 @@ async function install(page: Page) {
 }
 
 /** The videos as the Host wrote them, under the key `videos`. A file read while the Host writes it may fail: it is read again. */
-async function storedVideos(page: Page): Promise<{ videoId: string; title: string; metaStatus: string; watched: boolean; note?: string; tags: string[] }[]> {
+async function storedVideos(page: Page): Promise<{ videoId: string; title: string; metaStatus: string; watched: boolean; watchedAt?: string; score?: number; note?: string; tags: string[] }[]> {
   for (let tries = 0; ; tries++) {
     try {
       const file = (await readFolder(page, "modules/.tessello/data/@craftskillz/watch-later"))["videos.json"];
@@ -73,6 +73,15 @@ async function addByField(page: Page, url: string, title = "Never Gonna Give You
   await field(page).fill(url);
   await field(page).press("Enter");
   await view(page).getByRole("link", { name: title, exact: true }).first().waitFor();
+}
+
+/** Completes the score dialog opened from a card or the details. */
+async function confirmWatched(page: Page, score = 4, note?: string) {
+  const dialog = view(page).getByRole("dialog", { name: "Mark as watched", exact: true });
+  await dialog.getByRole("radio", { name: String(score), exact: true }).check();
+  if (note !== undefined) await dialog.getByRole("textbox", { name: "Note" }).fill(note);
+  await dialog.getByRole("button", { name: "Mark as watched", exact: true }).click();
+  await dialog.waitFor({ state: "detached" });
 }
 
 /** Waits until the videos the Host wrote pass `written`, so that a reload cannot cut a write short. */
@@ -230,6 +239,7 @@ describe("the Watch Later sample Module", () => {
     assert.equal(await hideWatched.isChecked(), true, "the watched videos are hidden by default");
 
     await card.getByRole("button", { name: "Watched" }).click();
+    await confirmWatched(page);
     await card.waitFor({ state: "detached" });
     const notice = view(page).getByRole("status");
     await notice.getByText("Marked as watched").waitFor();
@@ -240,6 +250,7 @@ describe("the Watch Later sample Module", () => {
     await card.waitFor();
     await stored(page, (videos) => videos[0]?.watched === false);
     await card.getByRole("button", { name: "Watched" }).click();
+    await confirmWatched(page);
     await card.waitFor({ state: "detached" });
 
     await hideWatched.uncheck();
@@ -270,6 +281,128 @@ describe("the Watch Later sample Module", () => {
     assert.equal(await view(page).getByRole("checkbox", { name: "Hide watched" }).isChecked(), false, "the choice is kept");
     await card.getByRole("button", { name: "Details" }).click();
     assert.equal(await details.getByRole("textbox", { name: "Note" }).inputValue(), "For the talk on Friday");
+  });
+
+  test("marking watched requires a score, cancelling discards the draft, and the score and note persist and can be edited", async () => {
+    const page = await host.newPage();
+    await fakeYouTube(page);
+    await install(page);
+    await addByField(page, `https://youtu.be/${ID}`);
+    await stored(page, (videos) => videos[0]?.metaStatus === "ok");
+    const card = view(page).getByRole("article", { name: "Never Gonna Give You Up" });
+    const dialog = view(page).getByRole("dialog", { name: "Mark as watched", exact: true });
+    const details = view(page).getByRole("dialog", { name: "Never Gonna Give You Up", exact: true });
+    const before = await storedVideos(page);
+
+    // Every way of dismissing the dialog leaves the whole video unchanged.
+    for (const dismiss of ["button", "escape", "backdrop"]) {
+      await card.getByRole("button", { name: "Watched" }).click();
+      await dialog.getByText("Never Gonna Give You Up", { exact: true }).waitFor();
+      assert.equal(await dialog.getByRole("button", { name: "Mark as watched", exact: true }).isDisabled(), true);
+      assert.equal(await dialog.getByRole("radio", { checked: true }).count(), 0);
+      await dialog.getByRole("radio", { name: "4", exact: true }).check();
+      await dialog.getByRole("textbox", { name: "Note" }).fill("Discard this draft");
+      if (dismiss === "button") await dialog.getByRole("button", { name: "Cancel" }).click();
+      else if (dismiss === "escape") await dialog.getByRole("textbox", { name: "Note" }).press("Escape");
+      else {
+        const backdrop = view(page).locator(".wl-modal-backdrop");
+        const width = await backdrop.evaluate((element) => element.clientWidth);
+        await backdrop.click({ position: { x: width / 2, y: 5 } });
+      }
+      await dialog.waitFor({ state: "detached" });
+      assert.deepEqual(await storedVideos(page), before);
+      assert.equal(await card.getByRole("button", { name: "Watched" }).getAttribute("aria-pressed"), "false");
+    }
+
+    await card.getByRole("button", { name: "Watched" }).click();
+    // Native radio buttons support the keyboard, including selecting zero.
+    await dialog.getByRole("radio", { name: "0", exact: true }).focus();
+    await dialog.getByRole("radio", { name: "0", exact: true }).press("Space");
+    assert.equal(await dialog.getByRole("button", { name: "Mark as watched", exact: true }).isEnabled(), true);
+    await dialog.getByRole("radio", { name: "0", exact: true }).press("ArrowRight");
+    assert.equal(await dialog.getByRole("radio", { name: "1", exact: true }).isChecked(), true);
+    await confirmWatched(page, 4, "  For the talk on Friday  ");
+    await stored(page, (videos) => videos[0]?.watched === true && videos[0]?.score === 4 && videos[0]?.note === "For the talk on Friday");
+    await view(page).getByRole("checkbox", { name: "Hide watched" }).uncheck();
+    await card.getByRole("img", { name: "Score: 4 out of 5" }).waitFor();
+
+    // Reopening defaults to hiding watched videos if the settings write was cut short; wait for it too.
+    for (let tries = 0; (await storedSettings(page))?.hideWatched !== false; tries++) {
+      assert.ok(tries < 50);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    await page.reload();
+    await openFromLauncher(page);
+    await card.getByRole("img", { name: "Score: 4 out of 5" }).waitFor();
+    await card.getByRole("button", { name: "Details" }).click();
+    assert.equal(await details.getByRole("radio", { name: "4", exact: true }).isChecked(), true);
+    assert.equal(await details.getByRole("textbox", { name: "Note" }).inputValue(), "For the talk on Friday");
+    const watchedAt = (await storedVideos(page))[0].watchedAt;
+    await details.getByRole("radio", { name: "0", exact: true }).check();
+    await stored(page, (videos) => videos[0]?.score === 0);
+    assert.equal((await storedVideos(page))[0].watchedAt, watchedAt);
+    await details.getByRole("button", { name: "Mark as to watch", exact: true }).click();
+    await stored(page, (videos) => !videos[0]?.watched && videos[0]?.score === undefined && videos[0]?.watchedAt === undefined);
+    assert.equal(await dialog.count(), 0, "returning to watch opens no dialog");
+
+    // The details open the same review dialog, prefilled with the current note.
+    await details.getByRole("button", { name: "Mark as watched", exact: true }).click();
+    assert.equal(await dialog.getByRole("textbox", { name: "Note" }).inputValue(), "For the talk on Friday");
+    await dialog.getByRole("textbox", { name: "Note" }).press("Escape");
+    await dialog.waitFor({ state: "detached" });
+    await details.waitFor();
+    await details.getByRole("button", { name: "Mark as watched", exact: true }).click();
+    await confirmWatched(page, 5, "A new review");
+    assert.equal(await details.getByRole("textbox", { name: "Note" }).inputValue(), "A new review");
+    await details.getByRole("button", { name: "Close" }).click();
+    await stored(page, (videos) => videos[0]?.score === 5 && videos[0]?.note === "A new review");
+  });
+
+  test("Undo restores the previous note as well as the watch state after reviewing from details", async () => {
+    const page = await host.newPage();
+    await fakeYouTube(page);
+    await install(page);
+    await addByField(page, `https://youtu.be/${ID}`);
+    const card = view(page).getByRole("article");
+    const details = view(page).getByRole("dialog", { name: "Never Gonna Give You Up", exact: true });
+    await card.getByRole("button", { name: "Details" }).click();
+    await details.getByRole("textbox", { name: "Note" }).fill("Before watching");
+    await details.getByRole("textbox", { name: "Note" }).blur();
+    await stored(page, (videos) => videos[0]?.note === "Before watching" && videos[0]?.metaStatus === "ok");
+    const before = await storedVideos(page);
+    await details.getByRole("button", { name: "Mark as watched", exact: true }).click();
+    await confirmWatched(page, 3, "After watching");
+    assert.equal(await details.getByRole("textbox", { name: "Note" }).inputValue(), "After watching");
+    await details.getByRole("button", { name: "Close" }).click();
+    await view(page).getByRole("status").getByRole("button", { name: "Undo" }).click();
+    await card.waitFor();
+    await stored(page, (videos) => !videos[0]?.watched && videos[0]?.note === "Before watching");
+    assert.deepEqual(await storedVideos(page), before);
+  });
+
+  test("older watched videos without a score remain visible and can receive one", async () => {
+    const page = await host.newPage();
+    await fakeYouTube(page);
+    await install(page);
+    await addByField(page, `https://youtu.be/${ID}`);
+    await stored(page, (videos) => videos[0]?.metaStatus === "ok");
+    const [video] = await storedVideos(page);
+    await writeFolder(page, "modules/.tessello/data/@craftskillz/watch-later", {
+      "videos.json": { key: "videos", value: [{ ...video, watched: true }] },
+      "settings.json": { key: "settings", value: { hideWatched: false } },
+    });
+    await page.reload();
+    await openFromLauncher(page);
+    const card = view(page).getByRole("article");
+    await card.waitFor();
+    assert.equal(await card.getByRole("img", { name: /^Score:/ }).count(), 0);
+    await card.getByRole("button", { name: "Details" }).click();
+    const details = view(page).getByRole("dialog");
+    assert.equal(await details.getByRole("radio", { checked: true }).count(), 0);
+    await details.getByRole("radio", { name: "2", exact: true }).check();
+    await details.getByRole("button", { name: "Close" }).click();
+    await card.getByRole("img", { name: "Score: 2 out of 5" }).waitFor();
+    await stored(page, (videos) => videos[0]?.score === 2);
   });
 
   test("a video is deleted only once the User confirms it", async () => {
@@ -598,6 +731,7 @@ describe("the Watch Later sample Module", () => {
     await widget(page).getByRole("button", { name: "Open ↗" }).click();
     await page.locator("iframe[title='Watch Later']").waitFor({ state: "visible" });
     await view(page).getByRole("article").getByRole("button", { name: "Watched" }).click();
+    await confirmWatched(page);
     await stored(page, (videos) => videos[0]?.watched === true);
     await goHome(page);
     await widget(page).getByText("Nothing left to watch").waitFor();
