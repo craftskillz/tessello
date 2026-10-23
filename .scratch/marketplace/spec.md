@@ -64,7 +64,7 @@ Dans l'Hôte, un écran **Marketplace** lit l'index, permet de chercher, de lire
   - `namespaces.json` : pour chaque Espace de noms, le nom du compte GitHub, son identifiant numérique et son état (`active`, `frozen`, `banned` avec raison) ;
   - `PUBLISHING.md`, le modèle de pull request avec sa case d'acceptation, et le gabarit des issues de signalement ;
   - la CI (GitHub Actions) et le générateur de l'index et du site.
-- **Paquet `@tessello/marketplace`** (nouveau, dans ce monorepo, `packages/marketplace`) : le format de la fiche et de l'index, le Vérificateur de fiche et le Générateur d'index. Il est isomorphe, comme `@tessello/convention`. La CI de la Marketplace l'installe depuis npm, et le cœur de l'Hôte en importe le format de l'index.
+- **Paquet `@tessello/marketplace`** (nouveau, dans ce monorepo, `packages/marketplace`) : le format de la fiche et de l'index, le Vérificateur de fiche et le Générateur d'index. Il est isomorphe, comme `@tessello/convention`. La CI de la Marketplace l'importe, avec `@tessello/convention`, d'un clone de `craftskillz/tessello` à un commit épinglé par le dépôt de la Marketplace (pas de npm, voir le ticket 03), et le cœur de l'Hôte en importe le format de l'index.
 - **Vérificateur de fiche** (nouveau, fonction pure, testée sans réseau) : prend la fiche, le paquet téléchargé, les métadonnées GitHub et la fiche précédente. Il rend la liste des erreurs, chacune avec un code stable, comme le Validateur, et le type de changement : nouveau Module, nouvelle version, Retrait, Bannissement, ou autre. La CI ne fait que télécharger, appeler le Vérificateur et décider de la fusion.
 - **Générateur d'index** (nouveau, fonction pure) : des fiches et des Manifestes, il tire `index.json` et les pages du site.
 - **Client de la Marketplace dans le cœur de l'Hôte** (nouveau) : lire et mettre en cache l'index, chercher et filtrer, comparer avec le registre (mises à jour, Bannissements, Retraits). La récupération réseau est derrière une interface, avec une implémentation en mémoire pour les tests.
@@ -128,6 +128,6 @@ Dans l'Hôte, un écran **Marketplace** lit l'index, permet de chercher, de lire
 
 ## Further Notes
 
-- **Prérequis** côté tessello-v1 : le ticket 12 (l'Hôte sur Cloudflare Pages), le ticket 13 (le Validateur sur npm, utilisé par la CI) et le ticket 20 (les Modules du Mainteneur renommés sous `@craftskillz`).
+- **Prérequis** côté tessello-v1 : le ticket 12 (l'Hôte sur Cloudflare Pages) et le ticket 20 (les Modules du Mainteneur renommés sous `@craftskillz`).
 - **Coût** : GitHub (dépôt public, Actions) et Cloudflare Pages, dans leurs offres gratuites. Aucun composant dont le coût croît sans plafond.
 - **Accord du Mainteneur** : créer le dépôt GitHub, le projet Cloudflare Pages ou un jeton de fusion n'est fait qu'avec son accord explicite.
