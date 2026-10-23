@@ -73,7 +73,7 @@ Le Widget (taille **L**) est un aperçu des vidéos à voir et un point d'entré
 ### Lignes par tag
 
 - Une ligne par tag, par ordre alphabétique, puis une ligne « Sans tag » en dernier. Une vidéo qui a plusieurs tags apparaît dans chaque ligne.
-- Dans une ligne, les vidéos les plus récemment ajoutées viennent en premier. Chaque ligne affiche son nombre de vidéos.
+- Dans une ligne, les vidéos vues viennent d'abord selon leur score (voir « Score »), puis les vidéos à voir : celles jamais placées, les plus récentes d'abord, puis celles placées dans l'ordre retenu. Chaque ligne affiche son nombre de vidéos.
 - Les lignes vides (par exemple quand toutes leurs vidéos sont vues et cachées) ne s'affichent pas.
 
 ### Score
@@ -90,7 +90,7 @@ Le Widget (taille **L**) est un aperçu des vidéos à voir et un point d'entré
 
 ### Déplacer une vidéo
 
-- Une carte se glisse-dépose à la souris. Déposée dans sa ligne, elle change de place, avant la carte sous le pointeur ou en fin de ligne. La ligne retient cet ordre ; les vidéos jamais placées viennent avant, les plus récentes d'abord.
+- Une carte se glisse-dépose à la souris. Une vidéo à voir déposée dans sa ligne change de place, avant la carte à voir sous le pointeur ou en fin de ligne ; déposée parmi les vues, elle prend la première place des vidéos à voir. La ligne retient cet ordre ; les vidéos jamais placées viennent avant, les plus récentes d'abord. Une vidéo vue garde sa place donnée par le score, sans nouveau placement dans `settings.order`.
 - Déposée dans une autre ligne, la vidéo perd le tag de la ligne quittée et prend celui de la ligne d'arrivée (écrit comme son premier usage). Elle garde ses autres tags. Elle ne va dans « Sans tag » que si le tag quitté était son seul tag.
 
 ### Déplacer une section

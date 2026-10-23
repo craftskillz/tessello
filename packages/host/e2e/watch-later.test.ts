@@ -78,7 +78,11 @@ async function addByField(page: Page, url: string, title = "Never Gonna Give You
 /** Completes the score dialog opened from a card or the details. */
 async function confirmWatched(page: Page, score = 4, note?: string) {
   const dialog = view(page).getByRole("dialog", { name: "Mark as watched", exact: true });
-  await dialog.getByRole("radio", { name: String(score), exact: true }).check();
+  const choice = dialog.getByRole("radio", { name: String(score), exact: true });
+  if (score === 0) {
+    await choice.focus();
+    await choice.press("Space");
+  } else await choice.check();
   if (note !== undefined) await dialog.getByRole("textbox", { name: "Note" }).fill(note);
   await dialog.getByRole("button", { name: "Mark as watched", exact: true }).click();
   await dialog.waitFor({ state: "detached" });
@@ -581,6 +585,94 @@ describe("the Watch Later sample Module", () => {
     await row("Music").getByRole("article").first().waitFor();
     assert.deepEqual(await order("Music"), [OTHER, THIRD]);
     assert.deepEqual(await order("No tag"), [ID]);
+  });
+
+  test("watched videos lead the row by score, then unwatched videos, and keep that order after a reload", async () => {
+    const page = await host.newPage();
+    await fakeYouTube(page);
+    await install(page);
+    const ids = [ID, "aaaaaaaaaaa", "bbbbbbbbbbb", "ccccccccccc"];
+    const row = view(page).getByRole("region", { name: "No tag", exact: true });
+    const order = () => row.getByRole("article").evaluateAll((cards) => cards.map((card) => card.getAttribute("data-video-id")));
+    for (const id of ids) await addByField(page, `https://youtu.be/${id}`);
+    for (const [index, score] of [2, 5, 0].entries()) {
+      await row.locator(`[data-video-id="${ids[index]}"]`).getByRole("button", { name: "Watched" }).click();
+      await confirmWatched(page, score);
+    }
+    await stored(page, (videos) => videos.filter((video) => video.watched).length === 3);
+    await view(page).getByRole("checkbox", { name: "Hide watched" }).uncheck();
+    await row.locator(`[data-video-id="${ids[1]}"]`).waitFor();
+    assert.deepEqual(await order(), [ids[1], ids[0], ids[2], ids[3]]);
+    for (let tries = 0; (await storedSettings(page))?.hideWatched !== false; tries++) {
+      assert.ok(tries < 50);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    await page.reload();
+    await openFromLauncher(page);
+    await row.getByRole("article").first().waitFor();
+    assert.deepEqual(await order(), [ids[1], ids[0], ids[2], ids[3]]);
+
+    // Changing a score reorders the row immediately, and hiding watched still leaves the unwatched order alone.
+    await row.locator(`[data-video-id="${ids[2]}"]`).getByRole("button", { name: "Details" }).click();
+    const details = view(page).getByRole("dialog");
+    await details.getByRole("radio", { name: "4", exact: true }).check();
+    await details.getByRole("button", { name: "Close" }).click();
+    assert.deepEqual(await order(), [ids[1], ids[2], ids[0], ids[3]]);
+    await view(page).getByRole("checkbox", { name: "Hide watched" }).check();
+    assert.deepEqual(await order(), [ids[3]]);
+  });
+
+  test("dragging among watched cards only places unwatched cards, while watched cards change tags at their score position", async () => {
+    const page = await host.newPage();
+    await page.setViewportSize({ width: 1600, height: 1100 });
+    await fakeYouTube(page);
+    await install(page);
+    const [HIGH, LOW, FIRST, LAST, OTHER] = [ID, "aaaaaaaaaaa", "bbbbbbbbbbb", "ccccccccccc", "ddddddddddd"];
+    await writeFolder(page, "modules/.tessello/data/@craftskillz/watch-later", {
+      "videos.json": { key: "videos", value: [HIGH, LOW, FIRST, LAST, OTHER].map((videoId, index) => ({
+        videoId, title: `Video ${index}`, addedAt: `2026-10-0${index + 1}T00:00:00Z`,
+        watched: index < 2 || videoId === OTHER,
+        ...(index < 2 || videoId === OTHER ? { score: videoId === HIGH ? 5 : videoId === OTHER ? 4 : 2, watchedAt: "2026-10-23T00:00:00Z" } : {}),
+        tags: [videoId === OTHER ? "Other" : "Music"], metaStatus: "ok",
+      })) },
+      "settings.json": { key: "settings", value: { hideWatched: false, order: { music: [FIRST, LAST] } } },
+    });
+    await page.reload();
+    await openFromLauncher(page);
+    const row = (name: string) => view(page).getByRole("region", { name, exact: true });
+    const card = (id: string) => view(page).locator(`li:has([data-video-id="${id}"])`);
+    const order = (name: string) => row(name).getByRole("article").evaluateAll((cards) => cards.map((card) => card.getAttribute("data-video-id")));
+    await card(HIGH).waitFor();
+    await card(LOW).dragTo(card(HIGH), { targetPosition: { x: 10, y: 60 } });
+    assert.deepEqual(await order("Music"), [HIGH, LOW, FIRST, LAST], "watched cards cannot be manually reordered");
+
+    // Inspect the actual drop marker while dragging an unwatched card over a watched one.
+    await card(LAST).evaluate((element) => {
+      const dataTransfer = new DataTransfer();
+      element.dispatchEvent(new DragEvent("dragstart", { dataTransfer, bubbles: true }));
+    });
+    await card(HIGH).evaluate((element) => {
+      const { left, top } = element.getBoundingClientRect();
+      element.dispatchEvent(new DragEvent("dragover", { clientX: left + 10, clientY: top + 60, bubbles: true, cancelable: true }));
+    });
+    assert.equal(await card(FIRST).evaluate((element) => element.classList.contains("wl-drop-before")), true);
+    assert.equal(await card(HIGH).evaluate((element) => element.classList.contains("wl-drop-before")), false);
+    await card(HIGH).dispatchEvent("drop");
+    assert.deepEqual(await order("Music"), [HIGH, LOW, LAST, FIRST]);
+    await card(LOW).dragTo(card(OTHER), { targetPosition: { x: 10, y: 60 } });
+    assert.deepEqual(await order("Other"), [OTHER, LOW], "the score determines the landing position");
+    assert.deepEqual(await order("Music"), [HIGH, LAST, FIRST]);
+    await stored(page, (videos) => videos.find((video) => video.videoId === LOW)?.tags.join() === "Other");
+    for (let tries = 0; (await storedSettings(page))?.order?.music?.join() !== [LAST, FIRST].join(); tries++) {
+      assert.ok(tries < 50);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    assert.deepEqual((await storedSettings(page))?.order, { music: [LAST, FIRST] }, "watched cards are not added to settings.order");
+    await page.reload();
+    await openFromLauncher(page);
+    await card(LOW).waitFor();
+    assert.deepEqual(await order("Other"), [OTHER, LOW]);
+    assert.deepEqual(await order("Music"), [HIGH, LAST, FIRST]);
   });
 
   test("a section dragged by its header goes above or below another, in the View or in its group, and stays there after a reload", async () => {
