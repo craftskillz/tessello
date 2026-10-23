@@ -1180,6 +1180,49 @@ describe("the Skills Library sample Module", () => {
     await view(page).getByRole("tab", { name: "Library", selected: true }).waitFor();
   });
 
+  test("the two points of a set in two topics each open their own panel, with the skills of their topic only, by mouse and by keyboard", async () => {
+    const page = await host.newPage();
+    await install(page);
+    await addBundle(page, "Bundle", "Try", "Code & tests");
+    await openPanel(page, "Bundle");
+    await setSkillTopic(panelOf(page, "Bundle"), "Bundle second", "Design & planning");
+    await stored(page, (sets) => sets.some((item) => item.name === "Bundle" && item.skills.some((skill) => skill.topic === 0)));
+    await panelOf(page, "Bundle").getByRole("button", { name: "Close" }).click();
+    await radarTab(page);
+    await dots(page).nth(1).waitFor();
+    assert.equal(await dots(page).count(), 2);
+    assert.deepEqual(await dots(page).evaluateAll((points) => points.map((point) => point.getAttribute("data-number"))), ["1", "1"]);
+
+    // The points follow the order of the topics: Design & planning, then Code & tests.
+    const panel = radarPanel(page);
+    await dots(page).nth(0).hover();
+    await panel.waitFor();
+    assert.match(await panel.innerText(), /Topic\s*Design & planning/i);
+    assert.equal(await panel.getByRole("listitem").count(), 1);
+    assert.match(await panel.innerText(), /Bundle second\s*Not evaluated/);
+    assert.doesNotMatch(await panel.innerText(), /Bundle first/);
+
+    // The panel of the first point may cover the second: the pointer leaves it, then reaches the second point.
+    await view(page).getByRole("button", { name: /^Publish edition/ }).hover();
+    await panel.waitFor({ state: "hidden" });
+    await dots(page).nth(1).hover();
+    await panel.locator("dd", { hasText: "Code & tests" }).waitFor();
+    assert.match(await panel.innerText(), /Topic\s*Code & tests/i);
+    assert.equal(await panel.getByRole("listitem").count(), 1);
+    assert.match(await panel.innerText(), /Bundle first/);
+    assert.doesNotMatch(await panel.innerText(), /Bundle second/);
+
+    // The keyboard goes from one point to the other, and the panel follows.
+    await view(page).getByRole("button", { name: /^Publish edition/ }).focus();
+    await page.keyboard.press("Tab");
+    await panel.getByText("Design & planning", { exact: true }).waitFor();
+    assert.match(await panel.innerText(), /Bundle second/);
+    await page.keyboard.press("Tab");
+    await panel.getByText("Code & tests", { exact: true }).waitFor();
+    assert.match(await panel.innerText(), /Bundle first/);
+    assert.doesNotMatch(await panel.innerText(), /Bundle second/);
+  });
+
   test("the points are walked with Tab in the order of their numbers; focus opens the panel, Escape closes it and Enter opens it again", async () => {
     const page = await host.newPage();
     await install(page);
@@ -1633,11 +1676,11 @@ describe("the Skills Library sample Module", () => {
     await view(page).getByRole("tab", { name: "Editions" }).click();
     const file = await downloaded(page, () => view(page).getByRole("button", { name: "Download edition 1 as .zip" }).click());
     const post = matter(strFromU8(unzipSync(new Uint8Array(file.bytes))["_posts/skills-radar-edition-1.md"])).content;
-    assert.match(post, /1\. Bundle — Recommandé \(3 skills\)/);
+    assert.match(post, /1\. Bundle — Recommandé · Design &amp; planning \(3 skills\)/);
     assert.match(post, /### 1\. Bundle\n/);
-    assert.ok(post.includes("| [Alpha skill](https://example.com/alpha) | ★★★★☆ | The first |"));
-    assert.ok(post.includes("| Beta skill | ★★☆☆☆ | The second |"));
-    assert.ok(post.includes("| Gamma skill | *Pas encore évaluée* |"));
+    assert.ok(post.includes("| [Alpha skill](https://example.com/alpha) | Design &amp; planning | ★★★★☆ | The first |"));
+    assert.ok(post.includes("| Beta skill | Design &amp; planning | ★★☆☆☆ | The second |"));
+    assert.ok(post.includes("| Gamma skill | Design &amp; planning | *Pas encore évaluée* |"));
     // Only the skill whose notes say more than the template has its card, its headings under its own.
     assert.match(post, /#### Alpha skill\n\n##### À quoi ça sert\n\nIt grills plans\./);
     assert.doesNotMatch(post, /#### Beta skill|#### Gamma skill/);
