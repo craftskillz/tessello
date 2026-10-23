@@ -321,6 +321,16 @@ describe("the Watch Later sample Module", () => {
     assert.equal(await dialog.getByRole("button", { name: "Mark as watched", exact: true }).isEnabled(), true);
     await dialog.getByRole("radio", { name: "0", exact: true }).press("ArrowRight");
     assert.equal(await dialog.getByRole("radio", { name: "1", exact: true }).isChecked(), true);
+    // Clicking the selected star removes one star, including the last one for a score of zero.
+    await dialog.getByRole("radio", { name: "4", exact: true }).click();
+    await dialog.getByRole("radio", { name: "4", exact: true }).click();
+    assert.equal(await dialog.getByRole("radio", { name: "3", exact: true }).isChecked(), true);
+    assert.equal(await dialog.locator(".wl-filled").count(), 3);
+    await dialog.getByRole("radio", { name: "1", exact: true }).click();
+    await dialog.getByRole("radio", { name: "1", exact: true }).click();
+    assert.equal(await dialog.getByRole("radio", { name: "0", exact: true }).isChecked(), true);
+    assert.equal(await dialog.locator(".wl-filled").count(), 0);
+    assert.equal(await dialog.getByRole("button", { name: "Mark as watched", exact: true }).isEnabled(), true);
     await confirmWatched(page, 4, "  For the talk on Friday  ");
     await stored(page, (videos) => videos[0]?.watched === true && videos[0]?.score === 4 && videos[0]?.note === "For the talk on Friday");
     await view(page).getByRole("checkbox", { name: "Hide watched" }).uncheck();
@@ -338,7 +348,8 @@ describe("the Watch Later sample Module", () => {
     assert.equal(await details.getByRole("radio", { name: "4", exact: true }).isChecked(), true);
     assert.equal(await details.getByRole("textbox", { name: "Note" }).inputValue(), "For the talk on Friday");
     const watchedAt = (await storedVideos(page))[0].watchedAt;
-    await details.getByRole("radio", { name: "0", exact: true }).check();
+    await details.getByRole("radio", { name: "1", exact: true }).click();
+    await details.getByRole("radio", { name: "1", exact: true }).click();
     await stored(page, (videos) => videos[0]?.score === 0);
     assert.equal((await storedVideos(page))[0].watchedAt, watchedAt);
     await details.getByRole("button", { name: "Mark as to watch", exact: true }).click();
