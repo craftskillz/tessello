@@ -6,17 +6,18 @@ Spec parente : `.scratch/skills-library/spec.md`. Vocabulaire : `GLOSSARY.md` et
 
 **Blocked by:** 06
 
-**Status:** ready-for-human
+**Status:** resolved
 
 - [x] `renderPost` produit le billet de la spec : frontmatter (titre, `excerpt` tiré du premier paragraphe de l'introduction, `coverImage`, `date`, `author.picture`, `ogImage`), introduction, radar SVG sur une seule ligne avec la légende numérotée, `## Ce qui bouge`, `## Le reste du radar`, `## Retirées du radar`, note de bas de page « Inspiré du Technology Radar de Thoughtworks ». Anneaux et Changements en français, Quadrants et Notes tels qu'écrits.
 - [x] Tests unitaires de `renderPost` : le frontmatter est relu par `gray-matter` avec les bonnes valeurs (y compris des guillemets et des retours à la ligne dans l'introduction) ; le SVG ne contient aucune ligne vide ; les titres des Notes sont abaissés à `####` au plus haut ; à la première Édition, toutes les Skills ont leur fiche complète ; une Skill déplacée montre « Déplacé : <ancien> → <nouveau> » et son explication.
 - [x] La couverture est le radar seul en PNG 1200 × 630 sur fond plein (même méthode que `src/view/png.ts` de Diagram).
 - [x] Le `.zip` (`fflate`) contient `_posts/skills-radar-edition-<n>.md` et `public/assets/blog/skills-radar-edition-<n>/cover.png`. Il se télécharge par un lien `download` vers un `blob:` (ADR 0013), pour n'importe quelle Édition, depuis la Vue.
 - [x] Test navigateur : publier deux Éditions, télécharger le `.zip` de la première puis de la seconde, les décompresser, vérifier les chemins, le frontmatter et les sections de chaque billet.
-- [ ] Vérification manuelle (notée en commentaire du ticket) : décompresser un `.zip` dans `craftskillz-blog`, lancer `npm run dev`, le billet s'affiche avec le radar et la couverture, en thème clair et sombre.
+- [x] Vérification manuelle (notée en commentaire du ticket) : décompresser un `.zip` dans `craftskillz-blog`, lancer `npm run dev`, le billet s'affiche avec le radar et la couverture, en thème clair et sombre.
 
 ## Comments
 
 - Depuis le ticket 05, `renderRadar(entries, quadrants, { labels, background })` (`src/lib/radar.ts`) prend ses textes dans `labels` (anneaux et légende des marqueurs) : le billet doit lui passer les libellés français. Seul le titre du SVG (`<title>` et `aria-label`, « Skills radar: … ») est encore en anglais en dur ; à ajouter à `RadarLabels`. `background` peint le fond plein de la couverture. Une entrée d'Édition (`change`, `previousRing`) a la forme de `RadarEntry` ; une Skill *retirée* n'est pas une entrée.
 - Depuis le ticket 06, une Édition figée est le type `Edition` de `src/lib/editions.ts` (`number`, `publishedAt`, `intro`, `quadrants`, `entries: EditionEntry[]`, `retired: RetiredEntry[]`) ; `editions.published` (`src/lib/store.svelte.ts`) les tient toutes, la plus récente en premier. Une `EditionEntry` étend `RadarEntry` et se passe telle quelle à `renderRadar`. L'onglet *Editions* est `src/view/EditionsTab.svelte` : c'est là que va « Download .zip ».
 - Fait, sauf la vérification manuelle. `renderPost(edition)` (`src/lib/post.ts`) ne prend que l'Édition figée : elle porte déjà `change`, `previousRing`, `moveReason` et `retired` (la spec est mise à jour). Les Anneaux de chaque section sont des paragraphes en gras (`**Recommandé**`), pour garder les fiches en `###` ; une section vide est omise. « Le reste du radar » écrit `- **<n>.** <nom> ★★★☆☆`. Les titres des Notes sont décalés pour que le plus haut soit `####` (dans les deux sens), hors des blocs de code. La couverture (`src/view/cover.ts`) est le radar sur fond blanc, centré dans 1200 × 630. Le `.zip` est fait par `zipPost` (`src/lib/post-zip.ts`) et téléchargé par `src/view/export-post.ts`. Reste : décompresser un `.zip` dans `craftskillz-blog`, `npm run dev`, vérifier le billet en thème clair et sombre.
+- Vérification manuelle faite le 2026-10-22 : le billet s'affiche correctement dans `craftskillz-blog`. L'Utilisateur a demandé à cette occasion de ranger les skills par Ensembles : spec révisée, tickets 11 à 16.
