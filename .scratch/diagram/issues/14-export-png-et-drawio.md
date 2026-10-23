@@ -6,7 +6,7 @@ Spec parente : `.scratch/diagram/spec.md`. Vocabulaire : `GLOSSARY.md`. Contrat 
 
 **Blocked by:** 04 (Tracés), 09 (Formes personnalisées), 13 (Hôte : téléchargements)
 
-**Status:** ready-for-human
+**Status:** resolved
 
 ### PNG
 
@@ -22,7 +22,7 @@ Spec parente : `.scratch/diagram/spec.md`. Vocabulaire : `GLOSSARY.md`. Contrat 
   - les étiquettes ;
   - les images, intégrées en data URL, ce qui les rend disponibles hors ligne puisqu'elles sont déjà dans le stockage.
 - [x] Les pertes connues sont signalées dans un message, comme dans l'original : les rotations d'étiquette indépendantes, que draw.io ne sait pas représenter.
-- [ ] Le fichier s'ouvre dans draw.io (app.diagrams.net) avec le même aspect. C'est une vérification manuelle, faite une fois et notée dans les commentaires du ticket.
+- [x] Le fichier s'ouvre dans draw.io (app.diagrams.net) avec le même aspect. C'est une vérification manuelle, faite une fois et notée dans les commentaires du ticket.
 
 ### Tests
 
@@ -39,4 +39,4 @@ Spec parente : `.scratch/diagram/spec.md`. Vocabulaire : `GLOSSARY.md`. Contrat 
 - Les étiquettes des flèches ont un fond blanc (`labelBackgroundColor`) qui cache la ligne, comme dans le canevas. Dans un PNG transparent, ce fond reste peint (couleur du thème) sous l'étiquette, comme dans le canevas.
 - Les couleurs sont celles de la variante claire de la palette. Les liens des formes ne sont pas exportés : le ticket ne les demande pas.
 - **Reste à faire, à la main** : ouvrir un `.drawio` exporté dans app.diagrams.net et noter ici le résultat. Ce n'est pas encore fait.
-
+- 2026-10-23 : vérification manuelle faite par le Mainteneur. Un `.drawio` exporté s'ouvre dans app.diagrams.net avec le même aspect que le canevas.
