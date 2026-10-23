@@ -108,21 +108,50 @@ description: >
 # Grill me
 `;
 
-/** Fakes raw.githubusercontent.com: `acme/skills/main/grill-me/SKILL.md` exists, anything else is a 404, or the network is down. */
-async function fakeGitHub(page: Page, online = { value: true }) {
+/** The SKILL.md of a skill named `name`. */
+const skillMd = (name: string, description: string) => `---\nname: ${name}\ndescription: ${description}\n---\n\n# ${name}\n`;
+
+/** What the fake answers, by URL: a status number alone, or the JSON of an answer of the API, or the text of a file of raw. */
+interface GitHubAnswers {
+  /** `api.github.com` answers, JSON arrays of `{ name, type }` for a folder; anything else is a 404. */
+  api?: Record<string, number | unknown[]>;
+  /** `raw.githubusercontent.com` files, besides `acme/skills/main/grill-me/SKILL.md`; anything else is a 404. */
+  raw?: Record<string, string>;
+}
+
+/** Fakes raw.githubusercontent.com and api.github.com, or the network being down. The requests made to both are returned. */
+async function fakeGitHub(page: Page, online = { value: true }, answers: GitHubAnswers = {}) {
   const requests: string[] = [];
+  // Read at each request, so that a test can change what the fake answers.
+  const raw = (): Record<string, string> => ({ "https://raw.githubusercontent.com/acme/skills/main/grill-me/SKILL.md": SKILL_MD, ...answers.raw });
+  // The Module runs in an opaque origin, which the answer must allow.
+  const headers = { "Access-Control-Allow-Origin": "null" };
   await page.route("https://raw.githubusercontent.com/**", (route) => {
-    requests.push(route.request().url());
+    const url = route.request().url();
+    requests.push(url);
     if (!online.value) return route.abort("internetdisconnected");
-    // The Module runs in an opaque origin, which the answer must allow.
-    const headers = { "Access-Control-Allow-Origin": "null" };
-    if (route.request().url() === "https://raw.githubusercontent.com/acme/skills/main/grill-me/SKILL.md") {
-      return route.fulfill({ headers, contentType: "text/plain", body: SKILL_MD });
-    }
+    const files = raw();
+    if (url in files) return route.fulfill({ headers, contentType: "text/plain", body: files[url] });
     return route.fulfill({ headers, status: 404, contentType: "text/plain", body: "404: Not Found" });
+  });
+  await page.route("https://api.github.com/**", (route) => {
+    const url = route.request().url();
+    requests.push(url);
+    if (!online.value) return route.abort("internetdisconnected");
+    const answer = answers.api?.[url] ?? 404;
+    if (typeof answer === "number") return route.fulfill({ headers, status: answer, contentType: "application/json", body: "{}" });
+    return route.fulfill({ headers, contentType: "application/json", body: JSON.stringify(answer) });
   });
   return requests;
 }
+
+/** The listing of a folder on the API, and the raw files of the skills of some of its folders. */
+const PACK_API = "https://api.github.com/repos/acme/pack/contents/skills?ref=main";
+const PACK_RAW = (name: string) => `https://raw.githubusercontent.com/acme/pack/main/skills/${name}/SKILL.md`;
+const PACK: GitHubAnswers = {
+  api: { [PACK_API]: ["alpha", "beta", "gamma", "delta", "docs"].map((name) => ({ name, type: "dir" })).concat([{ name: "README.md", type: "file" }]) },
+  raw: Object.fromEntries(["alpha", "beta", "gamma", "delta"].map((name) => [PACK_RAW(name), skillMd(name, `The ${name} skill.`)])),
+};
 
 const pasteField = (page: Page) => view(page).getByLabel("Paste a GitHub URL");
 
@@ -263,20 +292,38 @@ describe("the Skills Library sample Module", () => {
     await view(page).getByRole("listitem").filter({ hasText: "Alpha" }).waitFor();
   });
 
-  test("the URL of a skill folder, entered, adds a set of one skill with the name and the description read from its SKILL.md", async () => {
+  /** Enters a URL in the field; the preview opens when skills are found. */
+  async function enter(page: Page, url: string) {
+    await pasteField(page).fill(url);
+    await pasteField(page).press("Enter");
+  }
+  const previewOf = (page: Page) => view(page).getByRole("dialog", { name: "Import a set" });
+  /** Imports what the preview shows, under its name. */
+  async function importPreview(page: Page) {
+    const preview = previewOf(page);
+    await preview.getByRole("button", { name: "Import", exact: true }).click();
+    await preview.waitFor({ state: "hidden" });
+  }
+
+  test("the URL of a skill folder, entered, imports a set of one skill, named after the skill, with the description read from its SKILL.md", async () => {
     const page = await host.newPage();
     const requests = await fakeGitHub(page);
     await install(page);
 
-    await pasteField(page).fill("https://github.com/acme/skills/tree/main/grill-me");
-    await pasteField(page).press("Enter");
+    await enter(page, "https://github.com/acme/skills/tree/main/grill-me");
+    const preview = previewOf(page);
+    await preview.getByLabel("Set name").waitFor();
+    assert.equal(await preview.getByLabel("Set name").inputValue(), "grill-me", "named after the skill");
+    await preview.getByText("Interviews you relentlessly about a plan.").waitFor();
+    assert.equal(await view(page).getByRole("listitem").count(), 0, "nothing is added before Import");
+    await importPreview(page);
     const row = view(page).getByRole("listitem").filter({ hasText: "grill-me" });
     await row.waitFor();
     assert.equal(await pasteField(page).inputValue(), "", "the field is emptied for the next URL");
 
     const [set] = await stored(page, (sets) => sets.length === 1);
     assert.equal(set.name, "grill-me");
-    assert.equal(set.description, "Interviews you relentlessly about a plan.");
+    assert.equal(set.description, "", "the description of a set is empty at import");
     assert.equal(set.sourceUrl, "https://github.com/acme/skills/tree/main/grill-me");
     assert.equal(set.skills.length, 1);
     assert.equal(set.skills[0].name, "grill-me");
@@ -287,13 +334,14 @@ describe("the Skills Library sample Module", () => {
     assert.deepEqual(requests, ["https://raw.githubusercontent.com/acme/skills/main/grill-me/SKILL.md"]);
   });
 
-  test("a pasted URL adds the skill at once", async () => {
+  test("a pasted URL opens the preview at once", async () => {
     const page = await host.newPage();
     await fakeGitHub(page);
     await install(page);
 
     await pasteField(page).focus();
     await paste(page, "github.com/acme/skills/blob/main/grill-me/SKILL.md");
+    await importPreview(page);
     await view(page).getByRole("listitem").filter({ hasText: "grill-me" }).waitFor();
     const [set] = await stored(page, (sets) => sets.length === 1);
     assert.equal(set.sourceUrl, "https://github.com/acme/skills/tree/main/grill-me");
@@ -303,8 +351,8 @@ describe("the Skills Library sample Module", () => {
     const page = await host.newPage();
     const requests = await fakeGitHub(page);
     await install(page);
-    await pasteField(page).fill("https://github.com/acme/skills/tree/main/grill-me");
-    await pasteField(page).press("Enter");
+    await enter(page, "https://github.com/acme/skills/tree/main/grill-me");
+    await importPreview(page);
     await view(page).getByRole("listitem").filter({ hasText: "grill-me" }).waitFor();
     await stored(page, (sets) => sets.length === 1);
 
@@ -312,20 +360,21 @@ describe("the Skills Library sample Module", () => {
     await pasteField(page).fill("https://github.com/ACME/skills/blob/main/grill-me/SKILL.md");
     await pasteField(page).press("Enter");
     await view(page).getByText("Already in your Library.").waitFor();
+    assert.equal(await previewOf(page).count(), 0, "no preview opens");
     assert.equal(await view(page).getByRole("listitem").count(), 1);
     assert.equal(requests.length, 1, "nothing more was read");
     assert.equal((await stored(page, () => true)).length, 1);
   });
 
-  test("a skill that cannot be found says so, and New set opens the dialog with the URL", async () => {
+  test("a URL that cannot be found says so, and Continue manually opens the dialog with the URL", async () => {
     const page = await host.newPage();
     await fakeGitHub(page);
     await install(page);
 
     await pasteField(page).fill("https://github.com/acme/skills/tree/main/unknown");
     await pasteField(page).press("Enter");
-    await view(page).getByText("No SKILL.md was found at this URL.").waitFor();
-    await view(page).getByRole("status").getByRole("button", { name: "New set" }).click();
+    await view(page).getByText("Nothing was found at this URL (is the repository public?).").waitFor();
+    await view(page).getByRole("status").getByRole("button", { name: "Continue manually" }).click();
     const dialog = view(page).getByRole("dialog", { name: "New set" });
     assert.equal(await dialog.getByLabel("URL").inputValue(), "https://github.com/acme/skills/tree/main/unknown");
     await dialog.getByLabel("Name").fill("Unknown");
@@ -336,7 +385,7 @@ describe("the Skills Library sample Module", () => {
     assert.equal(set.sourceUrl, "https://github.com/acme/skills/tree/main/unknown");
   });
 
-  test("a URL that is not a skill on GitHub says so, and New set keeps what was typed", async () => {
+  test("a URL that is not a skill on GitHub says so, and Continue manually keeps what was typed", async () => {
     const page = await host.newPage();
     const requests = await fakeGitHub(page);
     await install(page);
@@ -344,7 +393,7 @@ describe("the Skills Library sample Module", () => {
     await pasteField(page).fill("https://example.com/x");
     await pasteField(page).press("Enter");
     await view(page).getByText("This is not the GitHub URL of a skill.").waitFor();
-    await view(page).getByRole("status").getByRole("button", { name: "New set" }).click();
+    await view(page).getByRole("status").getByRole("button", { name: "Continue manually" }).click();
     assert.equal(await view(page).getByRole("dialog", { name: "New set" }).getByLabel("URL").inputValue(), "https://example.com/x");
     assert.deepEqual(requests, []);
   });
@@ -356,11 +405,103 @@ describe("the Skills Library sample Module", () => {
 
     await pasteField(page).fill("https://github.com/acme/skills/tree/main/grill-me");
     await pasteField(page).press("Enter");
-    const message = view(page).getByText("The SKILL.md could not be read (check your connection).");
+    const message = view(page).getByText("GitHub could not be read (check your connection).");
     await message.waitFor();
     assert.equal(await view(page).getByRole("listitem").count(), 0);
     await pasteField(page).fill("https://github.com/acme/skills/tree/main/grill-m");
     await message.waitFor({ state: "hidden" });
+  });
+
+  test("a set of four skills and a folder with no SKILL.md is previewed: the folder is left out, a skill is unchecked, the set is renamed, and three skills are not evaluated", async () => {
+    const page = await host.newPage();
+    await fakeGitHub(page, undefined, PACK);
+    await install(page);
+
+    await enter(page, "https://github.com/acme/pack/tree/main/skills");
+    const preview = previewOf(page);
+    assert.equal(await preview.getByLabel("Set name").inputValue(), "pack", "named after the repository");
+    const boxes = preview.getByRole("checkbox");
+    assert.equal(await boxes.count(), 4, "docs has no SKILL.md");
+    for (const name of ["alpha", "beta", "gamma", "delta"]) await preview.getByText(`The ${name} skill.`).waitFor();
+    assert.deepEqual(await boxes.evaluateAll((all) => all.map((box) => (box as HTMLInputElement).checked)), [true, true, true, true]);
+
+    const importButton = preview.getByRole("button", { name: "Import", exact: true });
+    for (const name of [/alpha/, /beta/, /gamma/, /delta/]) await preview.getByRole("checkbox", { name }).uncheck();
+    assert.ok(await importButton.isDisabled(), "at least one skill is needed");
+    for (const name of [/alpha/, /beta/, /gamma/, /delta/]) await preview.getByRole("checkbox", { name }).check();
+    await preview.getByRole("checkbox", { name: /beta/ }).uncheck();
+    await preview.getByLabel("Set name").fill("");
+    assert.ok(await importButton.isDisabled(), "a name is needed");
+    await preview.getByLabel("Set name").fill("Pack of three");
+    await importPreview(page);
+
+    const row = view(page).getByRole("listitem").filter({ hasText: "Pack of three" });
+    await row.getByText("3 skills (3 not evaluated)").waitFor();
+    assert.equal(await pasteField(page).inputValue(), "");
+    const [set] = await stored(page, (sets) => sets.length === 1);
+    assert.equal(set.name, "Pack of three");
+    assert.equal(set.sourceUrl, "https://github.com/acme/pack/tree/main/skills");
+    assert.deepEqual(set.skills.map((skill) => skill.name), ["alpha", "gamma", "delta"]);
+    assert.ok(set.skills.every((skill) => skill.score === undefined));
+  });
+
+  test("the four skills of a set can all be imported, and Cancel adds nothing", async () => {
+    const page = await host.newPage();
+    await fakeGitHub(page, undefined, PACK);
+    await install(page);
+
+    await enter(page, "https://github.com/acme/pack/tree/main/skills");
+    await previewOf(page).getByRole("button", { name: "Cancel" }).click();
+    await previewOf(page).waitFor({ state: "hidden" });
+    assert.equal(await view(page).getByRole("listitem").count(), 0);
+
+    await enter(page, "https://github.com/acme/pack/tree/main/skills");
+    await importPreview(page);
+    await view(page).getByRole("listitem").filter({ hasText: "pack" }).getByText("4 skills (4 not evaluated)").waitFor();
+    const [set] = await stored(page, (sets) => sets.length === 1);
+    assert.equal(set.skills.length, 4);
+  });
+
+  test("a folder with no skill directly under it says so, and Continue manually opens the dialog with the URL", async () => {
+    const page = await host.newPage();
+    const root = "https://api.github.com/repos/acme/pack/contents";
+    await fakeGitHub(page, undefined, { api: { [root]: [{ name: "skills", type: "dir" }, { name: "README.md", type: "file" }] } });
+    await install(page);
+
+    await enter(page, "https://github.com/acme/pack");
+    await view(page).getByText("No skill folder found directly under this URL. Point to the folder that contains them, e.g. …/tree/main/skills.").waitFor();
+    assert.equal(await previewOf(page).count(), 0);
+    await view(page).getByRole("status").getByRole("button", { name: "Continue manually" }).click();
+    assert.equal(await view(page).getByRole("dialog", { name: "New set" }).getByLabel("URL").inputValue(), "https://github.com/acme/pack");
+  });
+
+  test("the same URL of a set entered twice opens the preview once; the second time the existing set is shown", async () => {
+    const page = await host.newPage();
+    const requests = await fakeGitHub(page, undefined, PACK);
+    await install(page);
+
+    await enter(page, "https://github.com/acme/pack/tree/main/skills");
+    await importPreview(page);
+    await view(page).getByRole("listitem").filter({ hasText: "pack" }).waitFor();
+    await stored(page, (sets) => sets.length === 1);
+    const before = requests.length;
+
+    await enter(page, "https://github.com/acme/pack/tree/main/skills");
+    await view(page).getByText("Already in your Library.").waitFor();
+    assert.equal(await previewOf(page).count(), 0);
+    assert.equal(await view(page).getByRole("listitem").count(), 1);
+    assert.equal(requests.length, before, "nothing more was requested");
+  });
+
+  test("the rate limit of the API says so, and Continue manually is offered", async () => {
+    const page = await host.newPage();
+    await fakeGitHub(page, undefined, { api: { [PACK_API]: 403 } });
+    await install(page);
+
+    await enter(page, "https://github.com/acme/pack/tree/main/skills");
+    await view(page).getByText("GitHub rate limit reached, try again later.").waitFor();
+    await view(page).getByRole("status").getByRole("button", { name: "Continue manually" }).waitFor();
+    assert.equal(await previewOf(page).count(), 0);
   });
 
   test("a set added by hand with a URL that is there already adds nothing", async () => {
@@ -378,6 +519,62 @@ describe("the Skills Library sample Module", () => {
     await view(page).getByText("Already in your Library.").waitFor();
     assert.equal(await view(page).getByRole("listitem").count(), 1);
     assert.equal((await stored(page, () => true)).length, 1);
+  });
+
+  test("refreshing a set from GitHub adds the new skills, marks the ones gone, and says what it did", async () => {
+    const page = await host.newPage();
+    const answers = structuredClone(PACK);
+    await fakeGitHub(page, undefined, answers);
+    await install(page);
+    await addByHand(page, "By hand");
+    await view(page).getByRole("dialog", { name: "By hand" }).waitFor();
+    assert.equal(await view(page).getByRole("button", { name: "Refresh from GitHub" }).count(), 0, "no GitHub url, no button");
+    await view(page).getByRole("dialog", { name: "By hand" }).getByRole("button", { name: "Close" }).click();
+
+    await enter(page, "https://github.com/acme/pack/tree/main/skills");
+    await importPreview(page);
+    await view(page).getByRole("listitem").filter({ hasText: "pack" }).getByText("4 skills (4 not evaluated)").waitFor();
+
+    // One skill more upstream, one less.
+    answers.api![PACK_API] = ["alpha", "beta", "gamma", "epsilon", "docs"].map((name) => ({ name, type: "dir" }));
+    answers.raw![PACK_RAW("epsilon")] = skillMd("epsilon", "The epsilon skill.");
+    const panel = await openPanel(page, "pack");
+    await panel.getByRole("button", { name: "Refresh from GitHub" }).click();
+    await panel.getByRole("status").getByText("1 skill added, 1 removed upstream").waitFor();
+    const gone = panel.locator("[data-skill-section]").filter({ hasText: "delta" });
+    await gone.getByText("Removed upstream").waitFor();
+    const added = panel.locator("[data-skill-section]").filter({ hasText: "epsilon" });
+    await added.getByText("Not evaluated").first().waitFor();
+    assert.equal(await panel.getByText("Removed upstream", { exact: true }).count(), 1);
+    const [set] = await stored(page, (sets) => sets.some((one) => one.skills.some((skill) => skill.name === "epsilon")));
+    assert.deepEqual(set.skills.map((skill) => skill.name), ["alpha", "beta", "gamma", "delta", "epsilon"]);
+    assert.deepEqual(set.skills.filter((skill: any) => skill.goneUpstream).map((skill) => skill.name), ["delta"]);
+
+    await panel.getByRole("button", { name: "Refresh from GitHub" }).click();
+    await panel.getByRole("status").getByText("Already up to date").waitFor();
+
+    // The skill is back: it loses its mark.
+    answers.api![PACK_API] = ["alpha", "beta", "gamma", "delta", "epsilon", "docs"].map((name) => ({ name, type: "dir" }));
+    await panel.getByRole("button", { name: "Refresh from GitHub" }).click();
+    await panel.getByRole("status").getByText("Already up to date").waitFor();
+    await panel.getByText("Removed upstream", { exact: true }).waitFor({ state: "detached" });
+  });
+
+  test("a refresh that cannot read GitHub says so and changes nothing", async () => {
+    const page = await host.newPage();
+    const answers = structuredClone(PACK);
+    await fakeGitHub(page, undefined, answers);
+    await install(page);
+    await enter(page, "https://github.com/acme/pack/tree/main/skills");
+    await importPreview(page);
+    await view(page).getByRole("listitem").filter({ hasText: "pack" }).getByText("4 skills (4 not evaluated)").waitFor();
+
+    answers.api![PACK_API] = 403;
+    const panel = await openPanel(page, "pack");
+    await panel.getByRole("button", { name: "Refresh from GitHub" }).click();
+    await panel.getByRole("status").getByText("GitHub rate limit reached, try again later.").waitFor();
+    assert.equal(await panel.getByText("Removed upstream", { exact: true }).count(), 0);
+    assert.equal((await stored(page, (sets) => sets.length === 1))[0].skills.length, 4);
   });
 
   // The edit panel, the quadrants and the filters (skills-library ticket 03).
@@ -762,6 +959,132 @@ describe("the Skills Library sample Module", () => {
     assert.ok(svg && svg.width > 200 && svg.width <= 360, `the radar is ${svg?.width} px wide`);
     const overflow = await view(page).locator("html").evaluate((html) => html.scrollWidth - html.clientWidth);
     assert.ok(overflow <= 0, `the page overflows by ${overflow} px`);
+  });
+
+  // The panel of a point (skills-library ticket 14).
+
+  const radarPanel = (page: Page) => view(page).locator(".sl-radar-panel");
+
+  /** A set in a ring and a quadrant, with a scored skill and a skill not evaluated. */
+  async function addBundle(page: Page, name: string, ring: string, quadrant: string) {
+    await addByHand(page, name);
+    const panel = panelOf(page, name);
+    await panel.waitFor();
+    await panel.getByRole("radio", { name: ring }).check();
+    await panel.getByLabel("Quadrant").selectOption({ label: quadrant });
+    await addSkill(page, panel, `${name} first`);
+    await addSkill(page, panel, `${name} second`);
+    const first = section(panel, `${name} first`);
+    await first.locator("summary").click();
+    await first.getByRole("radio", { name: "4 out of 5" }).check({ force: true });
+    await stored(page, (sets) => sets.some((item) => item.name === name && item.skills[0]?.score === 4));
+    await panel.getByRole("button", { name: "Close" }).click();
+    await panel.waitFor({ state: "hidden" });
+  }
+
+  test("hovering a point shows its set, its ring, its quadrant and its skills with their stars; leaving closes it", async () => {
+    const page = await host.newPage();
+    await install(page);
+    await addBundle(page, "Bundle", "Try", "Code & tests");
+    await radarTab(page);
+    await dots(page).first().waitFor();
+
+    assert.equal(await radarPanel(page).count(), 0);
+    await dots(page).first().hover();
+    const panel = radarPanel(page);
+    await panel.waitFor();
+    assert.equal(await panel.getByRole("button", { name: "Bundle" }).count(), 1);
+    assert.match(await panel.innerText(), /Ring\s*Try/i);
+    assert.match(await panel.innerText(), /Quadrant\s*Code & tests/i);
+    const lines = panel.getByRole("listitem");
+    assert.equal(await lines.count(), 2);
+    assert.match(await lines.nth(0).innerText(), /Bundle first/);
+    assert.equal(await lines.nth(0).getByRole("img", { name: "4 out of 5" }).innerText(), "★★★★☆");
+    assert.match(await lines.nth(1).innerText(), /Bundle second\s*Not evaluated/);
+
+    await view(page).getByRole("button", { name: /^Publish edition/ }).hover();
+    await panel.waitFor({ state: "hidden" });
+  });
+
+  test("the pointer can go from a point into its panel and click the name, which opens the set in the Library", async () => {
+    const page = await host.newPage();
+    await install(page);
+    await addBundle(page, "Bundle", "Try", "Code & tests");
+    await radarTab(page);
+    await dots(page).first().hover();
+    const name = radarPanel(page).getByRole("button", { name: "Bundle" });
+    await name.hover();
+    await name.click();
+    await panelOf(page, "Bundle").waitFor();
+    await view(page).getByRole("tab", { name: "Library", selected: true }).waitFor();
+  });
+
+  test("the points are walked with Tab in the order of their numbers; focus opens the panel, Escape closes it and Enter opens it again", async () => {
+    const page = await host.newPage();
+    await install(page);
+    await addBundle(page, "Zulu", "Try", "Design & planning");
+    await addBundle(page, "Alpha", "Try", "Design & planning");
+    await addBundle(page, "Mike", "Watch", "Code & tests");
+    await radarTab(page);
+    await dots(page).nth(2).waitFor();
+
+    await view(page).getByRole("button", { name: /^Publish edition/ }).focus();
+    const focused = view(page).locator("svg [data-set-id]:focus");
+    const names = [] as string[];
+    for (let number = 1; number <= 3; number++) {
+      await page.keyboard.press("Tab");
+      assert.equal(await focused.getAttribute("data-number"), String(number));
+      await radarPanel(page).waitFor();
+      names.push(await radarPanel(page).getByRole("button").first().innerText());
+    }
+    assert.deepEqual(names, ["Alpha", "Zulu", "Mike"]);
+
+    await page.keyboard.press("Escape");
+    await radarPanel(page).waitFor({ state: "hidden" });
+    await page.keyboard.press("Enter");
+    await radarPanel(page).waitFor();
+    assert.equal(await radarPanel(page).getByRole("button").first().innerText(), "Mike");
+  });
+
+  test("a tap on a point opens its panel instead of the set, and a tap elsewhere closes it", async () => {
+    const page = await host.newPage();
+    await install(page);
+    await addBundle(page, "Bundle", "Try", "Code & tests");
+    await radarTab(page);
+    const dot = dots(page).first();
+    await dot.waitFor();
+
+    await dot.dispatchEvent("pointerdown", { pointerType: "touch", bubbles: true });
+    await dot.dispatchEvent("click");
+    await radarPanel(page).waitFor();
+    await view(page).getByRole("tab", { name: "Radar", selected: true }).waitFor();
+
+    await view(page).locator(".sl-legend-heading").first().dispatchEvent("pointerdown", { pointerType: "touch", bubbles: true });
+    await radarPanel(page).waitFor({ state: "hidden" });
+  });
+
+  test("the panel stays inside a 360 px wide screen, for every point", async () => {
+    const page = await host.newPage();
+    await page.setViewportSize({ width: 360, height: 800 });
+    await install(page);
+    await addBundle(page, "Alpha", "Recommended", "Design & planning");
+    await addBundle(page, "Bravo", "Deprecated", "Code & tests");
+    await addBundle(page, "Charlie", "Watch", "Tooling & workflow");
+    await radarTab(page);
+    await dots(page).nth(2).waitFor();
+
+    for (let index = 0; index < 3; index++) {
+      // The points are reached by focus: at this width the launcher of the Host covers the top of the View.
+      await dots(page).nth(index).focus();
+      await radarPanel(page).waitFor();
+      const box = await radarPanel(page).evaluate((element) => {
+        const { left, right, top } = element.getBoundingClientRect();
+        return { left, right, top, width: window.innerWidth };
+      });
+      assert.ok(box.left >= 0 && box.right <= box.width, `the panel of point ${index + 1} spans ${box.left} to ${box.right} of ${box.width} px`);
+      await page.keyboard.press("Escape");
+      await radarPanel(page).waitFor({ state: "hidden" });
+    }
   });
 
   // Editions (skills-library ticket 06).
