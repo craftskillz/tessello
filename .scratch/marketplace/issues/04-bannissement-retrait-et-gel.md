@@ -6,7 +6,7 @@ Spec parente : `.scratch/marketplace/spec.md`. Vocabulaire : `GLOSSARY.md`. Déc
 
 **Blocked by:** 03
 
-**Status:** ready-for-human
+**Status:** resolved
 
 - [x] Le Vérificateur reconnaît les types `withdrawal` et `ban`. Un Retrait par le propriétaire de l'Espace de noms est fusionné automatiquement ; il n'efface jamais un Bannissement. Seul le Mainteneur ajoute ou lève un Bannissement, et il en donne la raison.
 - [x] Un Module banni n'accepte plus de version ; un Espace de noms `banned` ou `frozen` n'accepte plus rien, et le Bannissement d'un Espace de noms bannit tous ses Modules dans l'index.
@@ -26,3 +26,4 @@ Spec parente : `.scratch/marketplace/spec.md`. Vocabulaire : `GLOSSARY.md`. Déc
 - 2026-10-23 — **Reste à faire, avec l'accord du Mainteneur :** pousser `craftskillz/tessello` (commit `d9162de`), puis `tessello-marketplace` ; créer le label `namespace-changed` ; essai réel sur `craftskillz/tessello-marketplace-test` : un Retrait fusionné seul, un Bannissement par un Créateur refusé, un Bannissement du Mainteneur (vérifie que le `GITHUB_TOKEN` lit bien l'endpoint de permission), un gel. Puis passer ce ticket à `resolved`.
 - 2026-10-23 — Le Mainteneur a relu et accepté les ajouts de `PUBLISHING.md`. Commit local `410d976` dans `tessello-marketplace` : `PUBLISHING.md`, le label du gel dans `check.yml` et l'outil épinglé à `d9162de`. Rien n'est poussé.
 - 2026-10-23 — `craftskillz/tessello` est poussé et le label `namespace-changed` est créé dans `craftskillz/tessello-marketplace`. Le commit de la Marketplace est sur la branche `marketplace-ticket-04` (`68240bb`, à partir de `main`). Le dépôt de test `craftskillz/tessello-marketplace-test` n'existe plus : l'essai réel reste à organiser.
+- 2026-10-23 — **Décision du Mainteneur : pas d'essai réel.** Le ticket est résolu sur la foi des tests unitaires ; le premier Retrait ou Bannissement réel servira d'essai. Point non vérifié : la lecture de la permission d'un collaborateur par le `GITHUB_TOKEN` de la CI. Si elle échoue, l'étape de vérification échoue (aucune fusion à tort). Reste à fusionner la branche `marketplace-ticket-04` dans `main` de `tessello-marketplace`.
