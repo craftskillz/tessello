@@ -71,6 +71,16 @@ const SANDBOX_APIS: { name: string; pattern: RegExp; hint: string }[] = [
   },
 ];
 
+/** Whether `id` is a valid Module Identifier, `@namespace/name` (CONVENTION.md §3). */
+export function isModuleId(id: string): boolean {
+  return ID_PATTERN.test(id);
+}
+
+/** Whether `version` is a valid semver version (CONVENTION.md §3). */
+export function isSemver(version: string): boolean {
+  return SEMVER_PATTERN.test(version);
+}
+
 /** Validates a .zip package (CONVENTION.md §9). Never throws. */
 export function validateZip(bytes: Uint8Array): ValidationReport {
   return readZip(bytes).report;
@@ -153,11 +163,11 @@ function checkManifest(m: Record<string, unknown>, files: PackageFiles, issues: 
     );
   }
 
-  checkString(m, "id", issues, (v) => ID_PATTERN.test(v), "manifest/invalid-id",
+  checkString(m, "id", issues, isModuleId, "manifest/invalid-id",
     `must look like "@namespace/name" (lowercase letters, digits and "-"; namespace ≤ 39 chars, name ≤ 64 chars)`);
   checkString(m, "name", issues, (v) => v.trim().length >= 1 && v.length <= LIMITS.nameMaxLength, "manifest/invalid-name",
     `must be 1 to ${LIMITS.nameMaxLength} characters`);
-  checkString(m, "version", issues, (v) => SEMVER_PATTERN.test(v), "manifest/invalid-version",
+  checkString(m, "version", issues, isSemver, "manifest/invalid-version",
     `must be a semantic version such as "1.0.0" or "1.0.0-beta.1"`);
   if (m.description !== undefined) {
     checkString(m, "description", issues, (v) => v.length <= LIMITS.descriptionMaxLength, "manifest/invalid-description",

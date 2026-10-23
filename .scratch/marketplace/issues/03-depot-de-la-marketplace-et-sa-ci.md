@@ -4,7 +4,7 @@ Spec parente : `.scratch/marketplace/spec.md`. Vocabulaire : `GLOSSARY.md`. Déc
 
 **What to build:** Le dépôt public `craftskillz/tessello-marketplace` : une pull request de Créateur est vérifiée par la CI ; un nouveau Module attend l'Approbation du Mainteneur, une nouvelle version est fusionnée automatiquement.
 
-**Blocked by:** 01, 02, ticket 13 de tessello-v1 (Validateur et `@tessello/marketplace` sur npm)
+**Blocked by:** 01, 02
 
 **Status:** ready-for-agent
 
@@ -16,3 +16,8 @@ Spec parente : `.scratch/marketplace/spec.md`. Vocabulaire : `GLOSSARY.md`. Déc
 - [ ] À chaque fusion, le Générateur produit l'index et le site (le déploiement est le ticket 05).
 - [ ] Essai réel sur un dépôt de test, avec un faux Créateur : nouveau Module, Approbation, nouvelle version fusionnée seule, version refusée. Résultat consigné dans le ticket.
 - [ ] La création du dépôt et du jeton de fusion n'est faite qu'avec l'accord explicite du Mainteneur. `PUBLISHING.md` lui est soumis avant l'ouverture (relecture juridique conseillée).
+
+## Comments
+
+- 2026-10-23 — **Décision du Mainteneur : les outils viennent du dépôt `craftskillz/tessello`, pas de npm.** La CI de la Marketplace clone `craftskillz/tessello` à un commit épinglé, installe ses dépendances et importe `@tessello/convention` et `@tessello/marketplace` depuis ce clone. Ce ticket ne dépend donc plus du ticket 13 de tessello-v1. Aucun code de la pull request n'est exécuté : le clone est fixé par le dépôt de la Marketplace, pas par le Créateur. Monter le commit épinglé est une pull request du Mainteneur.
+- 2026-10-23 — Le dépôt `craftskillz/tessello-marketplace` est créé par le Mainteneur (public, licence MIT, sans README).

@@ -88,6 +88,14 @@ _Avoid_: Suppression, blocage, modération
 Le retrait d'un de ses Modules, ou d'une de ses versions, de la Marketplace par son Créateur.
 _Avoid_: Dépublication, suppression
 
+**Fiche** (*Listing*):
+Le fichier `entry.json` d'un Module dans la Marketplace : son Identifiant, son dépôt source, sa licence, ses tags, ses captures et, pour chaque version, l'URL et l'empreinte de son paquet.
+_Avoid_: Entrée, annonce
+
+**Vérificateur de fiche** (*Listing Verifier*):
+La fonction que la CI de la Marketplace applique à une pull request : elle dit si la Fiche et les paquets qu'elle ajoute sont acceptables, et quel type de changement c'est. Elle lance le Validateur sur chaque nouveau paquet, sans le remplacer.
+_Avoid_: Validateur (réservé à la conformité d'un paquet), vérificateur seul
+
 ## Personnes
 
 **Créateur** (*Creator*):
