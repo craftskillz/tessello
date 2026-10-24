@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 import type { Page } from "playwright";
-import { dropFile, readFolder, showLauncher, useHost, zipSample } from "./browser.ts";
+import { dropFile, moduleFixture, readFolder, showLauncher, useHost } from "./browser.ts";
 
 const host = useHost();
 
 let survivalKit: Uint8Array;
 before(async () => {
-  survivalKit = await zipSample("survival-kit");
+  survivalKit = await moduleFixture("survival-kit");
 });
 
 /** Installs the Survival Kit from its .zip; the Host then shows its View. */
@@ -55,7 +55,7 @@ async function addCodeNote(page: Page, title: string, code: string) {
   await dialog.getByRole("button", { name: "Save" }).click();
 }
 
-describe("the Survival Kit sample Module", () => {
+describe("the Survival Kit Module", () => {
   test("keeps a task, a note with a Code block and a link after a reload", async () => {
     const page = await host.newPage();
     await install(page);

@@ -19,9 +19,6 @@
     "packages/*/scripts",
     "packages/*/e2e",
     "packages/*/packed",
-    "scripts",
-    "sample-modules/*/src",
-    "sample-modules/*/test",
-    "sample-modules/*/scripts"
+    "scripts"
   ]
 }

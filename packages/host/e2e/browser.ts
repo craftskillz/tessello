@@ -4,8 +4,7 @@
 // system (OPFS) instead, which has the same FileSystemDirectoryHandle interface. Changes a User makes with their own
 // tools (git clone, an editor, git pull) are made by writing in that folder.
 
-import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { readdir, readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -175,15 +174,9 @@ export async function zipExample(name: string): Promise<Uint8Array> {
   return zipSync(await exampleFiles(name));
 }
 
-/** Builds a sample Module from its sources, then zips its package, as its Creator does before sharing it. */
-export async function zipSample(name: string): Promise<Uint8Array> {
-  const { buildPackage } = await import(`../../../sample-modules/${name}/scripts/build.ts`);
-  const out = await mkdtemp(join(tmpdir(), `tessello-${name}-`));
-  try {
-    return zipSync(await filesOf(await buildPackage(out)));
-  } finally {
-    await rm(out, { recursive: true, force: true });
-  }
+/** The published package of a @craftskillz Module, as zipped in `fixtures/` (its sources live in `craftskillz/tessello-<name>`). */
+export async function moduleFixture(name: string): Promise<Uint8Array> {
+  return new Uint8Array(await readFile(fileURLToPath(new URL(`./fixtures/${name}.zip`, import.meta.url))));
 }
 
 /** Zips in-memory files: path → text, bytes, or an object written as JSON. */

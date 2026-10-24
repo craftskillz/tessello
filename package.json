@@ -4,11 +4,10 @@
   "license": "MIT",
   "type": "module",
   "workspaces": [
-    "packages/*",
-    "sample-modules/*"
+    "packages/*"
   ],
   "scripts": {
-    "test": "node --test \"packages/*/test/*.test.ts\" \"sample-modules/*/test/*.test.ts\"",
+    "test": "node --test \"packages/*/test/*.test.ts\"",
     "typecheck": "tsc -p .",
     "build:sdk": "node packages/sdk/scripts/build-local-copy.ts",
     "build:host": "node packages/host/scripts/build.ts",
@@ -16,9 +15,8 @@
     "build:packages": "node scripts/build-packages.ts",
     "start:host": "npm run build:host && node packages/host/scripts/serve.ts",
     "test:browser": "npm run build:host && node --test --test-concurrency=1 \"packages/*/e2e/*.test.ts\"",
-    "test:compiled": "npm run build:packages && node --import ./scripts/use-compiled.ts --test \"packages/*/test/*.test.ts\" \"sample-modules/*/test/*.test.ts\"",
-    "test:packed": "node --test \"packages/*/packed/*.test.ts\"",
-    "build:samples": "npm run build --workspaces --if-present"
+    "test:compiled": "npm run build:packages && node --import ./scripts/use-compiled.ts --test \"packages/*/test/*.test.ts\"",
+    "test:packed": "node --test \"packages/*/packed/*.test.ts\""
   },
   "devDependencies": {
     "@types/node": "^24.10.0",

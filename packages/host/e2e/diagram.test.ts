@@ -2,19 +2,13 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { before, describe, test } from "node:test";
 import type { Page } from "playwright";
-import { dropFile, readFolder, showLauncher, useHost, writeFolder, zipSample } from "./browser.ts";
+import { dropFile, moduleFixture, readFolder, showLauncher, useHost, writeFolder } from "./browser.ts";
 
 const host = useHost();
 
 let diagram: Uint8Array;
 /** A small opaque picture. */
 let noise: Buffer;
-before(async () => {
-  diagram = await zipSample("diagram");
-  const page = await host.newPage();
-  noise = await noisePng(page, 200, 150);
-  await page.close();
-});
 
 const view = (page: Page) => page.frameLocator("iframe[title='Diagram']");
 const canvas = (page: Page) => view(page).getByRole("application", { name: "Canvas" });
@@ -347,7 +341,14 @@ const SECOND_DIAGRAMS = [
 const SAMPLE_LIBRARIES = { libraries: [{ id: "lib-1", name: "Infra", shapes: [{ id: "srv", name: "Server", imageSrc: "/images/icon.png", width: 80, height: 40 }] }] };
 const json = (name: string, value: unknown) => ({ name, mimeType: "application/json", buffer: Buffer.from(JSON.stringify(value)) });
 
-describe("the Diagram sample Module", () => {
+describe("the Diagram Module", () => {
+  before(async () => {
+    diagram = await moduleFixture("diagram");
+    const page = await host.newPage();
+    noise = await noisePng(page, 200, 150);
+    await page.close();
+  });
+
   test("a visible connection handle stays reachable over a nearby shape, while ordinary hover finds the frontmost shape", async () => {
     const page = await host.newPage();
     await install(page);

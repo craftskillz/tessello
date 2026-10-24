@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 import type { Page } from "playwright";
-import { dropFile, readFolder, showLauncher, useHost, writeFolder, zipSample } from "./browser.ts";
+import { dropFile, moduleFixture, readFolder, showLauncher, useHost, writeFolder } from "./browser.ts";
 
 const host = useHost();
 
 let watchLater: Uint8Array;
 before(async () => {
-  watchLater = await zipSample("watch-later");
+  watchLater = await moduleFixture("watch-later");
 });
 
 const ID = "dQw4w9WgXcQ";
@@ -97,7 +97,7 @@ async function stored(page: Page, written: (videos: Awaited<ReturnType<typeof st
   assert.fail("the Host did not write the change");
 }
 
-describe("the Watch Later sample Module", () => {
+describe("the Watch Later Module", () => {
   test("a pasted URL shows the video with its title and channel, opens it on YouTube at its start, and is kept after a reload", async () => {
     const page = await host.newPage();
     await fakeYouTube(page);

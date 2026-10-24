@@ -4,13 +4,13 @@ import { before, describe, test } from "node:test";
 import { strFromU8, unzipSync } from "fflate";
 import matter from "gray-matter";
 import type { Locator, Page } from "playwright";
-import { dropFile, readFolder, showLauncher, useHost, writeFolder, zipSample } from "./browser.ts";
+import { dropFile, moduleFixture, readFolder, showLauncher, useHost, writeFolder } from "./browser.ts";
 
 const host = useHost();
 
 let skillsLibrary: Uint8Array;
 before(async () => {
-  skillsLibrary = await zipSample("skills-library");
+  skillsLibrary = await moduleFixture("skills-library");
 });
 
 const TOPICS = ["Design & planning", "Code & tests", "Writing & docs", "Tooling & workflow", "Learning & upskilling"];
@@ -165,7 +165,7 @@ const paste = (page: Page, text: string) =>
     input.dispatchEvent(new ClipboardEvent("paste", { clipboardData, bubbles: true, cancelable: true }));
   }, text);
 
-describe("the Skills Library sample Module", () => {
+describe("the Skills Library Module", () => {
   test("a set added by hand is listed with its defaults, links to its URL, and is kept after a reload", async () => {
     const page = await host.newPage();
     await install(page);
