@@ -72,8 +72,29 @@ describe("tessello validate", () => {
   });
 
   test("unknown command is a usage error", async () => {
+    const result = await cli("frobnicate");
+    assert.equal(result.code, 2);
+    assert.match(result.err, /Unknown command "frobnicate"/);
+  });
+});
+
+describe("tessello publish through run", () => {
+  test("the help lists publish", async () => {
+    assert.match((await cli("--help")).out, /publish <package\.zip> --url <URL>/);
+  });
+
+  test("publish without arguments is a usage error", async () => {
     const result = await cli("publish");
     assert.equal(result.code, 2);
-    assert.match(result.err, /Unknown command "publish"/);
+    assert.match(result.err, /Usage: tessello publish/);
+  });
+
+  test("publish hands its dependencies over: without --accept-terms nothing is called", async () => {
+    const out: string[] = [];
+    const err: string[] = [];
+    const gh = async () => assert.fail("gh must not be called");
+    const code = await run(["publish", "weather.zip", "--url", "https://example.test/w.zip"], { out: (t) => out.push(t), err: (t) => err.push(t) }, { gh, cwd: tmpdir() });
+    assert.equal(code, 2);
+    assert.match(err.join("\n"), /PUBLISHING\.md/);
   });
 });

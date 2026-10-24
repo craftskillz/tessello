@@ -1,6 +1,6 @@
 {
   "name": "tessello",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Tessello command-line tool.",
   "license": "MIT",
   "type": "module",
@@ -8,6 +8,7 @@
     "tessello": "./src/cli.ts"
   },
   "dependencies": {
-    "@tessello/convention": "0.1.0"
+    "@tessello/convention": "0.1.0",
+    "@tessello/marketplace": "0.1.0"
   }
 }

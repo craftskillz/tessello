@@ -25,3 +25,7 @@ Décidé au grilling de la Marketplace (`.scratch/marketplace/spec.md`) :
 - [ ] La skill s'arrête toujours au `.zip` qui passe `tessello validate`. Elle ne conduit pas la publication.
 - [ ] Une courte section « Publishing » renvoie à `PUBLISHING.md` de la Marketplace, recommande GitHub Pages pour héberger le `.zip` (une URL par version, jamais écrasée), et rappelle que l'Identifiant doit être sous l'Espace de noms du compte GitHub du Créateur (ADR 0016).
 - [ ] La note « Publishing your Module » de la Convention (§8) renvoie elle aussi à `PUBLISHING.md`.
+
+## Comments
+
+- 2026-10-24 — Ticket 09 de marketplace : la skill doit mentionner `tessello publish <paquet.zip> --url <URL> --accept-terms` pour la mise sur la Marketplace (et les modèles `craftskillz/tessello-template-svelte` et `-typescript`).
