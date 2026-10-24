@@ -66,6 +66,12 @@ describe("building the site from a repository folder", () => {
     assert.ok(!(await readdir(out())).includes("stale.txt"));
   });
 
+  test("lets any origin read index.json and the assets, through Cloudflare Pages' _headers file", async () => {
+    const headers = await readFile(join(out(), "_headers"), "utf8");
+    assert.match(headers, /^\/index\.json\n  Access-Control-Allow-Origin: \*$/m);
+    assert.match(headers, /^\/modules\/\*\n  Access-Control-Allow-Origin: \*$/m);
+  });
+
   test("reports an unreadable entry.json and skips it", () => {
     assert.deepEqual(issues.map((i) => i.code), ["site/unreadable-entry"]);
     assert.match(issues[0]?.message ?? "", /yassine\/broken/);

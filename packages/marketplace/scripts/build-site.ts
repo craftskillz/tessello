@@ -10,6 +10,14 @@ import { buildIndex, describedVersion, parseEntry, renderSite, type IndexInput, 
 
 const SEARCH_ENTRY = fileURLToPath(new URL("../src/site/search.ts", import.meta.url));
 
+/** Cloudflare Pages' headers file: every Host, whatever its origin, reads index.json and the assets under modules/. */
+const HEADERS = `/index.json
+  Access-Control-Allow-Origin: *
+
+/modules/*
+  Access-Control-Allow-Origin: *
+`;
+
 export interface BuildSiteOptions {
   /** A checkout of the Marketplace repository: `modules/<namespace>/<name>/entry.json` and the files next to it. */
   repo: string;
@@ -72,6 +80,7 @@ export async function buildSite(options: BuildSiteOptions): Promise<Issue[]> {
   await put("index.json", JSON.stringify(generated.index));
   for (const [path, bytes] of generated.assets) await put(path, bytes);
   for (const [path, content] of renderSite(generated.index, { hostUrl: options.hostUrl })) await put(path, content);
+  await put("_headers", HEADERS);
   await build({
     entryPoints: [SEARCH_ENTRY],
     outfile: join(options.out, "search.js"),

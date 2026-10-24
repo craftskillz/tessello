@@ -134,7 +134,7 @@ Every issue is an error and has a stable code.
 
 ## The index: `index.json`
 
-`index.json` and the assets must be served with `Access-Control-Allow-Origin: *`, since the Host fetches them from another origin (set up with the deployment).
+`index.json` and the assets must be served with `Access-Control-Allow-Origin: *`, since the Host fetches them from another origin. `build-site.ts` writes a `_headers` file that sets it on Cloudflare Pages, where the Marketplace is served from `https://tessello-marketplace.pages.dev/`.
 
 `buildIndex({ listings, packages, generatedAt, namespaces })` turns the accepted listings and the packages of the versions they describe (`"<id>@<version>"` → `.zip`) into `{ index, assets, issues }`. The CI writes `JSON.stringify(index)` as `index.json` and each entry of `assets` as a file next to it; the Host fetches both and reuses `searchModules`. It never throws: a problem is an `issue` and costs the Module its `latest`, or a screenshot.
 

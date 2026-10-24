@@ -4,10 +4,10 @@
 import type { IndexSource, MarketplaceIndex } from "@tessello/host-core";
 
 /**
- * Where the Host reads the Marketplace from. Provisional: the domain is settled by ticket 12 of tessello-v1. The tests
- * and a Maintainer's trials replace it with the `tessello.marketplace` entry of the browser's local storage.
+ * Where the Host reads the Marketplace from: its Cloudflare Pages project. Every Host carries this address, so it never
+ * changes. The tests and a Maintainer's trials replace it with the `tessello.marketplace` entry of the browser's local storage.
  */
-export const MARKETPLACE_INDEX_URL = "https://marketplace.tessello.app/index.json";
+export const MARKETPLACE_INDEX_URL = "https://tessello-marketplace.pages.dev/index.json";
 
 /** An asset of the Marketplace (an icon, a guide image, a screenshot) as a URL, from its path in the index. */
 export const assetUrl = (indexUrl: string, path: string) => new URL(path, indexUrl).href;
