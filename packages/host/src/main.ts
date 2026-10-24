@@ -373,8 +373,9 @@ function updateVisibility() {
   const pageShown = document.visibilityState === "visible";
   for (const cell of cells.values()) cell.surface?.setVisible(pageShown && !home.hidden);
   current?.surface?.setVisible(pageShown && !current.element.hidden);
-  // Behind a View, the Launcher becomes a drawer, shown again near the left edge of the page.
-  document.body.classList.toggle("drawer", home.hidden);
+  // Behind a View, the Launcher becomes a drawer, shown again near the left edge of the page. The Marketplace screen is
+  // the Host's own: the Launcher stays.
+  document.body.classList.toggle("drawer", home.hidden && current?.id !== MARKETPLACE_SCREEN);
 }
 
 function clearStage() {
@@ -1317,13 +1318,17 @@ async function marketplaceRisk(id: string): Promise<Node[]> {
   ];
 }
 
+/** The `current` of the Marketplace screen, which no Module ID can be: a Module ID starts with "@". */
+const MARKETPLACE_SCREEN = "marketplace";
+
 /** Opens the Marketplace screen: the index is downloaded now, or the last copy shown. */
 async function showMarketplace() {
   const screen = el("section", { className: "marketplace", "aria-label": t.marketplace }, el("h1", {}, t.marketplace), el("p", {}, t.marketplaceLoading));
   clearStage();
   stage.append(screen);
-  const self = (current = { id: "marketplace", element: screen });
+  const self = (current = { id: MARKETPLACE_SCREEN, element: screen });
   renderLauncher();
+  updateVisibility();
   const reading = await host.readMarketplace();
   void refreshNotices();
   if (current !== self) return;

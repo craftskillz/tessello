@@ -92,6 +92,9 @@ describe("the Marketplace screen", () => {
     // The icon of the result is the index's asset.
     const icon = screen.getByRole("button", { name: /Notes/ }).getByRole("img");
     assert.match((await icon.getAttribute("src"))!, new RegExp(`^${marketplace.url}/modules/craftskillz/notes/1\\.1\\.0/icon\\.svg$`));
+    // Styled: the icon of a card is small, and the Launcher stays beside the screen.
+    assert.ok((await icon.boundingBox())!.width <= 64);
+    assert.ok(await page.getByRole("navigation", { name: "Launcher" }).isVisible());
     await screen.getByRole("combobox", { name: "Permissions" }).selectOption("none");
     assert.equal(await screen.getByRole("button", { name: /Notes/ }).count(), 1);
     await screen.getByRole("button", { name: /Notes/ }).click();
