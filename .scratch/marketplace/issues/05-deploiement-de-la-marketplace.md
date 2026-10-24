@@ -12,3 +12,7 @@ Spec parente : `.scratch/marketplace/spec.md`. Vocabulaire : `GLOSSARY.md`. Déc
 - [ ] Le déploiement est reproductible depuis le dépôt et documenté ; les quotas gratuits utilisés sont notés.
 - [ ] L'adresse de l'index est fixée, et inscrite dans l'Hôte (ticket 06).
 - [ ] La création du projet Cloudflare Pages ou d'un domaine n'est faite qu'avec l'accord explicite du Mainteneur.
+
+## Comments
+
+- 2026-10-24 — **Décision du Mainteneur : le bouton « Marketplace » reste visible dans l'Hôte avant ce déploiement.** D'ici là, l'adresse inscrite dans l'Hôte (`https://marketplace.tessello.app/index.json`, provisoire) ne répond pas : l'écran dit « The Marketplace can't be reached » sans copie à montrer. Ce déploiement (et le domaine du ticket 12 de tessello-v1) y met fin.
