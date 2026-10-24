@@ -68,6 +68,8 @@ Four larger Modules, written in Svelte, each live in their own repository, which
 
 Here, their published packages are kept in `packages/host/e2e/fixtures/`: the browser tests of the Host run on them, and the Validator is run on each one. See the `README.md` there to refresh one (`just fixture <name> <version>`).
 
+To start a new Module, `just new-module <name>` (Svelte) or `just new-module <name> typescript` creates `craftskillz/tessello-<name>` from the template [`tessello-template-svelte`](https://github.com/craftskillz/tessello-template-svelte) or [`tessello-template-typescript`](https://github.com/craftskillz/tessello-template-typescript), renames it, turns on its GitHub Pages and clones it into `../tessello-<name>`. There, `just publish minor` publishes a version.
+
 ## Check a Module
 
 ```sh
