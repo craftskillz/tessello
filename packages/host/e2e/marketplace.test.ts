@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { buildIndex, sha256 } from "@tessello/marketplace";
+import { buildIndex, type Entry, sha256 } from "@tessello/marketplace";
 import type { Page } from "playwright";
 import {
   dropFile,
@@ -12,6 +12,7 @@ import {
   useHost,
   useMarketplaceServer,
   usePackageServer,
+  writeFolder,
   zip,
   zipExample,
 } from "./browser.ts";
@@ -178,5 +179,112 @@ describe("the Marketplace screen", () => {
     await page.getByRole("button", { name: /Notes/ }).click();
     const text = await page.getByRole("region", { name: "Notes", exact: true }).innerText();
     assert.match(text, /Admis dans la Marketplace à sa première publication\. Les mises à jour ne sont pas relues\. Le Créateur répond de ce code, et vous l’installez à vos risques\./);
+  });
+});
+
+describe("what the Host tells of the Modules installed from the Marketplace", () => {
+  /** Notes 1.1.0 installed from the Marketplace screen: the page, and the URL and SHA-256 of its package. */
+  async function installNotes() {
+    const published = await publishNotes();
+    const page = await host.newPage({ init: marketplaceAt(marketplace.indexUrl) });
+    await openMarketplace(page);
+    await page.getByRole("button", { name: /Notes/ }).click();
+    await page.getByRole("region", { name: "Notes", exact: true }).getByRole("button", { name: "Install" }).click();
+    await page.getByRole("dialog", { name: "Install Notes?" }).getByRole("button", { name: "Accept and install" }).click();
+    await page.frameLocator("iframe[title='Notes']").getByText("No notes yet.").waitFor();
+    return { page, ...published };
+  }
+
+  /** Publishes Notes 1.2.0 after the installed 1.1.0, with `change` made to the listing first, such as a Ban. */
+  async function publishNewerNotes(installed: { url: string; hash: string }, change: (entry: Entry) => void = () => {}) {
+    const files = await exampleFiles("notes");
+    const manifest = JSON.parse(Buffer.from(files["manifest.json"]).toString("utf8"));
+    const next = zip({ ...files, "manifest.json": { ...manifest, version: "1.2.0" } });
+    const { cors: url } = packages.serve("notes-1.2.0.zip", next);
+    const entry: Entry = {
+      id: "@craftskillz/notes",
+      source: "https://github.com/craftskillz/notes",
+      license: "MIT",
+      versions: [
+        { version: "1.1.0", url: installed.url, sha256: installed.hash },
+        { version: "1.2.0", url, sha256: await sha256(next) },
+      ],
+    };
+    change(entry);
+    const { index, assets } = await buildIndex({
+      listings: [{ entry, files: new Map() }],
+      packages: new Map([["@craftskillz/notes@1.2.0", next]]),
+      generatedAt: new Date(),
+    });
+    marketplace.publish(index, assets);
+  }
+
+  /** Opens the Host again a day after its copy of the index was received: its start reads the index again. */
+  async function startNextDay(page: Page, launcher = "Launcher") {
+    const copy = JSON.parse((await readFolder(page, "modules/.tessello"))["marketplace.json"]);
+    await writeFolder(page, "modules/.tessello", { "marketplace.json": { ...copy, receivedAt: "2026-01-01T00:00:00.000Z" } });
+    await page.reload();
+    await page.getByRole("navigation", { name: launcher }).waitFor();
+  }
+
+  test("a newer version gives an update badge in the Launcher, and only its click updates, through the usual update", async () => {
+    const { page, ...installed } = await installNotes();
+    await publishNewerNotes(installed);
+    await startNextDay(page);
+    const launcher = await showLauncher(page);
+    const badge = launcher.getByRole("button", { name: "Update to 1.2.0" });
+    await badge.waitFor();
+    assert.equal((await registry(page)).modules[0].version, "1.1.0");
+
+    await badge.click();
+    const update = page.getByRole("dialog", { name: "Update Notes?" });
+    await update.waitFor();
+    assert.match(await update.innerText(), /Admitted to the Marketplace at its first publication/);
+    await update.getByRole("button", { name: "Update", exact: true }).click();
+    await update.waitFor({ state: "hidden" });
+    const [module] = (await registry(page)).modules;
+    assert.equal(module.version, "1.2.0");
+    assert.equal(module.provenance.version, "1.2.0");
+    await (await showLauncher(page)).getByRole("button", { name: "Update to 1.2.0" }).waitFor({ state: "detached" });
+  });
+
+  test("a banned version gives a warning in the Launcher and on the Widget, with its reason, and the Module keeps working", async () => {
+    const { page, ...installed } = await installNotes();
+    await publishNewerNotes(installed, (entry) => (entry.versions[0].banned = "Sends your notes away."));
+    await startNextDay(page);
+    await (await showLauncher(page)).getByRole("button", { name: "Banned" }).waitFor();
+    // The warning says all: no separate update badge.
+    assert.equal(await page.getByRole("navigation", { name: "Launcher" }).getByRole("button", { name: "Update to 1.2.0" }).count(), 0);
+
+    const widget = page.getByRole("listitem", { name: "Notes" });
+    await page.frameLocator("iframe[title='Notes widget']").locator("body").waitFor();
+    await widget.getByRole("button", { name: "Banned" }).click();
+    const warning = page.getByRole("dialog", { name: "Notes 1.1.0 is banned from the Marketplace" });
+    await warning.waitFor();
+    const text = await warning.innerText();
+    assert.match(text, /Sends your notes away\./);
+    assert.match(text, /Notes keeps working: Tessello never uninstalls a Module for you/);
+    assert.match(text, /Version 1\.2\.0 is not banned: updating to it is recommended\./);
+    assert.equal(await warning.getByRole("button", { name: "Uninstall…" }).count(), 1);
+    assert.equal((await registry(page)).modules.length, 1);
+
+    await warning.getByRole("button", { name: "Update to 1.2.0" }).click();
+    const update = page.getByRole("dialog", { name: "Update Notes?" });
+    await update.getByRole("button", { name: "Update", exact: true }).click();
+    await update.waitFor({ state: "hidden" });
+    await widget.getByRole("button", { name: "Banned" }).waitFor({ state: "detached" });
+    assert.equal((await registry(page)).modules[0].version, "1.2.0");
+  });
+
+  test("a withdrawn Module gives a neutral note, in French when the User chose French", async () => {
+    const { page, ...installed } = await installNotes();
+    await publishNewerNotes(installed, (entry) => (entry.withdrawn = true));
+    await page.evaluate(() => localStorage.setItem("tessello.language", "fr"));
+    await startNextDay(page, "Lanceur");
+    await page.getByRole("listitem", { name: "Notes" }).getByRole("button", { name: "Retiré" }).click();
+    const note = page.getByRole("dialog", { name: "Notes a été retiré de la Marketplace" });
+    await note.waitFor();
+    assert.match(await note.innerText(), /Son Créateur l’a retiré\u00a0: la Marketplace ne le propose plus, ni aucune mise à jour\./);
+    assert.equal(await page.getByRole("button", { name: /^Mettre à jour en/ }).count(), 0);
   });
 });

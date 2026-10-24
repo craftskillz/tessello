@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { strFromU8, strToU8, unzipSync as unzip, zipSync } from "fflate";
-import { sha256, type IndexModule, type MarketplaceIndex } from "@tessello/marketplace";
+import { buildIndex, type Entry, sha256, type IndexModule, type MarketplaceIndex, type Namespaces } from "@tessello/marketplace";
 import {
   createHost,
   createMemoryIndexSource,
@@ -271,5 +271,184 @@ describe("provenance", () => {
     const module = await registered(persistence);
     assert.equal(module.version, "1.0.1");
     assert.equal(module.provenance, undefined);
+  });
+});
+
+describe("what the Host tells of the Modules installed from the Marketplace", () => {
+  const HOUR_MS = 60 * 60 * 1000;
+
+  /** Notes 1.0.0 installed from the Marketplace screen (or, `local`, from a .zip), with a clock the test moves. */
+  async function installed({ local = false } = {}) {
+    const zip = notesZip();
+    const index = await indexOf(zip);
+    const clock = { now: NOW };
+    const persistence = createMemoryPersistence();
+    const source = createMemoryIndexSource(index);
+    const host = createHost({ persistence, locale: "en-US", theme: THEME, openView() {}, marketplace: { source, now: () => clock.now } });
+    const inspection = local ? await host.inspectZip(zip) : await host.inspectRelease(index.modules[0].latest!, zip);
+    assert.ok(inspection.status === "valid");
+    await inspection.install();
+    return { host, source, persistence, clock, index };
+  }
+
+  /** `index` with a newer version of Notes published, which becomes its `latest`. */
+  async function withRelease(index: MarketplaceIndex, version: string): Promise<MarketplaceIndex> {
+    const next = structuredClone(index);
+    const [notes] = next.modules;
+    const hash = await sha256(notesZip(version));
+    const url = `https://example.org/notes-${version}.zip`;
+    notes.versions.push({ version, url, sha256: hash });
+    notes.latest = { ...notes.latest!, version, url, sha256: hash };
+    return next;
+  }
+
+  test("the Host's start reads the index at most once a day", async () => {
+    const { host, source, clock } = await installed();
+    assert.equal(source.fetches, 0);
+    await host.checkMarketplace();
+    assert.equal(source.fetches, 1);
+    await host.checkMarketplace();
+    clock.now = new Date(NOW.getTime() + 23 * HOUR_MS);
+    await host.checkMarketplace();
+    assert.equal(source.fetches, 1);
+    clock.now = new Date(NOW.getTime() + 25 * HOUR_MS);
+    await host.checkMarketplace();
+    assert.equal(source.fetches, 2);
+  });
+
+  test("unreachable at the start, the Host keeps its copy and tries again at the next start", async () => {
+    const { host, source, persistence } = await installed();
+    source.offline = true;
+    await host.checkMarketplace();
+    assert.equal(await persistence.marketplace.read(), null);
+    source.offline = false;
+    await host.checkMarketplace();
+    assert.equal(source.fetches, 2);
+    assert.ok(await persistence.marketplace.read());
+  });
+
+  test("with no Module from the Marketplace, the Host's start never reads the index", async () => {
+    const { host, source } = await installed({ local: true });
+    await host.checkMarketplace();
+    assert.equal(source.fetches, 0);
+  });
+
+  test("a newer version is offered, and nothing is updated", async () => {
+    const { host, source, persistence, index } = await installed();
+    source.index = await withRelease(index, "1.1.0");
+    await host.checkMarketplace();
+    const notices = await host.marketplaceNotices();
+    assert.deepEqual(notices, [{ id: "@craftskillz/notes", version: "1.0.0", update: source.index.modules[0].latest, ban: null, withdrawal: null }]);
+    assert.equal((await registered(persistence)).version, "1.0.0");
+  });
+
+  test("the installed version, when it is the newest, gives no notice", async () => {
+    const { host } = await installed();
+    await host.checkMarketplace();
+    assert.deepEqual(await host.marketplaceNotices(), []);
+  });
+
+  test("a banned version gives its reason and recommends the newest version", async () => {
+    const { host, source, index } = await installed();
+    const next = await withRelease(index, "1.1.0");
+    next.modules[0].versions[0].banned = "Sends your notes away.";
+    source.index = next;
+    await host.checkMarketplace();
+    const [notice] = await host.marketplaceNotices();
+    assert.deepEqual(notice.ban, { scope: "version", reason: "Sends your notes away.", recommended: next.modules[0].latest });
+    assert.deepEqual(notice.update, next.modules[0].latest);
+    assert.equal(notice.withdrawal, null);
+  });
+
+  test("a banned version with no newer one recommends nothing", async () => {
+    const { host, source, index } = await installed();
+    const next = structuredClone(index);
+    next.modules[0].versions[0].banned = "Sends your notes away.";
+    next.modules[0].latest = null;
+    source.index = next;
+    await host.checkMarketplace();
+    const [notice] = await host.marketplaceNotices();
+    assert.deepEqual(notice.ban, { scope: "version", reason: "Sends your notes away.", recommended: null });
+    assert.equal(notice.update, null);
+  });
+
+  test("a banned Module gives its reason, offers no update, and keeps running", async () => {
+    const { host, source, index, persistence } = await installed();
+    const next = await withRelease(index, "1.1.0");
+    next.modules[0].state = "banned";
+    next.modules[0].reason = "Malware.";
+    source.index = next;
+    await host.checkMarketplace();
+    assert.deepEqual(await host.marketplaceNotices(), [
+      { id: "@craftskillz/notes", version: "1.0.0", update: null, ban: { scope: "module", reason: "Malware.", recommended: null }, withdrawal: null },
+    ]);
+    assert.equal((await host.open("@craftskillz/notes")).status, "ready");
+    assert.equal((await persistence.registry.read()).length, 1);
+  });
+
+  test("a banned Namespace bans its Modules, as the Index Generator writes it", async () => {
+    const zip = notesZip();
+    const entry: Entry = {
+      id: "@craftskillz/notes",
+      source: "https://github.com/craftskillz/notes",
+      license: "MIT",
+      versions: [{ version: "1.0.0", url: NOTES_URL, sha256: await sha256(zip) }],
+    };
+    const generate = async (namespaces: Namespaces) =>
+      (
+        await buildIndex({
+          listings: [{ entry, files: new Map() }],
+          packages: new Map([["@craftskillz/notes@1.0.0", zip]]),
+          generatedAt: NOW,
+          namespaces,
+        })
+      ).index;
+    const index = await generate({ craftskillz: { account: "craftskillz", id: 1, state: "active" } });
+    const { host, source } = setup(index);
+    const inspection = await host.inspectRelease(index.modules[0].latest!, zip);
+    assert.ok(inspection.status === "valid");
+    await inspection.install();
+    source.index = await generate({ craftskillz: { account: "craftskillz", id: 1, state: "banned", reason: "Spam." } });
+    await host.checkMarketplace();
+    const [notice] = await host.marketplaceNotices();
+    assert.deepEqual(notice.ban, { scope: "module", reason: "Spam.", recommended: null });
+  });
+
+  test("a withdrawn Module gives a neutral note, and no update", async () => {
+    const { host, source, index } = await installed();
+    const next = await withRelease(index, "1.1.0");
+    next.modules[0].state = "withdrawn";
+    source.index = next;
+    await host.checkMarketplace();
+    assert.deepEqual(await host.marketplaceNotices(), [
+      { id: "@craftskillz/notes", version: "1.0.0", update: null, ban: null, withdrawal: { scope: "module" } },
+    ]);
+  });
+
+  test("a withdrawn version gives a neutral note, and offers the newer version", async () => {
+    const { host, source, index } = await installed();
+    const next = await withRelease(index, "1.1.0");
+    next.modules[0].versions[0].withdrawn = true;
+    source.index = next;
+    await host.checkMarketplace();
+    const [notice] = await host.marketplaceNotices();
+    assert.deepEqual(notice.withdrawal, { scope: "version" });
+    assert.equal(notice.ban, null);
+    assert.deepEqual(notice.update, next.modules[0].latest);
+  });
+
+  test("a local Module with the Module ID of a listing gets no notice, whatever the index says", async () => {
+    const { host, source, index } = await installed({ local: true });
+    const next = await withRelease(index, "1.1.0");
+    next.modules[0].state = "banned";
+    next.modules[0].reason = "Malware.";
+    source.index = next;
+    await host.readMarketplace();
+    assert.deepEqual(await host.marketplaceNotices(), []);
+  });
+
+  test("before any copy of the index, there is no notice", async () => {
+    const { host } = await installed();
+    assert.deepEqual(await host.marketplaceNotices(), []);
   });
 });

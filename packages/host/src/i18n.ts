@@ -263,6 +263,20 @@ const en = {
   install: "Install",
   marketplaceRisk: "Admitted to the Marketplace at its first publication. Updates are not reviewed. The Creator answers for this code, and you install it at your own risk.",
   noLongerMatches: "This package no longer matches the Marketplace. Nothing was installed.",
+  // What the Marketplace says of an installed Module (ADR 0018).
+  updateBadge: "Update",
+  updateTo: (version: string) => `Update to ${version}`,
+  banned: "Banned",
+  withdrawn: "Withdrawn",
+  moduleBannedTitle: (name: string) => `${name} is banned from the Marketplace`,
+  versionBannedTitle: (name: string, version: string) => `${name} ${version} is banned from the Marketplace`,
+  banReason: "The Maintainer's reason:",
+  banKeepsWorking: (name: string) => `${name} keeps working: Tessello never uninstalls a Module for you. Uninstalling it deletes its data.`,
+  banRecommends: (version: string) => `Version ${version} is not banned: updating to it is recommended.`,
+  moduleWithdrawnTitle: (name: string) => `${name} was withdrawn from the Marketplace`,
+  versionWithdrawnTitle: (name: string, version: string) => `${name} ${version} was withdrawn from the Marketplace`,
+  moduleWithdrawnText: (name: string) => `Its Creator withdrew it: the Marketplace no longer offers it, nor any update. ${name} keeps working.`,
+  versionWithdrawnText: (name: string) => `Its Creator withdrew this version. ${name} keeps working.`,
 };
 
 export type Messages = typeof en;
@@ -497,6 +511,19 @@ const fr: Messages = {
   install: "Installer",
   marketplaceRisk: "Admis dans la Marketplace à sa première publication. Les mises à jour ne sont pas relues. Le Créateur répond de ce code, et vous l’installez à vos risques.",
   noLongerMatches: "Ce paquet ne correspond plus à la Marketplace. Rien n’a été installé.",
+  updateBadge: "Mise à jour",
+  updateTo: (version) => `Mettre à jour en ${version}`,
+  banned: "Banni",
+  withdrawn: "Retiré",
+  moduleBannedTitle: (name) => `${name} est banni de la Marketplace`,
+  versionBannedTitle: (name, version) => `${name} ${version} est banni de la Marketplace`,
+  banReason: `La raison donnée par le Mainteneur${NBSP}:`,
+  banKeepsWorking: (name) => `${name} continue de fonctionner${NBSP}: Tessello ne désinstalle jamais un Module à votre place. Le désinstaller supprime ses données.`,
+  banRecommends: (version) => `La version ${version} n’est pas bannie${NBSP}: il est recommandé de mettre à jour.`,
+  moduleWithdrawnTitle: (name) => `${name} a été retiré de la Marketplace`,
+  versionWithdrawnTitle: (name, version) => `${name} ${version} a été retiré de la Marketplace`,
+  moduleWithdrawnText: (name) => `Son Créateur l’a retiré${NBSP}: la Marketplace ne le propose plus, ni aucune mise à jour. ${name} continue de fonctionner.`,
+  versionWithdrawnText: (name) => `Son Créateur a retiré cette version. ${name} continue de fonctionner.`,
 };
 
 export const messagesOf = (language: Language): Messages => (language === "fr" ? fr : en);

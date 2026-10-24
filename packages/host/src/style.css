@@ -151,6 +151,65 @@ body.dragging main {
   color: var(--text-muted);
 }
 
+/* What the Marketplace says of an installed Module (ADR 0018): a newer version, a Ban, a Withdrawal. */
+.launcher .entry-notice {
+  flex: none;
+  width: auto;
+  padding: 0.2rem 0.45rem;
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.entry-notice.update {
+  color: var(--accent);
+}
+
+.entry-notice.banned,
+.widget-notice.banned {
+  color: var(--danger);
+}
+
+.entry-notice.withdrawn,
+.widget-notice.withdrawn {
+  color: var(--text-muted);
+}
+
+/* A strip under the Widget, so that it covers none of the Widget's own controls. */
+.widget.has-notice {
+  display: flex;
+  flex-direction: column;
+}
+
+.widget.has-notice .widget-body {
+  flex: 1;
+  min-height: 0;
+  height: auto;
+}
+
+.widget-notice {
+  flex: none;
+  padding: 0.25rem 0.6rem;
+  border: 0;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  font: inherit;
+  font-size: 0.75rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.widget-notice.banned {
+  border-top-color: var(--danger);
+}
+
+.ban-reason {
+  margin: 0.5rem 0;
+  padding: 0.5rem 0.75rem;
+  border-left: 3px solid var(--danger);
+  background: var(--surface);
+  overflow-wrap: anywhere;
+}
+
 .permission-summary {
   margin-top: 1rem;
   padding: 0.75rem 1rem;

@@ -6,5 +6,5 @@ export type { HomeWidget } from "./home.ts";
 export type { Icon, Inspection, ModuleEntry, Opening, WidgetSize } from "./modules.ts";
 export type { ImportedModule, SpaceExport, SpaceInspection } from "./space.ts";
 export { createMemoryIndexSource } from "./marketplace.ts";
-export type { MarketplaceReading, IndexSource, MarketplaceOptions, MemoryIndexSource } from "./marketplace.ts";
+export type { MarketplaceNotice, MarketplaceReading, IndexSource, MarketplaceOptions, MemoryIndexSource } from "./marketplace.ts";
 export type { IndexModule, IndexRelease, MarketplaceIndex, SearchOptions } from "@tessello/marketplace";

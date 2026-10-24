@@ -12,6 +12,7 @@ import {
   type IndexModule,
   type IndexRelease,
   type Inspection,
+  type MarketplaceNotice,
   type ModuleEntry,
   type MountedSurface,
   type Opening,
@@ -302,6 +303,8 @@ let host: Host;
 /** The Host's persistence, read by the interface for the copy of the Marketplace index only. */
 let persistence: Persistence;
 let entries: ModuleEntry[] = [];
+/** What the last copy of the Marketplace index says of the Modules installed from it, by Module ID (ADR 0018). */
+let notices = new Map<string, MarketplaceNotice>();
 /**
  * What the stage shows besides the Home: a View, or a message in its place. Behind the Home, a View stays loaded and
  * hidden until another one opens, so that its Widget can bring it back as it was.
@@ -335,6 +338,11 @@ async function start(folder: FileSystemDirectoryHandle) {
   launcher.hidden = stage.hidden = false;
   await refresh();
   showHome();
+  // At most once a day, and only with a Module from the Marketplace: the Host offers its updates and tells of its Bans.
+  void host
+    .checkMarketplace()
+    .then(refreshNotices)
+    .catch((error: unknown) => console.error("The Marketplace could not be checked:", error));
   if (pendingInstall !== null) {
     const url = pendingInstall;
     pendingInstall = null;
@@ -344,8 +352,20 @@ async function start(folder: FileSystemDirectoryHandle) {
 
 async function refresh() {
   entries = await host.modules();
+  await readNotices();
   renderLauncher();
   await renderHome();
+}
+
+async function readNotices() {
+  notices = new Map((await host.marketplaceNotices()).map((notice) => [notice.id, notice]));
+}
+
+/** Shows what a new copy of the Marketplace index says, in the Launcher and on the Widgets. */
+async function refreshNotices() {
+  await readNotices();
+  renderLauncher();
+  for (const cell of cells.values()) renderWidgetNotice(cell);
 }
 
 /** Tells each View and Widget whether it is shown: the Home hides its Widgets behind a View (CONVENTION.md §6.4). */
@@ -554,9 +574,73 @@ function renderLauncher() {
       // Named "About" only: "About Notes" would also answer to the name of the Module's own button.
       const aboutButton = el("button", { type: "button", className: "entry-about", title: t.aboutTitle(entry.name), "aria-label": t.about }, "ⓘ");
       aboutButton.addEventListener("click", () => void showAbout(entry));
-      return el("li", {}, entryButton, aboutButton);
+      return el("li", {}, entryButton, ...noticeBadges(entry), aboutButton);
     }),
   );
+}
+
+/** A small button telling of the Marketplace's notice; its name does not repeat the Module's, as for "About". */
+function noticeButton(className: string, text: string, label: string, onClick: () => void) {
+  const element = button(text, onClick, className);
+  element.setAttribute("aria-label", label);
+  element.title = label;
+  return element;
+}
+
+/**
+ * The Launcher's badges for a Module from the Marketplace (ADR 0018): a Ban's warning, which says all, or a Withdrawal's
+ * note and a newer version, which the User updates to with a click, through the usual update.
+ */
+function noticeBadges(entry: ModuleEntry): HTMLButtonElement[] {
+  const notice = notices.get(entry.id!);
+  if (!notice) return [];
+  if (notice.ban) return [noticeButton("entry-notice banned", "⚠", t.banned, () => showBan(entry, notice))];
+  const { update, withdrawal } = notice;
+  return [
+    ...(withdrawal ? [noticeButton("entry-notice withdrawn", t.withdrawn, t.withdrawn, () => showWithdrawal(entry, notice))] : []),
+    ...(update ? [noticeButton("entry-notice update", t.updateBadge, t.updateTo(update.version), () => void installFromMarketplace(update))] : []),
+  ];
+}
+
+/**
+ * A Ban, with the Maintainer's reason. The Module keeps running: only the User uninstalls it, or updates to the newest
+ * version when only the installed one is banned.
+ */
+function showBan(entry: ModuleEntry, notice: MarketplaceNotice) {
+  const { scope, reason, recommended } = notice.ban!;
+  dialog.classList.remove("guide");
+  dialog.replaceChildren(
+    el("h2", { id: "dialog-title" }, scope === "module" ? t.moduleBannedTitle(entry.name) : t.versionBannedTitle(entry.name, notice.version)),
+    ...(reason ? [el("p", {}, t.banReason), el("blockquote", { className: "ban-reason" }, reason)] : []),
+    el("p", {}, t.banKeepsWorking(entry.name)),
+    ...(recommended ? [el("p", {}, t.banRecommends(recommended.version))] : []),
+    el(
+      "div",
+      { className: "actions" },
+      button(t.close, () => dialog.close()),
+      button(t.uninstallEllipsis, () => confirmUninstall(entry), "danger"),
+      ...(recommended ? [button(t.updateTo(recommended.version), () => void installFromMarketplace(recommended), "primary")] : []),
+    ),
+  );
+  dialog.showModal();
+}
+
+/** A Withdrawal by the Creator: a neutral note, and the newer version when only the installed one was withdrawn. */
+function showWithdrawal(entry: ModuleEntry, notice: MarketplaceNotice) {
+  const { update } = notice;
+  const module = notice.withdrawal!.scope === "module";
+  dialog.classList.remove("guide");
+  dialog.replaceChildren(
+    el("h2", { id: "dialog-title" }, module ? t.moduleWithdrawnTitle(entry.name) : t.versionWithdrawnTitle(entry.name, notice.version)),
+    el("p", {}, module ? t.moduleWithdrawnText(entry.name) : t.versionWithdrawnText(entry.name)),
+    el(
+      "div",
+      { className: "actions" },
+      button(t.close, () => dialog.close(), update ? "" : "primary"),
+      ...(update ? [button(t.updateTo(update.version), () => void installFromMarketplace(update), "primary")] : []),
+    ),
+  );
+  dialog.showModal();
 }
 
 /**
@@ -694,6 +778,7 @@ function renderHome(): Promise<void> {
           else widgetList.insertBefore(cell.element, next);
         }
         previous = cell.element;
+        renderWidgetNotice(cell);
         if (!cell.body.hasChildNodes() || cell.failed) void mountWidget(cell);
       }
       homeEmpty.hidden = widgets.length > 0;
@@ -753,6 +838,24 @@ declare global {
     /** Moves a node without removing it first (not yet in TypeScript's DOM types). */
     moveBefore(node: Node, child: Node | null): void;
   }
+}
+
+/** A Ban's warning or a Withdrawal's note over a Widget (ADR 0018); a newer version is offered in the Launcher only. */
+function renderWidgetNotice(cell: WidgetCell) {
+  cell.element.querySelector(".widget-notice")?.remove();
+  const notice = notices.get(cell.widget.id);
+  const entry = entries.find((candidate) => candidate.id === cell.widget.id);
+  const badge =
+    !notice || !entry
+      ? null
+      : notice.ban
+        ? noticeButton("widget-notice banned", `⚠ ${t.banned}`, t.banned, () => showBan(entry, notice))
+        : notice.withdrawal
+          ? noticeButton("widget-notice withdrawn", t.withdrawn, t.withdrawn, () => showWithdrawal(entry, notice))
+          : null;
+  cell.element.classList.toggle("has-notice", badge !== null);
+  // After the body, so that moving the Widget does not reload its iframe.
+  if (badge) cell.body.after(badge);
 }
 
 function removeCell(cell: WidgetCell) {
@@ -1222,6 +1325,7 @@ async function showMarketplace() {
   const self = (current = { id: "marketplace", element: screen });
   renderLauncher();
   const reading = await host.readMarketplace();
+  void refreshNotices();
   if (current !== self) return;
   showModuleList(screen, reading);
 }

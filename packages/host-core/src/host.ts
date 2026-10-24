@@ -8,7 +8,13 @@ import type { Persistence } from "./persistence.ts";
 import { ProtocolError } from "./protocol-error.ts";
 import { createHome, type HomeWidget } from "./home.ts";
 import { createModules, type Inspection, type ModuleEntry, type Opening } from "./modules.ts";
-import { checkRelease, createMarketplace, type MarketplaceReading, type MarketplaceOptions } from "./marketplace.ts";
+import {
+  checkRelease,
+  createMarketplace,
+  type MarketplaceNotice,
+  type MarketplaceOptions,
+  type MarketplaceReading,
+} from "./marketplace.ts";
 import { createSpace, type SpaceExport, type SpaceInspection } from "./space.ts";
 import { createStorage } from "./storage.ts";
 
@@ -73,6 +79,16 @@ export interface Host {
    * reached, returns the last copy with its date.
    */
   readMarketplace(): Promise<MarketplaceReading>;
+  /**
+   * Called at the Host's start: downloads the index when a Module from the Marketplace is installed and the last copy
+   * is a day old or more (ADR 0018). It never rejects: unreachable, the last copy stays.
+   */
+  checkMarketplace(): Promise<void>;
+  /**
+   * What the last copy of the index says of the Modules installed from the Marketplace: a newer version, a Ban, a
+   * Withdrawal. A local Module, even with the Module ID of a listing, has none. Nothing is downloaded or changed.
+   */
+  marketplaceNotices(): Promise<MarketplaceNotice[]>;
   /** Checks a folder of the Modules folder with the Validator; it is activated only when `install()` is called. */
   inspectFolder(folder: string): Promise<Inspection>;
   /**
@@ -177,6 +193,8 @@ export function createHost(options: HostOptions): Host {
 
   return {
     readMarketplace: marketplace.readMarketplace,
+    checkMarketplace: marketplace.checkMarketplace,
+    marketplaceNotices: marketplace.marketplaceNotices,
     modules: modules.scan,
     home: home.widgets,
     arrangeHome: home.arrange,

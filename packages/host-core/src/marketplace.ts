@@ -1,7 +1,9 @@
 // The Marketplace as the Host sees it (ADR 0015, 0017, 0018): the index it reads when the Marketplace screen opens, the
-// copy it keeps for when the Marketplace cannot be reached, and which packages are "from the Marketplace".
+// copy it keeps for when the Marketplace cannot be reached, which packages are "from the Marketplace", and what the
+// Host tells the User about the Modules installed from it.
 
 import {
+  compareVersions,
   type IndexModule,
   type IndexRelease,
   type MarketplaceIndex,
@@ -57,6 +59,29 @@ export type MarketplaceReading =
     }
   | { status: "unavailable" };
 
+/**
+ * What the Host tells the User about a Module installed from the Marketplace (ADR 0018). It only tells: nothing is
+ * updated or uninstalled unless the User does it.
+ */
+export interface MarketplaceNotice {
+  /** The Module ID. */
+  id: string;
+  /** The version installed, as the Marketplace lists it. */
+  version: string;
+  /** A release newer than the installed one, to offer; null when there is none, or the Module is banned or withdrawn. */
+  update: IndexRelease | null;
+  /**
+   * The Ban of the Module (`module`, which a Ban of its Namespace also gives) or of the installed version (`version`),
+   * with the Maintainer's reason. A banned version recommends the newest release, when there is a newer one.
+   */
+  ban: { scope: "module" | "version"; reason: string; recommended: IndexRelease | null } | null;
+  /** The Creator withdrew the Module, or the installed version; null otherwise, and when a Ban says more. */
+  withdrawal: { scope: "module" | "version" } | null;
+}
+
+/** How long the Host's start keeps to the copy of the index before downloading it again. */
+const DAY_MS = 24 * 60 * 60 * 1000;
+
 export interface MarketplaceOptions {
   /** Where index.json is downloaded from. */
   source: IndexSource;
@@ -84,6 +109,31 @@ export function createMarketplace(persistence: Persistence, options?: Marketplac
   }
 
   return {
+    /**
+     * At the Host's start: downloads the index when a Module from the Marketplace is installed and the copy is a day
+     * old or more. A Host with no such Module never reaches the Marketplace unless the User opens it.
+     */
+    async checkMarketplace(): Promise<void> {
+      if (!options) return;
+      if (!(await persistence.registry.read()).some((module) => module.provenance)) return;
+      const copy = await persistence.marketplace.read();
+      if (copy && now().getTime() - Date.parse(copy.receivedAt) < DAY_MS) return;
+      await load();
+    },
+    /** What the copy of the index says of each Module installed from the Marketplace; nothing is downloaded. */
+    async marketplaceNotices(): Promise<MarketplaceNotice[]> {
+      const copy = await persistence.marketplace.read();
+      if (!copy) return [];
+      const notices: MarketplaceNotice[] = [];
+      for (const { id, provenance } of await persistence.registry.read()) {
+        if (!provenance) continue;
+        const module = copy.index.modules.find((candidate) => candidate.id === id);
+        if (!module) continue;
+        const notice = noticeOf(module, provenance);
+        if (notice.update || notice.ban || notice.withdrawal) notices.push(notice);
+      }
+      return notices;
+    },
     async readMarketplace(): Promise<MarketplaceReading> {
       const loaded = await load();
       if (!loaded) return { status: "unavailable" };
@@ -111,6 +161,25 @@ export function createMarketplace(persistence: Persistence, options?: Marketplac
       return null;
     },
   };
+}
+
+/** What the index says of a Module installed from it, as `provenance`: the installed version is found by its SHA-256. */
+function noticeOf(module: IndexModule, provenance: Provenance): MarketplaceNotice {
+  const notice: MarketplaceNotice = { id: module.id, version: provenance.version, update: null, ban: null, withdrawal: null };
+  if (module.state === "banned") {
+    notice.ban = { scope: "module", reason: module.reason ?? "", recommended: null };
+    return notice;
+  }
+  if (module.state === "withdrawn") {
+    notice.withdrawal = { scope: "module" };
+    return notice;
+  }
+  const newer = module.latest && compareVersions(module.latest.version, provenance.version) > 0 ? module.latest : null;
+  const installed = module.versions.find((version) => version.sha256 === provenance.sha256);
+  if (installed?.banned !== undefined) notice.ban = { scope: "version", reason: installed.banned, recommended: newer };
+  else if (installed?.withdrawn) notice.withdrawal = { scope: "version" };
+  notice.update = newer;
+  return notice;
 }
 
 /**
