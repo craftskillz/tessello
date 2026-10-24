@@ -12,6 +12,7 @@ A composable web app: the User builds their space from Modules, each one a sandb
 | `packages/sdk` | `@tessello/sdk`: talks to the Host from a Module. |
 | `packages/host-core` | The Host's protocol, storage and Module registry, without a browser. |
 | `packages/host` | The Host: the static web app (`src/`), its build and dev server (`scripts/`), its browser tests (`e2e/`). |
+| `scripts/` | The build of the npm packages (`build-packages.ts`) and the hook that tests them compiled (`use-compiled.ts`). |
 | `examples/` | Example Modules written by hand (`notes`, `meteo`, `prometheus`): the folder *is* the package. |
 | `sample-modules/` | Sample Modules built from sources, in Svelte (`diagram`, `skills-library`, `survival-kit`, `watch-later`): the package is written to `dist/`. |
 | `.scratch/` | Spec and tickets (see `docs/agents/issue-tracker.md`). |
@@ -104,6 +105,27 @@ npm run build:host     # builds the Host into packages/host/dist/
 npm run build:sdk      # writes the SDK's single-file copy (tessello-sdk.js) into the example Modules
 npm run build:samples  # builds every sample Module into its dist/, without zipping (see `just module`)
 ```
+
+## The npm packages
+
+Four packages go to npm: `tessello` (the CLI, `packages/cli`), `@tessello/sdk`, `@tessello/convention` (the Validator) and `@tessello/marketplace`. In this repository they run from their TypeScript sources; for npm, each one is compiled into its own `dist/`, which *is* the package: JavaScript, type declarations (not for the CLI), a `package.json` pointing at them, its README and the license. `@tessello/sdk` also holds `tessello-sdk.js`, the single file a Creator copies into a Module.
+
+```sh
+npm run build:packages  # compiles the four packages into packages/<name>/dist/
+npm run test:compiled   # builds them, then runs the unit tests against dist/ instead of the sources
+npm run test:packed     # builds them, packs them with npm and installs them in a temporary folder, then runs `tessello validate` there
+```
+
+They need Node.js 22.12 or later. To publish, with the Maintainer's npm account, a member of the `tessello` organization on npm (which owns the `@tessello` scope): raise the `version` in `packages/<name>/package.json` (and in the `dependencies` that name it), run the three commands above, then publish each `dist/`, the packages before those that depend on them:
+
+```sh
+npm publish --access public packages/sdk/dist
+npm publish --access public packages/convention/dist
+npm publish --access public packages/marketplace/dist
+npm publish --access public packages/cli/dist
+```
+
+Never publish from `packages/<name>/` itself: its `package.json` points at the TypeScript sources.
 
 ## Moving data to the `@craftskillz` Module IDs
 

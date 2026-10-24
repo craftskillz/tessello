@@ -1,5 +1,5 @@
 node_modules/
 .DS_Store
-packages/host/dist/
+packages/*/dist/
 sample-modules/*/dist/
 sample-modules/*/*.zip

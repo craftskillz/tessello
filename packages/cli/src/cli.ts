@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import { realpathSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { formatReport, validatePath } from "./validate-command.ts";
 
 const USAGE = `Usage: tessello <command>
@@ -44,7 +46,8 @@ export async function run(args: string[], output: Output): Promise<number> {
   return 2;
 }
 
-if (import.meta.main) {
+// npm runs the CLI through a symbolic link (node_modules/.bin/tessello), hence the real path.
+if (process.argv[1] && realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)) {
   process.exitCode = await run(process.argv.slice(2), {
     out: (text) => console.log(text),
     err: (text) => console.error(text),

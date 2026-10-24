@@ -23,6 +23,11 @@ start:
 e2e:
     npm run test:browser
 
+# Builds the npm packages into packages/<name>/dist/, then tests them compiled, and installed from npm pack in a temporary folder
+packages:
+    npm run test:compiled
+    npm run test:packed
+
 # Builds sample Modules into dist/, zips each into sample-modules/<name>/<name>.zip and validates it. Add `major`, `minor` or
 # `patch` (or `fix`) anywhere to raise the version first, e.g. `just module skills-library diagram` or `just module skills-library minor`
 module +args:
