@@ -58,6 +58,57 @@ const launcherIs = (page: Page, shown: boolean) =>
   page.waitForFunction((shown) => (document.getElementById("launcher")!.getBoundingClientRect().right > 0) === shown, shown);
 
 describe("the Home", () => {
+  test("keeps the management drawer inside the Launcher, with a handle while collapsed", async () => {
+    const page = await host.newPage();
+    await install(page, "Notes", await zipExample("notes"));
+    const launcher = await showLauncher(page);
+    const toggle = launcher.getByRole("button", { name: "Manage" });
+    const settings = launcher.getByRole("button", { name: "Settings" });
+    assert.equal(await toggle.getAttribute("aria-expanded"), "false");
+    assert.equal(await settings.count(), 0, "collapsed actions are absent from the accessibility tree");
+    const marketplace = launcher.getByRole("button", { name: "Marketplace" });
+    assert.equal(await marketplace.isVisible(), true, "Marketplace stays available with management collapsed");
+    const marketplaceBounds = (await marketplace.boundingBox())!;
+    const toggleBounds = (await toggle.boundingBox())!;
+    assert.ok(marketplaceBounds.y + marketplaceBounds.height <= toggleBounds.y, "Marketplace sits just above the management drawer");
+
+    await launcher.getByRole("button", { name: "Notes", exact: true }).click();
+    await launcherIs(page, false);
+    await showLauncher(page);
+    await toggle.click();
+    await settings.waitFor();
+    assert.equal(await toggle.getAttribute("aria-expanded"), "true");
+    assert.equal(await page.locator("body.drawer-dismissed").count(), 0, "the handle does not dismiss the outer drawer");
+    await launcherIs(page, true);
+
+    await page.mouse.move(600, 300);
+    await launcherIs(page, false);
+    assert.ok((await toggle.boundingBox())!.x + (await toggle.boundingBox())!.width <= 0, "the handle hides with its parent");
+    await showLauncher(page);
+    await launcherIs(page, true);
+    assert.equal(await toggle.getAttribute("aria-expanded"), "true", "revealing the Launcher preserves the inner drawer");
+    await toggle.click();
+    assert.equal(await toggle.getAttribute("aria-expanded"), "false");
+    await launcherIs(page, true);
+  });
+
+  test("opens management actions with the keyboard and returns focus to the handle on Escape", async () => {
+    const page = await host.newPage();
+    const toggle = page.getByRole("button", { name: "Manage" });
+    await toggle.focus();
+    await page.keyboard.press("Enter");
+    await page.keyboard.press("Tab");
+    assert.equal(await page.getByRole("button", { name: "Install a Module…" }).evaluate((button) => button === document.activeElement), true);
+    const chooser = page.waitForEvent("filechooser");
+    await page.keyboard.press("Enter");
+    assert.equal((await chooser).isMultiple(), false, "installing a Module is keyboard accessible");
+    await page.keyboard.press("Escape");
+    assert.equal(await toggle.getAttribute("aria-expanded"), "false");
+    assert.equal(await toggle.evaluate((button) => button === document.activeElement), true);
+    assert.equal(await page.getByRole("button", { name: "Install a Module…" }).count(), 0);
+    assert.equal(await page.getByRole("button", { name: "Marketplace" }).isVisible(), true);
+  });
+
   test("keeps the Launcher beside it, which becomes a drawer behind a View, shown again near the left edge", async () => {
     const page = await host.newPage();
     await install(page, "Notes", await zipExample("notes"));

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { describe, test } from "node:test";
-import { dropFile, showLauncher, useHost, zipExample } from "./browser.ts";
+import { dropFile, showLauncher, showLauncherTools, useHost, zipExample } from "./browser.ts";
 
 const host = useHost();
 
@@ -15,13 +15,13 @@ describe("export and import of the space", () => {
     await notes.getByRole("button", { name: "Add note" }).click();
     await notes.getByText("Buy oat milk").waitFor();
 
-    await (await showLauncher(page)).getByRole("button", { name: /^Modules folder/ }).click();
+    await (await showLauncherTools(page)).getByRole("button", { name: /^Modules folder/ }).click();
     const [download] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "Export your space" }).click()]);
     assert.match(download.suggestedFilename(), /^tessello-space-\d{4}-\d{2}-\d{2}\.zip$/);
     const exported = await readFile(await download.path());
 
     const other = await host.newPage();
-    await other.getByRole("button", { name: /^Modules folder/ }).click();
+    await (await showLauncherTools(other)).getByRole("button", { name: /^Modules folder/ }).click();
     await other.getByLabel("Space file to import").setInputFiles({ name: "space.zip", mimeType: "application/zip", buffer: exported });
     const preview = other.getByRole("dialog", { name: "Import 1 Module?" });
     await preview.waitFor();
@@ -36,7 +36,7 @@ describe("export and import of the space", () => {
 
   test("a file that is not an export is refused, and nothing is imported", async () => {
     const page = await host.newPage();
-    await page.getByRole("button", { name: /^Modules folder/ }).click();
+    await (await showLauncherTools(page)).getByRole("button", { name: /^Modules folder/ }).click();
     await page.getByLabel("Space file to import").setInputFiles({ name: "notes.zip", mimeType: "application/zip", buffer: Buffer.from(await zipExample("notes")) });
     const refusal = page.getByRole("dialog", { name: "notes.zip can't be imported" });
     await refusal.waitFor();

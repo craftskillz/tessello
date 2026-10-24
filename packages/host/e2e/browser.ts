@@ -85,9 +85,21 @@ export async function chooseFolder(page: Page): Promise<void> {
 }
 
 /** The Launcher, once the pointer is near the left edge of the page: behind a View, it is a drawer hidden there. */
-export async function showLauncher(page: Page): Promise<Locator> {
+export async function showLauncher(page: Page, name = "Launcher"): Promise<Locator> {
+  // Let a previous selection finish dismissing the drawer before entering its edge again.
+  await page.mouse.move(page.viewportSize()!.width - 1, 300);
+  await page.locator("#launcher").evaluate((launcher) => Promise.all(launcher.getAnimations().map((animation) => animation.finished)));
   await page.mouse.move(0, 300);
-  return page.getByRole("navigation", { name: "Launcher" });
+  await page.locator("#launcher").evaluate((launcher) => Promise.all(launcher.getAnimations().map((animation) => animation.finished)));
+  return page.getByRole("navigation", { name });
+}
+
+/** Opens the inner drawer before choosing an installation, Settings or folder action. */
+export async function showLauncherTools(page: Page): Promise<Locator> {
+  const launcher = await showLauncher(page);
+  const toggle = launcher.getByRole("button", { name: "Manage" });
+  if (await toggle.getAttribute("aria-expanded") === "false") await toggle.click();
+  return launcher;
 }
 
 type Files = Record<string, string | Uint8Array | object>;

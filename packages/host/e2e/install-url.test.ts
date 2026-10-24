@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import type { Page } from "playwright";
-import { chooseFolder, installLink, showLauncher, useHost, usePackageServer, zipExample } from "./browser.ts";
+import { chooseFolder, installLink, showLauncher, showLauncherTools, useHost, usePackageServer, zipExample } from "./browser.ts";
 
 const host = useHost();
 const packages = usePackageServer();
@@ -9,7 +9,7 @@ const packages = usePackageServer();
 
 /** Pastes a URL in the field "Install from a URL" and starts the download. */
 async function installFromUrl(page: Page, url: string) {
-  await (await showLauncher(page)).getByRole("button", { name: "Install from a URL…" }).click();
+  await (await showLauncherTools(page)).getByRole("button", { name: "Install from a URL…" }).click();
   const form = page.getByRole("dialog", { name: "Install from a URL" });
   await form.getByRole("textbox", { name: "URL of the .zip file" }).fill(url);
   await form.getByRole("button", { name: "Download" }).click();

@@ -62,6 +62,9 @@ const homeEmpty = byId<HTMLElement>("home-empty");
 const widgetList = byId<HTMLOListElement>("widgets");
 const arrangeButton = byId<HTMLButtonElement>("arrange-button");
 const launcherList = byId<HTMLUListElement>("launcher-modules");
+const launcherTools = byId<HTMLElement>("launcher-tools");
+const launcherToolsToggle = byId<HTMLButtonElement>("launcher-tools-toggle");
+const launcherToolsPanel = byId<HTMLElement>("launcher-tools-panel");
 const folderButton = byId<HTMLButtonElement>("folder-button");
 const dialog = byId<HTMLDialogElement>("dialog");
 const fileInput = byId<HTMLInputElement>("install-file");
@@ -1490,8 +1493,27 @@ fileInput.addEventListener("change", () => {
   if (file) void installZip(file);
 });
 byId<HTMLButtonElement>("install-url-button").addEventListener("click", showUrlForm);
+byId<HTMLButtonElement>("install-file-button").addEventListener("click", () => fileInput.click());
 byId<HTMLButtonElement>("marketplace-button").addEventListener("click", () => void showMarketplace());
 byId<HTMLButtonElement>("home-button").addEventListener("click", showHome);
+function setLauncherToolsOpen(open: boolean) {
+  launcherTools.classList.toggle("open", open);
+  launcherToolsToggle.setAttribute("aria-expanded", String(open));
+  launcherToolsPanel.inert = !open;
+  launcherToolsPanel.setAttribute("aria-hidden", String(!open));
+}
+launcherToolsToggle.addEventListener("click", (event) => {
+  // Expanding the inner drawer must not dismiss the Launcher around it.
+  event.stopPropagation();
+  setLauncherToolsOpen(launcherToolsToggle.getAttribute("aria-expanded") !== "true");
+});
+launcherTools.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape" || launcherToolsToggle.getAttribute("aria-expanded") !== "true") return;
+  event.preventDefault();
+  event.stopPropagation();
+  launcherToolsToggle.focus();
+  setLauncherToolsOpen(false);
+});
 // A choice made with the pointer in the drawer sends it away, until the pointer comes back near the left edge.
 launcher.addEventListener("click", (event) => {
   if (event.detail > 0) document.body.classList.add("drawer-dismissed");

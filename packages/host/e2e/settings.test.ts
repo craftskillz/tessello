@@ -4,7 +4,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import type { Page } from "playwright";
-import { dropFile, showLauncher, useHost, zip } from "./browser.ts";
+import { dropFile, showLauncher, showLauncherTools, useHost, zip } from "./browser.ts";
 
 const host = useHost();
 
@@ -48,7 +48,7 @@ const view = (page: Page) => page.frameLocator("iframe[title='Lamp']");
 const widget = (page: Page, title = "Lamp widget") => page.frameLocator(`iframe[title='${title}']`);
 
 async function chooseTheme(page: Page, theme: "Same as the system" | "Light" | "Dark") {
-  await (await showLauncher(page)).getByRole("button", { name: "Settings" }).click();
+  await (await showLauncherTools(page)).getByRole("button", { name: "Settings" }).click();
   const settings = page.getByRole("dialog", { name: "Settings" });
   await settings.getByRole("radio", { name: theme }).check();
   await settings.getByRole("button", { name: "Close" }).click();
@@ -96,7 +96,7 @@ describe("the language of the interface", () => {
     await installLamp(page);
     await view(page).getByText("Locale: en").waitFor();
 
-    await (await showLauncher(page)).getByRole("button", { name: "Settings" }).click();
+    await (await showLauncherTools(page)).getByRole("button", { name: "Settings" }).click();
     await page.getByRole("dialog", { name: "Settings" }).getByRole("combobox", { name: "Language" }).selectOption("fr");
 
     // Tessello restarts in French.
@@ -106,7 +106,8 @@ describe("the language of the interface", () => {
     await widget(page, "Widget Lamp").getByText("Locale: fr").waitFor();
     await launcher.getByRole("button", { name: "Lamp", exact: true }).click();
     await view(page).getByText("Locale: fr").waitFor();
-    await page.mouse.move(0, 300);
+    await showLauncher(page, "Lanceur");
+    await page.getByRole("button", { name: "Gérer" }).click();
     await page.getByRole("button", { name: "Réglages" }).click();
     await page.getByRole("dialog", { name: "Réglages" }).getByRole("radio", { name: "Sombre" }).waitFor();
 

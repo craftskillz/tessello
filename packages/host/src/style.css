@@ -58,7 +58,8 @@ body.dragging main {
   padding: 0.75rem;
   border-right: 1px solid var(--border);
   background: var(--surface);
-  overflow-y: auto;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .launcher ul {
@@ -67,6 +68,9 @@ body.dragging main {
   padding: 0;
   display: grid;
   gap: 0.25rem;
+  min-height: 0;
+  overflow-y: auto;
+  align-content: start;
 }
 
 .launcher button,
@@ -92,6 +96,7 @@ body.dragging main {
 
 .launcher-home {
   font-weight: 700;
+  flex: none;
 }
 
 .launcher img {
@@ -100,14 +105,76 @@ body.dragging main {
   border-radius: 6px;
 }
 
-/* The Marketplace, then the ways to install a Module, at the bottom of the Launcher. */
+/* Marketplace stays above the inner drawer while the Modules scroll independently above both. */
 .launcher-marketplace {
+  flex: none;
   margin-top: auto;
+}
+
+.launcher-tools {
+  flex: none;
+  border-top: 1px solid var(--border);
+  display: grid;
+  grid-template-rows: auto 0fr;
+  transition: grid-template-rows 0.2s ease;
+}
+
+.launcher-tools.open {
+  grid-template-rows: auto 1fr;
+}
+
+.launcher .launcher-tools-toggle {
+  justify-content: space-between;
+  min-height: 2.75rem;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.launcher-tools-chevron {
+  flex: none;
+  transition: transform 0.2s ease;
+}
+
+.launcher-tools.open .launcher-tools-chevron {
+  transform: rotate(180deg);
+}
+
+.launcher-tools-panel {
+  min-height: 0;
+  overflow: hidden;
+  visibility: hidden;
+  transition: visibility 0.2s;
+}
+
+.launcher-tools.open .launcher-tools-panel {
+  visibility: visible;
+  transition: none;
+}
+
+.launcher-tools-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-height: 45dvh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.launcher-tools-actions > button {
+  flex: none;
+}
+
+.launcher .launcher-marketplace,
+.launcher .launcher-install {
   color: var(--accent);
 }
 
-.launcher-install {
-  color: var(--accent);
+@media (prefers-reduced-motion: reduce) {
+  .launcher-tools,
+  .launcher-tools-chevron,
+  .launcher-tools-panel {
+    transition: none;
+  }
 }
 
 
@@ -763,6 +830,7 @@ dialog code,
 
   .launcher {
     flex-direction: row;
+    flex-wrap: wrap;
     border-right: 0;
     border-bottom: 1px solid var(--border);
     overflow-x: auto;
@@ -770,6 +838,8 @@ dialog code,
 
   .launcher ul {
     display: flex;
+    flex: 1;
+    overflow-x: auto;
   }
 
   .launcher button,
@@ -778,11 +848,15 @@ dialog code,
     white-space: nowrap;
   }
 
-  .launcher-marketplace {
-    width: auto;
-    white-space: nowrap;
-    margin-top: 0;
-    margin-left: auto;
+  .launcher .launcher-marketplace,
+  .launcher-tools {
+    width: 100%;
+  }
+
+  .launcher .launcher-tools-toggle,
+  .launcher-tools-actions > button {
+    width: 100%;
+    white-space: normal;
   }
 
   .home {
@@ -818,6 +892,7 @@ body.drawer .launcher {
   width: 14rem;
   z-index: 2;
   flex-direction: column;
+  flex-wrap: nowrap;
   border-right: 1px solid var(--border);
   border-bottom: 0;
   overflow-x: hidden;
@@ -834,6 +909,7 @@ body.drawer .launcher:has(:focus-visible) {
 
 body.drawer .launcher ul {
   display: grid;
+  flex: 0 1 auto;
 }
 
 body.drawer .launcher button,
@@ -845,10 +921,6 @@ body.drawer .launcher-install {
 body.drawer .launcher-install,
 body.drawer .launcher-marketplace {
   margin-left: 0;
-}
-
-body.drawer .launcher-marketplace {
-  margin-top: auto;
 }
 
 body.drawer.drawer-dismissed .launcher-edge + .launcher {

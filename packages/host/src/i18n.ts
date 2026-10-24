@@ -23,6 +23,7 @@ const frQuote = (name: string) => `«${NBSP}${name}${NBSP}»`;
 
 const en = {
   launcher: "Launcher",
+  launcherManage: "Manage",
   widgets: "Widgets",
   installModule: "Install a Module…",
   installFromUrl: "Install from a URL…",
@@ -283,6 +284,7 @@ export type Messages = typeof en;
 
 const fr: Messages = {
   launcher: "Lanceur",
+  launcherManage: "Gérer",
   widgets: "Widgets",
   installModule: "Installer un Module…",
   installFromUrl: "Installer depuis une URL…",

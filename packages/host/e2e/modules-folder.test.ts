@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import type { Page } from "playwright";
-import { chooseFolder, dropFile, readFolder, showLauncher, useHost, zipExample } from "./browser.ts";
+import { chooseFolder, dropFile, readFolder, showLauncher, showLauncherTools, useHost, zipExample } from "./browser.ts";
 
 const host = useHost();
 
@@ -72,13 +72,13 @@ describe("the Modules folder", () => {
     await installNotesWithANote(page, "Buy oat milk");
     const before = await readFolder(page, "modules");
 
-    await (await showLauncher(page)).getByRole("button", { name: "Modules folder: modules" }).click();
+    await (await showLauncherTools(page)).getByRole("button", { name: "Modules folder: modules" }).click();
     const settings = page.getByRole("dialog", { name: "Modules folder" });
     assert.match(await settings.innerText(), /“modules”/);
     await page.evaluate(() => Object.assign(window, { tesselloPick: "elsewhere" }));
-    await settings.getByRole("button", { name: "Choose another folder…" }).click();
+    await Promise.all([page.waitForEvent("load"), settings.getByRole("button", { name: "Choose another folder…" }).click()]);
 
-    await (await showLauncher(page)).getByRole("button", { name: "Modules folder: elsewhere" }).waitFor();
+    await (await showLauncherTools(page)).getByRole("button", { name: "Modules folder: elsewhere" }).waitFor();
     await (await showLauncher(page)).getByRole("button", { name: "Notes" }).click();
     await notes(page).getByText("Buy oat milk").waitFor();
     assert.deepEqual(await readFolder(page, "elsewhere"), before);
