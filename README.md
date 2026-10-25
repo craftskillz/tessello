@@ -15,6 +15,7 @@ A composable web app: the User builds their space from Modules, each one a sandb
 | `scripts/` | The build of the npm packages (`build-packages.ts`) and the hook that tests them compiled (`use-compiled.ts`). |
 | `examples/` | Example Modules written by hand (`notes`, `meteo`, `prometheus`): the folder *is* the package. |
 | `RELEASING.md` | How to release a Module, list it on the Marketplace, and publish the npm packages. |
+| `DEPLOYING.md` | How the Host is deployed to Cloudflare Pages as an installable app, with its headers and free quotas. |
 | `.scratch/` | Spec and tickets (see `docs/agents/issue-tracker.md`). |
 
 ## Prerequisites

@@ -1532,6 +1532,9 @@ window.addEventListener("hashchange", () => {
 
 applyTheme();
 
+// Makes the shell available offline; the Host works without it (an http page, an old browser), so errors are ignored.
+navigator.serviceWorker?.register("sw.js").catch(() => {});
+
 // Kept whole before the link is removed from the address, to be copied on the page of an unsupported browser.
 const installLinkHref = location.href;
 pendingInstall = takeInstallLink();

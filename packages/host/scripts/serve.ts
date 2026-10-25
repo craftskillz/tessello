@@ -1,4 +1,4 @@
-// Serves the built Host locally, with the header the Host needs in production (ADR 0005).
+// Serves the built Host locally, with the same headers as in production (headers.ts).
 // Run with `npm run start:host`, after `npm run build:host`.
 
 import { readFile } from "node:fs/promises";
@@ -6,12 +6,15 @@ import { createServer, type Server } from "node:http";
 import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DIST } from "./build.ts";
+import { headersFor } from "./headers.ts";
 
 const TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
   ".css": "text/css; charset=utf-8",
   ".map": "application/json",
+  ".webmanifest": "application/manifest+json",
+  ".svg": "image/svg+xml",
 };
 
 /** Starts serving `dist/` on `port` (0 picks a free one); resolves with the server and its URL. */
@@ -24,8 +27,7 @@ export function serveHost(port = 0): Promise<{ server: Server; url: string }> {
       const body = await readFile(file);
       response.writeHead(200, {
         "Content-Type": TYPES[extname(file)] ?? "application/octet-stream",
-        // Blocks a Module from navigating its iframe away, without restricting what the srcdoc documents load.
-        "Content-Security-Policy": "frame-src 'none'",
+        ...headersFor(path),
       });
       response.end(body);
     } catch {
