@@ -3,7 +3,9 @@
 // Run with `npm run build:packages`.
 
 import { copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { basename } from "node:path";
 import { fileURLToPath } from "node:url";
+import { build } from "esbuild";
 import ts from "typescript";
 import { buildLocalCopy } from "../packages/sdk/scripts/build-local-copy.ts";
 
@@ -26,7 +28,10 @@ async function buildPackage(name: Published): Promise<void> {
   const root = at(`../packages/${name}`);
   const dist = distOf(name);
   const source = JSON.parse(await readFile(`${root}/package.json`, "utf8"));
-  const entry = source.bin ? source.bin.tessello : source.exports;
+  // `exports` is the entry, or a map whose "." is the entry and whose other paths are entries of their own.
+  const exportsMap: Record<string, string> | undefined =
+    typeof source.exports === "string" ? { ".": source.exports } : source.exports;
+  const entry = source.bin ? source.bin.tessello : exportsMap?.["."];
   await rm(dist, { recursive: true, force: true });
   // A CLI is run, never imported: it needs no type declarations.
   compile(`${root}/${entry}`, `${root}/src`, dist, !source.bin);
@@ -35,8 +40,11 @@ async function buildPackage(name: Published): Promise<void> {
   for (const field of KEPT_FIELDS) if (source[field] !== undefined) manifest[field] = source[field];
   const js = (path: string) => `./${path.replace(/^\.\/src\//, "").replace(/\.ts$/, ".js")}`;
   if (source.bin) manifest.bin = { tessello: js(source.bin.tessello) };
-  if (source.exports) {
-    manifest.exports = { ".": { types: js(source.exports).replace(/\.js$/, ".d.ts"), default: js(source.exports) } };
+  if (exportsMap) {
+    manifest.exports = Object.fromEntries(
+      Object.entries(exportsMap).map(([path, file]) => [path, { types: js(file).replace(/\.js$/, ".d.ts"), default: js(file) }]),
+    );
+    for (const [path, file] of Object.entries(exportsMap)) if (path !== ".") await bundleEntry(`${root}/${file}`, dist);
   }
   manifest.repository = { type: "git", url: "git+https://github.com/craftskillz/tessello.git", directory: `packages/${name}` };
   manifest.homepage = "https://github.com/craftskillz/tessello#readme";
@@ -47,6 +55,23 @@ async function buildPackage(name: Published): Promise<void> {
   await copyFile(`${root}/README.md`, `${dist}/README.md`);
   // The single-file copy a Creator puts in a package, so that a Module needs neither a build tool nor the network.
   if (name === "sdk") await writeFile(`${dist}/tessello-sdk.js`, await buildLocalCopy());
+}
+
+/**
+ * Compiles an entry other than the package's main one into a single file, with what it imports from the workspace's
+ * unpublished packages, such as `@tessello/sdk/testing` and @tessello/host-core: the package keeps no dependency. Its
+ * declarations are written from its own exports, which must not mention a type of those packages.
+ */
+async function bundleEntry(file: string, dist: string): Promise<void> {
+  const out = `${dist}/${basename(file).replace(/\.ts$/, ".js")}`;
+  await build({ entryPoints: [file], outfile: out, bundle: true, platform: "node", format: "esm", target: "node22", logLevel: "error" });
+  const { outputText, diagnostics = [] } = ts.transpileDeclaration(await readFile(file, "utf8"), {
+    fileName: basename(file),
+    reportDiagnostics: true,
+    compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.NodeNext, strict: true },
+  });
+  if (diagnostics.length > 0) throw new Error(diagnostics.map((d) => ts.flattenDiagnosticMessageText(d.messageText, "\n")).join("\n"));
+  await writeFile(out.replace(/\.js$/, ".d.ts"), outputText.replace(/(from "\.\/[^"]+)\.ts"/g, '$1.js"'));
 }
 
 /** Compiles `entry` and the files it imports. Another published package is read from its `dist/` declarations. */

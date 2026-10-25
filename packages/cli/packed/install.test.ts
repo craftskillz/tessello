@@ -78,12 +78,29 @@ describe("installed outside this repository", () => {
     assert.equal(stdout.trim(), "function function function function false");
   });
 
+  test("the SDK's Test Host connects the SDK, with nothing installed but the SDK", async () => {
+    const script = `
+      import { connect } from "@tessello/sdk";
+      import { createTestHost, until } from "@tessello/sdk/testing";
+      const host = createTestHost({ storage: { notes: ["milk"] } });
+      const view = await connect({ transport: host.mount({ surface: "view" }).transport });
+      await view.storage.set("count", 1);
+      console.log(JSON.stringify([await view.storage.get("notes"), await until(() => host.storage.get("count"))]));`;
+    await writeFile(join(project, "testing.js"), script);
+    const { stdout } = await exec(process.execPath, ["testing.js"], { cwd: project });
+    assert.equal(stdout.trim(), '[["milk"],1]');
+    const sdk = JSON.parse(await readFile(join(project, "node_modules/@tessello/sdk/package.json"), "utf8"));
+    assert.equal(sdk.dependencies, undefined);
+  });
+
   test("their type declarations are found by TypeScript", async () => {
     const source = `
       import { connect, type ConnectedModule } from "@tessello/sdk";
       import { validateZip, type ValidationReport } from "@tessello/convention";
       import { parseEntry } from "@tessello/marketplace";
-      const host: Promise<ConnectedModule> = connect();
+      import { createTestHost, type TestHost } from "@tessello/sdk/testing";
+      const testHost: TestHost = createTestHost({ theme: "dark" });
+      const host: Promise<ConnectedModule> = connect({ transport: testHost.mount({ surface: "view" }).transport });
       const report: ValidationReport = validateZip(new Uint8Array());
       export { host, report, parseEntry };`;
     await writeFile(join(project, "types.ts"), source);

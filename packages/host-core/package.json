@@ -11,6 +11,6 @@
     "fflate": "^0.8.2"
   },
   "devDependencies": {
-    "@tessello/sdk": "0.1.0"
+    "@tessello/sdk": "0.2.0"
   }
 }

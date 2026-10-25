@@ -70,6 +70,10 @@ _Avoid_: Répertoire, workspace, espace de stockage
 Élément permanent de l'Hôte qui liste les Modules installés et permet d'ouvrir leur Vue depuis n'importe où.
 _Avoid_: Dock, sidebar, menu
 
+**Hôte de test** (*Test Host*):
+Un Hôte en mémoire, fourni par le SDK aux tests d'un Module : la Vue ou le Widget s'y connecte sans Hôte, sans Dossier des Modules ni iframe, et le test prépare et inspecte son stockage, son thème, sa visibilité et sa navigation.
+_Avoid_: Faux Hôte, mock, Hôte simulé
+
 ## Marketplace
 
 **Marketplace** (*Marketplace*):
