@@ -69,7 +69,7 @@ Four larger Modules, written in Svelte, each live in their own repository, which
 
 Here, their published packages are kept in `packages/host/e2e/fixtures/`: the browser tests of the Host run on them, and the Validator is run on each one. See the `README.md` there to refresh one (`just fixture <name> <version>`).
 
-To release a version of one of them, list it on the Marketplace, or start a new Module from a template: see [RELEASING.md](RELEASING.md) (`just publish minor` in the Module's repository, then `just marketplace <name>` here; `just new-module <name>`).
+To release a version of one of them and list it on the Marketplace, or start a new Module from a template: see [RELEASING.md](RELEASING.md) (`just publish minor` in the Module's repository; `just new-module <name>` here).
 
 ## Check a Module
 
