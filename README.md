@@ -14,6 +14,7 @@ A composable web app: the User builds their space from Modules, each one a sandb
 | `packages/host` | The Host: the static web app (`src/`), its build and dev server (`scripts/`), its browser tests (`e2e/`). |
 | `scripts/` | The build of the npm packages (`build-packages.ts`) and the hook that tests them compiled (`use-compiled.ts`). |
 | `examples/` | Example Modules written by hand (`notes`, `meteo`, `prometheus`): the folder *is* the package. |
+| `RELEASING.md` | How to release a Module, list it on the Marketplace, and publish the npm packages. |
 | `.scratch/` | Spec and tickets (see `docs/agents/issue-tracker.md`). |
 
 ## Prerequisites
@@ -68,9 +69,7 @@ Four larger Modules, written in Svelte, each live in their own repository, which
 
 Here, their published packages are kept in `packages/host/e2e/fixtures/`: the browser tests of the Host run on them, and the Validator is run on each one. See the `README.md` there to refresh one (`just fixture <name> <version>`).
 
-To start a new Module, `just new-module <name>` (Svelte) or `just new-module <name> typescript` creates `craftskillz/tessello-<name>` from the template [`tessello-template-svelte`](https://github.com/craftskillz/tessello-template-svelte) or [`tessello-template-typescript`](https://github.com/craftskillz/tessello-template-typescript), renames it, turns on its GitHub Pages and clones it into `../tessello-<name>`. There, `just publish minor` publishes a version.
-
-To list them on the Marketplace, or a new version of them, `just marketplace` (all four) or `just marketplace <name>` opens the pull request of each one at its published version, with `tessello publish`. A new Module then waits for the label `approved`; a new version is merged once the CI passes. `just marketplace --dry-run` only checks.
+To release a version of one of them, list it on the Marketplace, or start a new Module from a template: see [RELEASING.md](RELEASING.md) (`just publish minor` in the Module's repository, then `just marketplace <name>` here; `just new-module <name>`).
 
 ## Check a Module
 
@@ -101,7 +100,7 @@ npm run build:sdk      # writes the SDK's single-file copy (tessello-sdk.js) int
 
 ## The npm packages
 
-`just publish` builds them, tests them compiled and installed from `npm pack`, then publishes on npm each one whose version is not there yet, in the order they depend on each other. Raise the version in its `package.json` first; npm asks for your two-factor code.
+`just npm-publish` builds them, tests them compiled and installed from `npm pack`, then publishes on npm each one whose version is not there yet, in the order they depend on each other. Raise the version in its `package.json` first; npm asks for your two-factor code. See [RELEASING.md](RELEASING.md).
 
 Four packages go to npm: `tessello` (the CLI, `packages/cli`), `@tessello/sdk`, `@tessello/convention` (the Validator) and `@tessello/marketplace`. In this repository they run from their TypeScript sources; for npm, each one is compiled into its own `dist/`, which *is* the package: JavaScript, type declarations (not for the CLI), a `package.json` pointing at them, its README and the license. `@tessello/sdk` also holds `tessello-sdk.js`, the single file a Creator copies into a Module.
 

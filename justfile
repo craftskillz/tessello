@@ -35,7 +35,7 @@ fixture name version:
 
 # Publishes on npm each package whose version is not there yet (sdk, convention, marketplace, cli, in that order), after
 # building them and testing them compiled and installed from npm pack. npm asks for your two-factor code
-publish:
+npm-publish:
     #!/usr/bin/env bash
     set -euo pipefail
     npm run test:compiled --silent
