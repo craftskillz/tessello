@@ -33,8 +33,7 @@ fixture name version:
     curl -fsSLo packages/host/e2e/fixtures/{{ name }}.zip https://craftskillz.github.io/tessello-{{ name }}/{{ version }}.zip
     node packages/cli/src/cli.ts validate packages/host/e2e/fixtures/{{ name }}.zip
 
-# Publishes on npm each package whose version is not there yet (sdk, convention, marketplace, cli, in that order), after
-# building them and testing them compiled and installed from npm pack. npm asks for your two-factor code
+# Publishes the npm packages whose version is not on npm yet, after testing them built and packed (see RELEASING.md)
 npm-publish:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -49,8 +48,7 @@ npm-publish:
         echo "$id $version is published."
     done
 
-# Opens the Marketplace pull request of @craftskillz Modules at their published version, e.g. `just marketplace watch-later`;
-# with no name, all four. Options go to `tessello publish`, e.g. `just marketplace --dry-run`
+# Lists @craftskillz Modules on the Marketplace at their published version: `just marketplace [name...] [--dry-run]`
 marketplace *args:
     #!/usr/bin/env bash
     set -uo pipefail
@@ -81,8 +79,7 @@ marketplace *args:
     done
     if [ ${#failed[@]} -gt 0 ]; then echo "Not done: ${failed[*]}" >&2; exit 1; fi
 
-# Creates the public repository craftskillz/tessello-<name> of a new Module from a template, `svelte` (by default) or
-# `typescript`, renames it, turns on its GitHub Pages and clones it into ../tessello-<name>, e.g. `just new-module pomodoro typescript`
+# Creates the repository craftskillz/tessello-<name> of a new Module from a template: `just new-module <name> [svelte|typescript]`
 new-module name template="svelte":
     #!/usr/bin/env bash
     set -euo pipefail
