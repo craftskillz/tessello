@@ -33,6 +33,22 @@ fixture name version:
     curl -fsSLo packages/host/e2e/fixtures/{{ name }}.zip https://craftskillz.github.io/tessello-{{ name }}/{{ version }}.zip
     node packages/cli/src/cli.ts validate packages/host/e2e/fixtures/{{ name }}.zip
 
+# Publishes on npm each package whose version is not there yet (sdk, convention, marketplace, cli, in that order), after
+# building them and testing them compiled and installed from npm pack. npm asks for your two-factor code
+publish:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    npm run test:compiled --silent
+    npm run test:packed --silent
+    for name in sdk convention marketplace cli; do
+        dist="packages/$name/dist"
+        id=$(node -p "require('./$dist/package.json').name")
+        version=$(node -p "require('./$dist/package.json').version")
+        if [ -n "$(npm view "$id@$version" version 2>/dev/null)" ]; then echo "$id $version is already on npm."; continue; fi
+        npm publish --access public "$dist"
+        echo "$id $version is published."
+    done
+
 # Opens the Marketplace pull request of @craftskillz Modules at their published version, e.g. `just marketplace watch-later`;
 # with no name, all four. Options go to `tessello publish`, e.g. `just marketplace --dry-run`
 marketplace *args:

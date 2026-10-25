@@ -101,6 +101,8 @@ npm run build:sdk      # writes the SDK's single-file copy (tessello-sdk.js) int
 
 ## The npm packages
 
+`just publish` builds them, tests them compiled and installed from `npm pack`, then publishes on npm each one whose version is not there yet, in the order they depend on each other. Raise the version in its `package.json` first; npm asks for your two-factor code.
+
 Four packages go to npm: `tessello` (the CLI, `packages/cli`), `@tessello/sdk`, `@tessello/convention` (the Validator) and `@tessello/marketplace`. In this repository they run from their TypeScript sources; for npm, each one is compiled into its own `dist/`, which *is* the package: JavaScript, type declarations (not for the CLI), a `package.json` pointing at them, its README and the license. `@tessello/sdk` also holds `tessello-sdk.js`, the single file a Creator copies into a Module.
 
 ```sh
