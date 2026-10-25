@@ -66,7 +66,7 @@ describe("the theme of the interface", () => {
 
     await chooseTheme(page, "Light");
     await view(page).getByText("Mode: light").waitFor();
-    assert.equal(await background(page), "rgb(255, 255, 255)");
+    assert.equal(await background(page), "rgb(250, 250, 247)");
 
     // The View stays loaded behind the Home: both it and the Widget get the change.
     await (await showLauncher(page)).getByRole("button", { name: "Tessello" }).click();

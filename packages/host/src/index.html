@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Tessello</title>
-    <meta name="theme-color" content="#ffffff" />
+    <meta name="theme-color" content="#fafaf7" />
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="icon" href="icon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="style.css" />
@@ -14,7 +14,11 @@
     <section id="gate" class="gate" hidden></section>
     <div class="launcher-edge" aria-hidden="true"></div>
     <nav class="launcher" id="launcher" aria-label="Launcher" data-i18n-label="launcher" hidden>
-      <button type="button" class="launcher-home" id="home-button">Tessello</button>
+      <button type="button" class="launcher-home" id="home-button" aria-label="Tessello">
+        <img class="brand-mark" src="icon.svg" alt="" width="36" height="36" />
+        <span class="brand-name">tessello</span>
+      </button>
+      <p class="launcher-label" data-i18n="yourModules">Your modules</p>
       <ul id="launcher-modules"></ul>
       <button type="button" class="launcher-marketplace" id="marketplace-button" data-i18n="marketplace">Marketplace</button>
       <div class="launcher-tools" id="launcher-tools">
@@ -35,12 +39,18 @@
     </nav>
     <main id="stage" hidden>
       <section id="home" class="home">
-        <div id="home-empty" class="home-empty">
-          <h1 data-i18n="homeEmptyTitle">Your space is ready</h1>
-          <p id="home-empty-text"></p>
-        </div>
         <div class="home-toolbar">
+          <div class="home-heading">
+            <p class="eyebrow">Tessello</p>
+            <h1 data-i18n="homeTitle">Your space</h1>
+            <p class="home-subtitle" data-i18n="homeSubtitle">A space that works your way.</p>
+          </div>
           <button type="button" id="arrange-button" data-i18n="arrangeWidgets" hidden>Arrange widgets</button>
+        </div>
+        <div id="home-empty" class="home-empty">
+          <div class="empty-art" aria-hidden="true"><img src="icon.svg" alt="" width="96" height="96" /></div>
+          <h2 data-i18n="homeEmptyTitle">Your space is ready</h2>
+          <p id="home-empty-text"></p>
         </div>
         <ol id="widgets" class="widgets" aria-label="Widgets" data-i18n-label="widgets"></ol>
       </section>

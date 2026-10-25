@@ -1,9 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="112" fill="#2f6fec" />
-  <g fill="#ffffff">
-    <rect x="96" y="96" width="147" height="147" rx="28" opacity="0.95" />
-    <rect x="269" y="96" width="147" height="147" rx="28" opacity="0.6" />
-    <rect x="96" y="269" width="147" height="147" rx="28" opacity="0.6" />
-    <rect x="269" y="269" width="147" height="147" rx="28" opacity="0.95" />
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <g transform="translate(9 7) rotate(-5 23 25)">
+    <rect x="0" y="3" width="21" height="22" rx="4" fill="#265c46" />
+    <rect x="25" y="0" width="21" height="22" rx="4" fill="#adc8a8" />
+    <rect x="0" y="29" width="21" height="22" rx="4" fill="#789b6e" />
+    <rect x="25" y="29" width="21" height="22" rx="4" fill="#d2dca6" />
   </g>
 </svg>

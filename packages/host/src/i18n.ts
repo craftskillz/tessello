@@ -28,6 +28,9 @@ const en = {
   installModule: "Install a Module…",
   installFromUrl: "Install from a URL…",
   homeEmptyTitle: "Your space is ready",
+  homeTitle: "Your space",
+  homeSubtitle: "A space that works your way.",
+  yourModules: "Your modules",
   homeEmptyText: (zip: Part): Part[] => [
     "Drop a Module's ",
     zip,
@@ -289,6 +292,9 @@ const fr: Messages = {
   installModule: "Installer un Module…",
   installFromUrl: "Installer depuis une URL…",
   homeEmptyTitle: "Votre espace est prêt",
+  homeTitle: "Votre espace",
+  homeSubtitle: "Un espace à votre façon.",
+  yourModules: "Vos modules",
   homeEmptyText: (zip) => [
     "Déposez le fichier ",
     zip,

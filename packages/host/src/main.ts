@@ -106,7 +106,8 @@ const iconUrl = (icon: Icon) => dataUrl(typeOf(icon.path), icon.bytes);
 /** Shows a full page instead of the Host, with these children. */
 function showGate(...children: Node[]) {
   launcher.hidden = stage.hidden = true;
-  gate.replaceChildren(...children);
+  const brand = el("div", { className: "gate-brand" }, el("img", { src: "icon.svg", alt: "", width: 44, height: 44 }), el("span", { className: "brand-name" }, "tessello"));
+  gate.replaceChildren(brand, ...children);
   gate.hidden = false;
 }
 

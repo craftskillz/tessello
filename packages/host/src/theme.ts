@@ -8,12 +8,12 @@ export const THEME_CHOICES: readonly ThemeChoice[] = ["system", "light", "dark"]
 
 const LIGHT: Theme = {
   mode: "light",
-  colors: { background: "#ffffff", surface: "#f4f5f7", text: "#16181d", textMuted: "#5f6670", accent: "#2f6fec", border: "#d9dce1" },
+  colors: { background: "#fafaf7", surface: "#ffffff", text: "#242f2a", textMuted: "#666e67", accent: "#265c46", border: "#e1e5dd" },
 };
 
 const DARK: Theme = {
   mode: "dark",
-  colors: { background: "#14161a", surface: "#1d2026", text: "#e8e9eb", textMuted: "#9aa0a8", accent: "#4f8cff", border: "#2c3038" },
+  colors: { background: "#14161a", surface: "#1d2420", text: "#e8e9eb", textMuted: "#afb9ae", accent: "#a8cba7", border: "#344039" },
 };
 
 /** The choice saved by the User; anything else, such as nothing saved yet, is the system's. */

@@ -6,7 +6,7 @@ Spec parente : `.scratch/tessello-v1/spec.md`. Vocabulaire : `GLOSSARY.md`. Cont
 
 **Blocked by:** 04 (Premier Module dans le navigateur)
 
-**Status:** ready-for-human
+**Status:** resolved
 
 - [x] L'Hôte est installable comme PWA et s'ouvre hors ligne une fois installé, avec les Modules déjà installés.
 - [x] Le déploiement sur Cloudflare Pages est reproductible à partir du dépôt et documenté, y compris les en-têtes HTTP nécessaires.
@@ -23,3 +23,4 @@ Cloudflare Pages est confirmé (ADR 0014) : son offre gratuite n'a pas de limite
 
 - 2026-10-25 — **Implémentation.** `packages/host/scripts/headers.ts` est la source unique des en-têtes : le build écrit `dist/_headers` (`/*` → `Content-Security-Policy: frame-src 'none'`, seule directive, sans `connect-src` ; `/sw.js` → `Cache-Control: no-cache`) et `serve.ts` sert `dist/` avec les mêmes, d'où un équivalent local fidèle. PWA : `manifest.webmanifest`, `icon.svg` (SVG `any`, accepté par Chromium), et un service worker (`src/service-worker.ts` → `dist/sw.js`) qui ne sert que les fichiers de l'Hôte en cache-first, sous un cache nommé d'après une empreinte de ces fichiers ; il laisse passer tout le reste (Modules, Marketplace, téléchargements par URL, autres pages du site). Test navigateur `e2e/pwa.test.ts` : manifeste sans erreur ni erreur d'installabilité, puis hors ligne, rechargement servi par le service worker avec l'en-tête CSP, et le Module installé s'ouvre. Déploiement : `.github/workflows/deploy-host.yml` (typecheck, tests, tests navigateur, puis `wrangler@4.149.0 pages deploy` vers le projet `tessello` dans un job séparé, sauté sans la variable `CLOUDFLARE_ACCOUNT_ID`) ; `DEPLOYING.md` documente en-têtes, mise en place et quotas gratuits. Vérifié en local : 529 tests unitaires, 203 tests navigateur (+2 PWA).
 - 2026-10-25 — **Reste à faire, avec l'accord du Mainteneur :** créer le projet Pages `tessello` (adresse `https://tessello.pages.dev/`, déjà le défaut de `TESSELLO_HOST` dans la Marketplace), donner le jeton *Cloudflare Pages: Edit* et inscrire `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` dans `craftskillz/tessello`, pousser, puis vérifier les `curl -sI` de `DEPLOYING.md` et installer l'app dans Chrome. Non couvert par les tests : le démarrage à froid de l'app installée hors ligne et la ré-autorisation du Dossier des Modules (ADR 0007), qui demande un geste de l'Utilisateur.
+- 2026-10-25 — **Déployé.** Confirmé par le Mainteneur : le projet Pages `tessello` est en ligne.
