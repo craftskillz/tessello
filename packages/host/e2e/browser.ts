@@ -68,6 +68,10 @@ export function useHost({ public: publicSite = false }: HostOptions = {}) {
     /** A page in a new browser context, so no folder or IndexedDB data is shared with other tests. */
     async newPage({ unsupported = false, choose = true, hash = "", init }: PageOptions = {}): Promise<Page> {
       const page = await (await browser.newContext()).newPage();
+      // Playwright turns on file chooser interception, without waiting, when a test starts listening for one, and off
+      // when it stops: a click right after `waitForEvent("filechooser")` could beat it and open no chooser it sees.
+      // A listener kept from the start keeps interception on for the whole test.
+      page.on("filechooser", () => {});
       await page.addInitScript(unsupported ? "delete window.showDirectoryPicker;" : FOLDER_PICKER);
       if (init) await page.addInitScript(init);
       await page.goto(state.url + hash);
