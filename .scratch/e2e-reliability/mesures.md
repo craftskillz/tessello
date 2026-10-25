@@ -65,3 +65,19 @@ Le ralentissement ×4 ne suffit donc pas à reproduire la CI : 3 de ses 4 échec
 
 - `diagram.test.ts:1800` (« imports the files of living-documentation… », signalé au ticket 01) : 0/6, ne se reproduit pas.
 - **Deux familles** pour les tickets 06 à 10 : la lecture d'un fichier de données pendant que l'Hôte le remplace (`NotFoundError`, 3 tests, avec et sans ralentissement), et une vérification immédiate d'un état que la Vue n'a pas encore atteint (`diagram.test.ts:1523`, qui échoue à chaque passage ralenti). Les deux relèvent de la règle « une seule façon d'attendre » de la spec : un utilitaire qui réessaie jusqu'à une échéance et tolère une lecture qui lève.
+
+## Après le ticket 06 (Diagram)
+
+2026-10-25, même machine et mêmes versions. Médiane et maximum sur 3 passages, en secondes.
+
+| Suite | Tests | Normal : médiane | Normal : max | Ralenti ×4 : médiane | Ralenti ×4 : max |
+|---|---|---|---|---|---|
+| `packages/host/e2e/diagram.test.ts`, avant | 45 | 99,9 | 99,9 | 460,6 | 464,1 |
+| `packages/host/e2e/diagram.test.ts`, après (les 2 tests « Hôte ») | 2 | 2,0 | 2,0 | 3,2 | 3,3 |
+| `../tessello-diagram`, `npm run test:browser` (`e2e/`, 13 fichiers, contre l'Hôte de test) | 43 | 36,4 | 36,7 | 47,5 | 48,6 |
+
+- Les 43 tests du Module, et les 2 qui restent dans l'Hôte, prouvent en 38 s ce que les 45 tests de l'Hôte prouvaient en 100 s, et en 51 s ralentis au lieu de 461 s : ni installation, ni dossier, ni iframe, et l'Hôte de test répond en mémoire.
+- **Instabilités trouvées, ralenti ×4**, toutes deux des attentes du test, corrigées dans la suite du Module :
+  - « undoes a move, a waypoint and a rename… » (l'échec CI `diagram.test.ts:1143`) : Ctrl+Z pressé pendant que la Vue, montrée de nouveau, relit ses diagrammes. 3/3 avant, 0/5 après : le test attend que l'Hôte ait répondu à toutes les requêtes de la Vue (`answered`). C'est aussi un défaut du Module : `.scratch/diagram/issues/17-annulation-perdue-pendant-la-relecture.md`.
+  - « new rectangles take the default color… » : un rechargement coupait l'écriture du texte d'une forme, l'attente `saved` étant satisfaite par l'écriture de la forme placée. 2/4 avant, 0/5 après : `addShape` attend que le texte soit dans le diagramme et la liste.
+- `diagram.test.ts:1523` (« ← Back », 3/3 ralenti) : la suite du Module attend que le bouton disparaisse.
