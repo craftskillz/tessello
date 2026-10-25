@@ -1,0 +1,67 @@
+# Mesures : tests navigateur, avant le déplacement
+
+Ticket [02](issues/02-mesurer.md). Point de départ des tickets 06 à 10 : à refaire à la fin (`just e2e-repeat 3`, puis `E2E_CPU_SLOWDOWN=4 just e2e-repeat 3`) pour montrer ce que le déplacement a changé.
+
+## Conditions
+
+- **Date :** 2026-10-25, sur le commit `23bf931` (« Keep file chooser interception on for the whole of each browser test »), plus les outils de ce ticket.
+- **Machine :** Mac du Mainteneur, Apple M5 (10 cœurs, 32 Go), Darwin 25.6.0. Rien d'autre de lourd ne tournait pendant les passages.
+- **Versions :** Node v24.12.0, Playwright 1.64.1, Chromium 156.0.8078.4.
+- **Suite :** 22 fichiers de `packages/*/e2e/`, 206 tests, un fichier après l'autre (comme `npm run test:browser`).
+- **Ralentissement :** `E2E_CPU_SLOWDOWN=4` ralentit le processeur de chaque page. Les Vues et Widgets des Modules, dans des iframes `sandbox` sans `allow-same-origin`, tournent dans le processus de la page sous ce Chromium (aucune cible `iframe` dans CDP `Target.getTargets`). Ils sont donc ralentis aussi : une boucle de calcul y passe de 50 à 186 ms, comme dans la page (50 à 187 ms).
+
+## Durées
+
+Médiane et maximum sur 3 passages, en secondes ; total : somme des médianes.
+
+| Fichier | Normal : médiane | Normal : max | Ralenti ×4 : médiane | Ralenti ×4 : max |
+|---|---|---|---|---|
+| `diagram` | 99,9 | 99,9 | 460,6 | 464,1 |
+| `skills-library` | 72,0 | 72,6 | 625,5 | 636,2 |
+| `watch-later` | 24,6 | 24,7 | 88,4 | 89,9 |
+| `home` | 14,2 | 14,2 | 16,3 | 16,5 |
+| `document-size` | 13,4 | 13,5 | 17,2 | 17,2 |
+| `survival-kit` | 11,1 | 11,1 | 19,6 | 20,4 |
+| `folder-modules` | 5,5 | 5,6 | 8,5 | 8,6 |
+| `install-url` | 4,3 | 4,8 | 5,3 | 5,4 |
+| `marketplace` | 4,2 | 4,2 | 7,0 | 7,7 |
+| `settings` | 4,2 | 4,2 | 4,6 | 4,6 |
+| `local-network` | 3,6 | 3,6 | 5,7 | 6,0 |
+| `update` | 3,2 | 3,3 | 3,8 | 3,8 |
+| `modules-folder` | 2,6 | 2,7 | 3,9 | 3,9 |
+| `permissions` | 2,6 | 2,6 | 3,5 | 3,6 |
+| `space` | 2,4 | 2,4 | 2,9 | 3,0 |
+| `downloads` | 1,9 | 2,0 | 2,2 | 2,3 |
+| `guide` | 1,5 | 1,5 | 1,7 | 1,7 |
+| `install` | 1,2 | 1,3 | 2,1 | 2,1 |
+| `handshake` | 0,9 | 0,9 | 1,1 | 1,1 |
+| `package-files` | 0,8 | 0,8 | 1,1 | 1,1 |
+| `pwa` | 0,7 | 0,7 | 1,0 | 1,1 |
+| `data-files` | 0,7 | 0,7 | 1,0 | 1,0 |
+| **Total** | **275,5 (4 min 36)** | | **1 283 (21 min 23)** | |
+
+- Les 4 fichiers des Modules @craftskillz (`diagram`, `skills-library`, `watch-later`, `survival-kit`) font 207,6 s sur 275,5 (75 %) sans ralentissement, et 1 194 s sur 1 283 (93 %) ralentis. Les 18 fichiers de l'Hôte passent de 68 s à 89 s : ils supportent bien le ralentissement, les Modules non (`skills-library` ×8,7, `diagram` ×4,6).
+- Le jeu court du déploiement (`pwa`, `handshake`, `install`, `install-url`, `home`, `permissions`, `update`) : 27 s, et 33 s ralenti.
+- Les durées varient peu d'un passage à l'autre : le maximum dépasse la médiane de 12 % au plus (`install-url`).
+
+## Les 4 échecs de la CI (run 40208924784)
+
+| Échec de la CI | Normal | Ralenti ×4 | Constat |
+|---|---|---|---|
+| `diagram.test.ts:1143`, « undoes a move, a waypoint and a rename… », *the Host did not write the change* | 0/3 | 0/3 | Ne se reproduit pas. |
+| `watch-later.test.ts:590`, « watched videos lead the row by score… », `NotFoundError` | 1/3 | 0/3 | Se reproduit sans ralentissement, avec la même erreur : `readFolder` (`browser.ts`) lit `settings.json` pendant que l'Hôte le remplace (`watch-later.test.ts:67`, `storedSettings`). |
+| `home.test.ts:95`, « opens management actions with the keyboard… », `filechooser` jamais reçu | 0/3 | 0/3 | Ne se reproduit pas. Le commit `23bf931`, postérieur au run de la CI, garde l'interception du sélecteur de fichiers active pendant tout le test : c'est probablement la correction. |
+| `skills-library.test.ts:1146`, « hovering a point shows its set… ; leaving closes it » | 0/3 | 0/3 | Ne se reproduit pas. |
+
+Le ralentissement ×4 ne suffit donc pas à reproduire la CI : 3 de ses 4 échecs restent introuvables en local.
+
+## Autres tests instables trouvés
+
+| Test | Normal | Ralenti ×4 | Premier message, lieu |
+|---|---|---|---|
+| `diagram.test.ts:1489`, « links a shape to a new diagram, follows it with Shift+click and comes back… » | 0/3 | **3/3** | `1 !== 0` à `diagram.test.ts:1523` : juste après « ← Back », le test compte les boutons « ← Back to » sans attendre que la Vue l'ait retiré. |
+| `survival-kit.test.ts:136`, « imports a .survival-kit.json of the original Survival Kit… » | 0/3 | 2/3 | `NotFoundError` à `survival-kit.test.ts:23` (`stored`, puis `readFolder`), à la ligne 160 : même cause que `watch-later.test.ts:590`. |
+| `watch-later.test.ts:290`, « marking watched requires a score, cancelling discards the draft… » | 0/3 | 1/3 | `NotFoundError` à `watch-later.test.ts:67` (`storedSettings`), à la ligne 344 : même cause. |
+
+- `diagram.test.ts:1800` (« imports the files of living-documentation… », signalé au ticket 01) : 0/6, ne se reproduit pas.
+- **Deux familles** pour les tickets 06 à 10 : la lecture d'un fichier de données pendant que l'Hôte le remplace (`NotFoundError`, 3 tests, avec et sans ralentissement), et une vérification immédiate d'un état que la Vue n'a pas encore atteint (`diagram.test.ts:1523`, qui échoue à chaque passage ralenti). Les deux relèvent de la règle « une seule façon d'attendre » de la spec : un utilitaire qui réessaie jusqu'à une échéance et tolère une lecture qui lève.

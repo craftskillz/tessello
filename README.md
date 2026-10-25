@@ -91,6 +91,8 @@ npm run test:browser       # builds the Host, then drives it in Chromium (Playwr
 npm run test:browser:host  # a short set of the Host's browser tests, those a deployment waits for (just e2e-host)
 ```
 
+Two variables change how the browser tests run: `HEADED=1` shows the browser, slowed down, to watch them (`just e2e-headed home`), and `E2E_CPU_SLOWDOWN=4` slows the processor of every page down 4 times, to reproduce a slower CI machine. `just e2e-repeat N [names…]` runs the browser tests, or those of the given files (`home`, `diagram`…), N times, then gives each file's median and longest duration and each test that failed at least once.
+
 What blocks a deployment of the Host, and where every browser test runs: see [DEPLOYING.md](DEPLOYING.md#how-it-deploys).
 
 The browser tests install the four @craftskillz Modules from their packages in `packages/host/e2e/fixtures/`. The first time, Playwright may need its browser: `npx playwright install chromium`.

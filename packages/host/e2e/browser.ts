@@ -3,6 +3,8 @@
 // Playwright cannot drive the native folder picker: `showDirectoryPicker` returns a folder of the origin private file
 // system (OPFS) instead, which has the same FileSystemDirectoryHandle interface. Changes a User makes with their own
 // tools (git clone, an editor, git pull) are made by writing in that folder.
+// HEADED=1 shows the browser, slowed down, to watch the tests run. E2E_CPU_SLOWDOWN=4 slows the processor of every page
+// down 4 times, as on a CI machine: `E2E_CPU_SLOWDOWN=4 just e2e-only home`.
 
 import { readdir, readFile } from "node:fs/promises";
 import { createServer } from "node:http";
@@ -18,6 +20,15 @@ const FOLDER_PICKER = `window.showDirectoryPicker = async () => {
   const root = await navigator.storage.getDirectory();
   return root.getDirectoryHandle(window.tesselloPick ?? "modules", { create: true });
 };`;
+
+/** How many times slower `E2E_CPU_SLOWDOWN` makes the processor of each page: 1, unchanged, without it. */
+function cpuSlowdown(): number {
+  const value = process.env.E2E_CPU_SLOWDOWN;
+  if (!value) return 1;
+  const rate = Number(value);
+  if (!(rate >= 1)) throw new Error(`E2E_CPU_SLOWDOWN is how many times slower the processor runs, 1 or more, not "${value}".`);
+  return rate;
+}
 
 export interface PageOptions {
   /** A browser without `showDirectoryPicker`, as Firefox, Safari and every phone. */
@@ -43,14 +54,14 @@ export interface HostOptions {
 export function useHost({ public: publicSite = false }: HostOptions = {}) {
   let browser: Browser;
   let close: () => void;
-  const state = { url: "" };
+  const state = { url: "", cpuSlowdown: 1 };
   before(async () => {
     const { server, url } = await serveHost();
     state.url = url;
     close = () => server.close();
     const { host } = new URL(url);
-    // HEADED=1 shows the browser, slowed down, to watch the tests run.
     const headed = process.env.HEADED === "1";
+    state.cpuSlowdown = cpuSlowdown();
     browser = await chromium.launch({
       headless: !headed,
       slowMo: headed ? 200 : 0,
@@ -68,6 +79,10 @@ export function useHost({ public: publicSite = false }: HostOptions = {}) {
     /** A page in a new browser context, so no folder or IndexedDB data is shared with other tests. */
     async newPage({ unsupported = false, choose = true, hash = "", init }: PageOptions = {}): Promise<Page> {
       const page = await (await browser.newContext()).newPage();
+      if (state.cpuSlowdown > 1) {
+        const cdp = await page.context().newCDPSession(page);
+        await cdp.send("Emulation.setCPUThrottlingRate", { rate: state.cpuSlowdown });
+      }
       // Playwright turns on file chooser interception, without waiting, when a test starts listening for one, and off
       // when it stops: a click right after `waitForEvent("filechooser")` could beat it and open no chooser it sees.
       // A listener kept from the start keeps interception on for the whole test.

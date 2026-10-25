@@ -128,5 +128,9 @@ e2e-only +names: build
 e2e-headed +names: build
     HEADED=1 node --test --test-concurrency=1 {{ prepend("packages/host/e2e/", append(".test.ts", names)) }}
 
+# Runs the browser tests, or those of the given files, N times, then summarizes durations and failures: `just e2e-repeat 3 home diagram`
+e2e-repeat passes *names: build
+    node packages/host/scripts/e2e-repeat.ts {{ passes }} {{ names }}
+
 # Everything a change must pass: types, unit tests, then browser tests
 check: typecheck test e2e
