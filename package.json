@@ -15,6 +15,7 @@
     "build:packages": "node scripts/build-packages.ts",
     "start:host": "npm run build:host && node packages/host/scripts/serve.ts",
     "test:browser": "npm run build:host && node --test --test-concurrency=1 \"packages/*/e2e/*.test.ts\"",
+    "test:browser:host": "npm run build:host && node --test --test-concurrency=1 packages/host/e2e/pwa.test.ts packages/host/e2e/handshake.test.ts packages/host/e2e/install.test.ts packages/host/e2e/install-url.test.ts packages/host/e2e/home.test.ts packages/host/e2e/permissions.test.ts packages/host/e2e/update.test.ts",
     "test:compiled": "npm run build:packages && node --import ./scripts/use-compiled.ts --test \"packages/*/test/*.test.ts\"",
     "test:packed": "node --test \"packages/*/packed/*.test.ts\""
   },

@@ -24,8 +24,10 @@ The headers, and why:
 
 At each push to `main`, the workflow *Deploy the Host* (`.github/workflows/deploy-host.yml`) runs:
 
-1. Type checks, unit tests, the Host build and every browser test against it.
+1. Type checks, unit tests, the Host build and a short set of the Host's browser tests against it (`npm run test:browser:host`, or `just e2e-host`; the list of files is in `package.json`).
 2. Only if they pass, in a separate job, `wrangler pages deploy` of `dist/` to the project `tessello`.
+
+Every browser test, those of the @craftskillz Modules included, runs at each push in a workflow of its own, *Browser tests* (`.github/workflows/browser-tests.yml`, also *Run workflow* by hand). Its failure shows in the Actions tab and on the commit, but does not hold back a deployment: a Module's test tells about the Module, not the Host.
 
 The deploy job needs the repository variable `CLOUDFLARE_ACCOUNT_ID` and the secret `CLOUDFLARE_API_TOKEN`, an account token with the single permission *Cloudflare Pages: Edit* (the same kind as the Marketplace's). Without the variable, the job is skipped and the build stays an artifact of the run. To deploy again by hand, use *Actions → Deploy the Host → Run workflow*.
 

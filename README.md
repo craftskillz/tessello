@@ -85,10 +85,13 @@ A Module is installable when the Validator reports no error; the examples and th
 ## Tests
 
 ```sh
-npm test              # unit tests of every package, and the Validator on the examples and the published Modules
-npm run typecheck     # TypeScript, without emitting anything
-npm run test:browser  # builds the Host, then drives it in Chromium (Playwright): install, Home, Widgets, Survival Kit…
+npm test                   # unit tests of every package, and the Validator on the examples and the published Modules
+npm run typecheck          # TypeScript, without emitting anything
+npm run test:browser       # builds the Host, then drives it in Chromium (Playwright): install, Home, Widgets, Survival Kit…
+npm run test:browser:host  # a short set of the Host's browser tests, those a deployment waits for (just e2e-host)
 ```
+
+What blocks a deployment of the Host, and where every browser test runs: see [DEPLOYING.md](DEPLOYING.md#how-it-deploys).
 
 The browser tests install the four @craftskillz Modules from their packages in `packages/host/e2e/fixtures/`. The first time, Playwright may need its browser: `npx playwright install chromium`.
 

@@ -1,5 +1,6 @@
-# At each push to main, checks Tessello, builds the Host and runs its browser tests against the build, then deploys it
-# to the Cloudflare Pages project tessello, served at https://tessello.pages.dev/ (see DEPLOYING.md).
+# At each push to main, checks Tessello, builds the Host and runs a short set of its browser tests against the build, then
+# deploys it to the Cloudflare Pages project tessello, served at https://tessello.pages.dev/ (see DEPLOYING.md). Every
+# browser test, the Modules' included, runs in browser-tests.yml, which does not hold a deployment back.
 
 name: Deploy the Host
 
@@ -34,7 +35,7 @@ jobs:
       - run: npx playwright install --with-deps chromium
 
       # Builds packages/host/dist, then tests it served with the headers of _headers, as Cloudflare Pages serves it.
-      - run: npm run test:browser
+      - run: npm run test:browser:host
 
       - uses: actions/upload-artifact@v7
         with:

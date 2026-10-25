@@ -1,0 +1,34 @@
+# At each push to main, runs every browser test of Tessello, the @craftskillz Modules' included, against the built Host.
+# A failure shows here but does not hold back a deployment: deploy-host.yml waits for a short set of the Host's tests
+# only (see DEPLOYING.md).
+
+name: Browser tests
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# No concurrency group: each push gets a result of its own, never cancelled by the next one.
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          package-manager-cache: false
+
+      - run: npm ci --no-audit --no-fund
+      - run: npx playwright install --with-deps chromium
+
+      # Builds packages/host/dist, then runs every file of packages/*/e2e/ against it, one after the other.
+      - run: npm run test:browser

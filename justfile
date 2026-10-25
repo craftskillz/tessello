@@ -23,6 +23,10 @@ start:
 e2e:
     npm run test:browser
 
+# The short set of the Host's browser tests a deployment waits for, without the Modules' (list in package.json)
+e2e-host:
+    npm run test:browser:host
+
 # Builds the npm packages into packages/<name>/dist/, then tests them compiled, and installed from npm pack in a temporary folder
 packages:
     npm run test:compiled
