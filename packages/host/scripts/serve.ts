@@ -1,4 +1,5 @@
-// Serves the built Host locally, with the same headers as in production (headers.ts).
+// Serves the built Host locally, with the same headers as in production (headers.ts), and Cloudflare Pages' redirect
+// of `/index.html` to `/`.
 // Run with `npm run start:host`, after `npm run build:host`.
 
 import { readFile } from "node:fs/promises";
@@ -21,6 +22,7 @@ const TYPES: Record<string, string> = {
 export function serveHost(port = 0): Promise<{ server: Server; url: string }> {
   const server = createServer(async (request, response) => {
     const path = new URL(request.url ?? "/", "http://host").pathname;
+    if (path === "/index.html") return void response.writeHead(308, { Location: "/" }).end();
     const file = normalize(join(DIST, path === "/" ? "index.html" : path));
     if (!file.startsWith(DIST)) return void response.writeHead(404).end();
     try {

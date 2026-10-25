@@ -1,16 +1,21 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { shellKeyOf } from "../src/service-worker.ts";
+import { shellKeyOf, shellUrlOf } from "../src/service-worker.ts";
 
 const scope = "https://tessello.example/app/";
 const shell = ["index.html", "main.js", "style.css", "manifest.webmanifest", "icon.svg"];
 const shellKeyFor = (url: string, method = "GET", mode = "no-cors") => shellKeyOf({ url, method, mode }, scope, shell);
 
 describe("the requests the service worker answers from the shell cache", () => {
-  test("a navigation to the Host, whatever its query or hash, is answered with index.html", () => {
+  test("a navigation to the Host, whatever its query or hash, is answered with the page cached at the root", () => {
     for (const url of [scope, `${scope}?a=1`, `${scope}#install=https%3A%2F%2Fx.test%2Fm.zip`, `${scope}index.html`]) {
-      assert.equal(shellKeyFor(url, "GET", "navigate"), `${scope}index.html`);
+      assert.equal(shellKeyFor(url, "GET", "navigate"), scope);
     }
+  });
+
+  test("index.html is cached at the root, which Cloudflare Pages serves without a redirect", () => {
+    assert.equal(shellUrlOf("index.html", scope), scope);
+    assert.equal(shellUrlOf("main.js", scope), `${scope}main.js`);
   });
 
   test("a shell file is answered with itself", () => {

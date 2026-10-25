@@ -16,8 +16,16 @@ interface WorkerScope {
 declare const self: WorkerScope;
 
 /**
+ * The URL a shell file is fetched and cached at: index.html at the root of `scope`, since Cloudflare Pages redirects
+ * `/index.html` to `/`, and a navigation answered with a redirected response fails.
+ */
+export function shellUrlOf(path: string, scope: string): string {
+  return path === "index.html" ? scope : scope + path;
+}
+
+/**
  * The cache key answering `request` (a URL under `scope`), or null to let it through to the network: a navigation to
- * the Host (its root or index.html, whatever the query or hash) gets index.html, a shell file itself; cross-origin,
+ * the Host (its root or index.html, whatever the query or hash) gets the page, a shell file itself; cross-origin,
  * non-GET and non-shell requests, and navigations to any other page of the site, get null.
  */
 export function shellKeyOf(
@@ -30,8 +38,8 @@ export function shellKeyOf(
   const root = new URL(scope);
   if (url.origin !== root.origin || !url.pathname.startsWith(root.pathname)) return null;
   const path = url.pathname.slice(root.pathname.length);
-  if (request.mode === "navigate") return path === "" || path === "index.html" ? `${scope}index.html` : null;
-  return shell.includes(path) ? scope + path : null;
+  if (request.mode === "navigate") return path === "" || path === "index.html" ? scope : null;
+  return shell.includes(path) ? shellUrlOf(path, scope) : null;
 }
 
 if (typeof __VERSION__ !== "undefined") {
@@ -42,7 +50,7 @@ if (typeof __VERSION__ !== "undefined") {
     event.waitUntil(
       caches
         .open(cacheName)
-        .then((cache) => cache.addAll(__SHELL__.map((path) => new Request(scope + path, { cache: "reload" }))))
+        .then((cache) => cache.addAll(__SHELL__.map((path) => new Request(shellUrlOf(path, scope), { cache: "reload" }))))
         .then(() => self.skipWaiting()),
     );
   });
