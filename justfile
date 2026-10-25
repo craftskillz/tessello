@@ -37,6 +37,8 @@ fixture name version:
 npm-publish:
     #!/usr/bin/env bash
     set -euo pipefail
+    if ! who=$(npm whoami 2>/dev/null); then echo "Not logged in to npm: run \`npm login\` (as the owner of the packages, craftskillz), then again." >&2; exit 1; fi
+    echo "Publishing as $who."
     npm run test:compiled --silent
     npm run test:packed --silent
     for name in sdk convention marketplace cli; do

@@ -53,7 +53,7 @@ None of this needs the Host running. You need [just](https://github.com/casey/ju
 
 1. Raise `version` in the `package.json` of each package that changed (`packages/cli`, `packages/sdk`, `packages/convention`, `packages/marketplace`). A package that depends on another one names its exact version: raise that too.
 
-2. In `tessello`, in your own terminal (npm asks for your two-factor code):
+2. In `tessello`, in your own terminal, logged in to npm as the owner of the packages (`npm login` as `craftskillz`; npm asks for your two-factor code):
 
    ```sh
    just npm-publish
