@@ -70,6 +70,8 @@ Here, their published packages are kept in `packages/host/e2e/fixtures/`: the br
 
 To start a new Module, `just new-module <name>` (Svelte) or `just new-module <name> typescript` creates `craftskillz/tessello-<name>` from the template [`tessello-template-svelte`](https://github.com/craftskillz/tessello-template-svelte) or [`tessello-template-typescript`](https://github.com/craftskillz/tessello-template-typescript), renames it, turns on its GitHub Pages and clones it into `../tessello-<name>`. There, `just publish minor` publishes a version.
 
+To list them on the Marketplace, or a new version of them, `just marketplace` (all four) or `just marketplace <name>` opens the pull request of each one at its published version, with `tessello publish`. A new Module then waits for the label `approved`; a new version is merged once the CI passes. `just marketplace --dry-run` only checks.
+
 ## Check a Module
 
 ```sh

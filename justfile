@@ -33,6 +33,38 @@ fixture name version:
     curl -fsSLo packages/host/e2e/fixtures/{{ name }}.zip https://craftskillz.github.io/tessello-{{ name }}/{{ version }}.zip
     node packages/cli/src/cli.ts validate packages/host/e2e/fixtures/{{ name }}.zip
 
+# Opens the Marketplace pull request of @craftskillz Modules at their published version, e.g. `just marketplace watch-later`;
+# with no name, all four. Options go to `tessello publish`, e.g. `just marketplace --dry-run`
+marketplace *args:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    names=()
+    options=()
+    for arg in {{ args }}; do
+        case "$arg" in
+            --*) options+=("$arg") ;;
+            *) names+=("$arg") ;;
+        esac
+    done
+    if [ ${#names[@]} -eq 0 ]; then names=(diagram skills-library survival-kit watch-later); fi
+    work=$(mktemp -d)
+    trap 'rm -rf "$work"' EXIT
+    failed=()
+    for name in "${names[@]}"; do
+        repo="craftskillz/tessello-$name"
+        echo "== @craftskillz/$name"
+        if ! version=$(gh api "repos/$repo/contents/manifest.json" -H "Accept: application/vnd.github.raw+json" | node -p 'JSON.parse(require("fs").readFileSync(0, "utf8")).version'); then
+            echo "Cannot read the Manifest of $repo." >&2; failed+=("$name"); continue
+        fi
+        url="https://craftskillz.github.io/tessello-$name/$version.zip"
+        # The published bytes, not a local build: the listing pins their SHA-256.
+        if ! curl -fsSLo "$work/$name.zip" "$url"; then
+            echo "$url is not online: run \`just publish minor\` in $repo, then wait for its Release workflow." >&2; failed+=("$name"); continue
+        fi
+        node packages/cli/src/cli.ts publish "$work/$name.zip" --url "$url" --source "https://github.com/$repo" --accept-terms --out tessello-listing ${options[@]+"${options[@]}"} || failed+=("$name")
+    done
+    if [ ${#failed[@]} -gt 0 ]; then echo "Not done: ${failed[*]}" >&2; exit 1; fi
+
 # Creates the public repository craftskillz/tessello-<name> of a new Module from a template, `svelte` (by default) or
 # `typescript`, renames it, turns on its GitHub Pages and clones it into ../tessello-<name>, e.g. `just new-module pomodoro typescript`
 new-module name template="svelte":
