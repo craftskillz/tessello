@@ -1008,6 +1008,13 @@ body.drawer .launcher-install {
   white-space: normal;
 }
 
+/* These row actions must not take the full width and squeeze the module name. */
+body.drawer .launcher .entry-about,
+body.drawer .launcher .entry-notice {
+  width: auto;
+  white-space: nowrap;
+}
+
 body.drawer .launcher-install,
 body.drawer .launcher-marketplace {
   margin-left: 0;

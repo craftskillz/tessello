@@ -129,6 +129,27 @@ describe("the Home", () => {
     await launcherIs(page, true);
   });
 
+  test("keeps module names readable and About buttons compact in the open drawer", async () => {
+    for (const width of [1280, 390]) {
+      const page = await host.newPage();
+      await page.setViewportSize({ width, height: 844 });
+      await install(page, "Notes", await zipExample("notes"));
+      await (await showLauncher(page)).getByRole("button", { name: "Notes", exact: true }).click();
+      await page.locator("iframe[title='Notes']").waitFor();
+      const launcher = await showLauncher(page);
+      const row = launcher.locator("li").filter({ hasText: "Notes" });
+      const open = row.getByRole("button", { name: "Notes", exact: true });
+      const about = row.locator(".entry-about");
+      const [rowBox, openBox, aboutBox] = await Promise.all([row.boundingBox(), open.boundingBox(), about.boundingBox()]);
+      assert.ok(aboutBox!.width < rowBox!.width / 3, `About stays compact at ${width}px`);
+      assert.ok(openBox!.width > rowBox!.width / 2, `the module button keeps the remaining row at ${width}px`);
+      assert.ok(openBox!.x + openBox!.width <= aboutBox!.x + 1, "the buttons do not overlap");
+      const lines = await row.locator(".name").evaluate((name) => name.getBoundingClientRect().height / parseFloat(getComputedStyle(name).lineHeight));
+      assert.ok(lines <= 1.1, `Notes stays on one line at ${width}px`);
+      await page.context().close();
+    }
+  });
+
   test("shows the Notes Widget, which follows the notes written in the View and opens it", async () => {
     const page = await host.newPage();
     await install(page, "Notes", await zipExample("notes"));
