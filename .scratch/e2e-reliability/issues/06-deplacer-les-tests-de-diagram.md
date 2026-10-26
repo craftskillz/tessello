@@ -29,6 +29,7 @@ Notes pour ce Module : Les gestes de pointeur (tirer une flèche, poignées, gro
 - **Mesures** (`mesures.md`) : `diagram.test.ts` de l'Hôte passe de 99,9 s à 2,0 s (460,6 s à 3,2 s ralenti) ; la suite du Module fait 36,4 s (47,5 s ralenti).
 - **Reste à faire par le Mainteneur :**
   1. Publier `@tessello/sdk` 0.2.0 (`just npm-publish`, ticket 04). Il n'est pas sur npm : dans `../tessello-diagram`, `package.json` le demande, mais `package-lock.json` garde 0.1.0, et le développement s'est fait avec `npm install --no-save` du paquet construit ici. Une fois publié : `npm install` dans `../tessello-diagram`, puis committer `package-lock.json` (sinon `npm ci`, en CI et dans `just publish`, échoue).
+     **Fait le 2026-10-26** : 0.2.0 est sur npm ; `package-lock.json` de `../tessello-diagram` le fige (commit « Lock @tessello/sdk 0.2.0, now on npm »), `npm ci`, les 234 tests unitaires et les 43 tests navigateur passent.
   2. Pousser `craftskillz/tessello-diagram` (`main`, commit local de ce ticket), après le point 1.
   3. Pousser ce dépôt.
 - **Suite navigateur de ce dépôt** après le ticket : 175 tests, 175 passent, 203 s (275,5 s avant, `mesures.md`).
