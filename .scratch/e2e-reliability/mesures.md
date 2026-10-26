@@ -111,3 +111,18 @@ Le ralentissement ×4 ne suffit donc pas à reproduire la CI : 3 de ses 4 échec
 - **Instabilités** : aucune dans la suite du Module, ni normale ni ralentie (3 passages de chaque, 20/20, et 3 passages ralentis de plus après chaque lot de tests écrit).
 - **L'échec CI `watch-later.test.ts:590`** (`NotFoundError` : `settings.json` lu pendant que l'Hôte le remplace) disparaît avec le fichier : la suite du Module lit le stockage en mémoire de l'Hôte de test, par `until`.
 - **Suite navigateur de ce dépôt** après le ticket : 102 tests, 102 passent, 100,5 s (126,1 s après le ticket 07).
+
+## Après le ticket 09 (Survival Kit)
+
+2026-10-26, même machine et mêmes versions. Médiane et maximum sur 3 passages, en secondes. Les durées « avant » sont celles du ticket 02.
+
+| Suite | Tests | Normal : médiane | Normal : max | Ralenti ×4 : médiane | Ralenti ×4 : max |
+|---|---|---|---|---|---|
+| `packages/host/e2e/survival-kit.test.ts`, avant | 7 | 11,1 | 11,1 | 19,6 | 20,4 |
+| `packages/host/e2e/survival-kit.test.ts`, après (le test « Hôte ») | 1 | 1,5 | 1,5 | 2,1 | 2,2 |
+| `../tessello-survival-kit`, `node --test` sur `e2e/` (4 fichiers, contre l'Hôte de test) | 6 | 2,5 | 2,6 | 3,5 | 3,5 |
+
+- Les 6 tests du Module, et celui qui reste dans l'Hôte, prouvent en 4 s ce que les 7 tests de l'Hôte prouvaient en 11 s, et en 6 s ralentis au lieu de 20 s. Les mesures ne comptent pas la construction de `dist/` que fait `npm run test:browser`.
+- **Instabilités** : aucune dans la suite du Module, ni normale ni ralentie (3 passages de chaque, 6/6, et 3 passages ralentis de plus après chaque lot de tests écrit).
+- **`survival-kit.test.ts:136`** (instable ralenti, 2/3 : `NotFoundError` en lisant le dossier pendant que l'Hôte remplace le fichier) disparaît avec le test : la suite du Module lit le stockage en mémoire de l'Hôte de test, par `until`.
+- **Suite navigateur de ce dépôt** après le ticket : 96 tests, 96 passent, 90,2 s (100,5 s après le ticket 08).
