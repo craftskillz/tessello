@@ -120,7 +120,7 @@ new-module name template="svelte":
     gh api -X POST "repos/$repo/pages" -f "source[branch]=gh-pages" -f "source[path]=/" --silent
     echo "$repo is ready in $dir: write the Module, then \`just publish minor\` there."
 
-# Browser tests of the given files only, e.g. `just e2e-only home watch-later`
+# Browser tests of the given files only, e.g. `just e2e-only home install`
 e2e-only +names: build
     node --test --test-concurrency=1 {{ prepend("packages/host/e2e/", append(".test.ts", names)) }}
 

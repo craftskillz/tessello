@@ -96,3 +96,18 @@ Le ralentissement ×4 ne suffit donc pas à reproduire la CI : 3 de ses 4 échec
 - **Instabilités** : aucune dans la suite du Module, ni normale ni ralentie (3 passages de chaque, 44/44).
 - **L'échec CI `skills-library.test.ts:1146`** (le panneau de survol reste ouvert après le départ du pointeur) ne se reproduit pas dans la suite du Module : 10 passages ralentis ×4 des trois tests de survol (30/30), puis une sonde, non gardée, qui passe sur un point et le quitte aussitôt, avant même que le panneau ne s'ouvre, 20 fois par passage, sur 2 passages ralentis et 1 normal (60 départs, aucun panneau resté ouvert). Rien ne montre un défaut du Module : pas de ticket, et le test n'est pas affaibli. S'il revenait, ce serait dans l'iframe de l'Hôte, que la suite du Module n'a plus.
 - **Suite navigateur de ce dépôt** après le ticket : 121 tests, 121 passent, 126,1 s (203 s après le ticket 06).
+
+## Après le ticket 08 (Watch Later)
+
+2026-10-26, même machine et mêmes versions. Médiane et maximum sur 3 passages, en secondes. Les durées « avant » sont celles du ticket 02.
+
+| Suite | Tests | Normal : médiane | Normal : max | Ralenti ×4 : médiane | Ralenti ×4 : max |
+|---|---|---|---|---|---|
+| `packages/host/e2e/watch-later.test.ts`, avant | 19 | 24,6 | 24,7 | 88,4 | 89,9 |
+| `packages/host/e2e/watch-later.test.ts`, après | 0 | — | — | — | — |
+| `../tessello-watch-later`, `node --test` sur `e2e/` (5 fichiers, contre l'Hôte de test) | 20 | 7,6 | 7,6 | 10,3 | 10,3 |
+
+- Le fichier de l'Hôte est supprimé : aucune ligne de l'audit n'est « Hôte », et les contrats de Watch Later sont dans `modules-contract.test.ts`. Les 20 tests du Module prouvent en 8 s ce que les 19 tests de l'Hôte prouvaient en 25 s, et en 10 s ralentis au lieu de 88 s. Les mesures ne comptent pas la construction de `dist/` que fait `npm run test:browser`.
+- **Instabilités** : aucune dans la suite du Module, ni normale ni ralentie (3 passages de chaque, 20/20, et 3 passages ralentis de plus après chaque lot de tests écrit).
+- **L'échec CI `watch-later.test.ts:590`** (`NotFoundError` : `settings.json` lu pendant que l'Hôte le remplace) disparaît avec le fichier : la suite du Module lit le stockage en mémoire de l'Hôte de test, par `until`.
+- **Suite navigateur de ce dépôt** après le ticket : 102 tests, 102 passent, 100,5 s (126,1 s après le ticket 07).
