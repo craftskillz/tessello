@@ -81,3 +81,18 @@ Le ralentissement ×4 ne suffit donc pas à reproduire la CI : 3 de ses 4 échec
   - « undoes a move, a waypoint and a rename… » (l'échec CI `diagram.test.ts:1143`) : Ctrl+Z pressé pendant que la Vue, montrée de nouveau, relit ses diagrammes. 3/3 avant, 0/5 après : le test attend que l'Hôte ait répondu à toutes les requêtes de la Vue (`answered`). C'est aussi un défaut du Module : `.scratch/diagram/issues/17-annulation-perdue-pendant-la-relecture.md`.
   - « new rectangles take the default color… » : un rechargement coupait l'écriture du texte d'une forme, l'attente `saved` étant satisfaite par l'écriture de la forme placée. 2/4 avant, 0/5 après : `addShape` attend que le texte soit dans le diagramme et la liste.
 - `diagram.test.ts:1523` (« ← Back », 3/3 ralenti) : la suite du Module attend que le bouton disparaisse.
+
+## Après le ticket 07 (Skills Library)
+
+2026-10-26, même machine et mêmes versions. Médiane et maximum sur 3 passages, en secondes.
+
+| Suite | Tests | Normal : médiane | Normal : max | Ralenti ×4 : médiane | Ralenti ×4 : max |
+|---|---|---|---|---|---|
+| `packages/host/e2e/skills-library.test.ts`, avant | 54 | 72,0 | 72,6 | 625,5 | 636,2 |
+| `packages/host/e2e/skills-library.test.ts`, après | 0 | — | — | — | — |
+| `../tessello-skills-library`, `node --test` sur `e2e/` (5 fichiers, contre l'Hôte de test) | 44 | 20,5 | 20,6 | 33,4 | 34,7 |
+
+- Le fichier de l'Hôte est supprimé : aucune ligne de l'audit n'est « Hôte », et les contrats de Skills Library sont dans `modules-contract.test.ts`. Les 44 tests du Module prouvent en 21 s ce que les 54 tests de l'Hôte prouvaient en 72 s, et en 33 s ralentis au lieu de 626 s. Les mesures ne comptent pas la construction de `dist/` que fait `npm run test:browser` (2 s environ).
+- **Instabilités** : aucune dans la suite du Module, ni normale ni ralentie (3 passages de chaque, 44/44).
+- **L'échec CI `skills-library.test.ts:1146`** (le panneau de survol reste ouvert après le départ du pointeur) ne se reproduit pas dans la suite du Module : 10 passages ralentis ×4 des trois tests de survol (30/30), puis une sonde, non gardée, qui passe sur un point et le quitte aussitôt, avant même que le panneau ne s'ouvre, 20 fois par passage, sur 2 passages ralentis et 1 normal (60 départs, aucun panneau resté ouvert). Rien ne montre un défaut du Module : pas de ticket, et le test n'est pas affaibli. S'il revenait, ce serait dans l'iframe de l'Hôte, que la suite du Module n'a plus.
+- **Suite navigateur de ce dépôt** après le ticket : 121 tests, 121 passent, 126,1 s (203 s après le ticket 06).
