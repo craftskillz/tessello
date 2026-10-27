@@ -11,6 +11,7 @@ The Host is a static site on the Cloudflare Pages project `tessello`, served at 
 | `index.html`, `main.js`, `style.css` | The Host. |
 | `manifest.webmanifest`, `icon.svg` | Make the Host installable as an app (PWA) in Chrome and Edge. |
 | `sw.js` | The service worker: keeps the files above, so the installed Host opens offline with the Modules already installed. It only answers for the Host's own files, never for a Module, the Marketplace or a package download. |
+| `create-tessello-module.txt` | The creation skill for LLMs, served as plain text, copied from `skills/create-tessello-module/SKILL.md`. A Creator opens it in the browser and pastes it into a conversation. |
 | `_headers` | The HTTP headers Cloudflare Pages adds, written from `packages/host/scripts/headers.ts`. |
 
 The headers, and why:

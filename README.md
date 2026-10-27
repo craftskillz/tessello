@@ -13,6 +13,7 @@ A composable web app: the User builds their space from Modules, each one a sandb
 | `packages/host-core` | The Host's protocol, storage and Module registry, without a browser. |
 | `packages/host` | The Host: the static web app (`src/`), its build and dev server (`scripts/`), its browser tests (`e2e/`). |
 | `scripts/` | The build of the npm packages (`build-packages.ts`) and the hook that tests them compiled (`use-compiled.ts`). |
+| `skills/create-tessello-module/` | The creation skill: it guides an LLM from a request to a `.zip` that passes `tessello validate`. |
 | `examples/` | Example Modules written by hand (`notes`, `meteo`, `prometheus`): the folder *is* the package. |
 | `RELEASING.md` | How to release a Module, list it on the Marketplace, and publish the npm packages. |
 | `DEPLOYING.md` | How the Host is deployed to Cloudflare Pages as an installable app, with its headers and free quotas. |
@@ -71,6 +72,16 @@ Four larger Modules, written in Svelte, each live in their own repository, which
 Here, their published packages are kept in `packages/host/e2e/fixtures/`: the browser tests of the Host run on them, and the Validator is run on each one. See the `README.md` there to refresh one (`just fixture <name> <version>`).
 
 To release a version of one of them and list it on the Marketplace, or start a new Module from a template: see [RELEASING.md](RELEASING.md) (`just publish minor` in the Module's repository; `just new-module <name>` here).
+
+## Create a Module with an LLM
+
+The creation skill (`skills/create-tessello-module/SKILL.md`) takes an LLM from a request to a validated `.zip`: package layout, Manifest, SDK, Module ID, Permissions, Widget size, User guide, then `tessello validate` until no error is left. It stops there; publishing stays the Creator's step.
+
+```sh
+npx skills add craftskillz/tessello   # in a terminal agent (Claude Code, Codex, Cursor…)
+```
+
+In a browser conversation, paste the skill from the Host's site: https://tessello.pages.dev/create-tessello-module.txt.
 
 ## Check a Module
 

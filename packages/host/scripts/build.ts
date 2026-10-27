@@ -1,5 +1,5 @@
 // Builds the Host into a static site in `dist/`: index.html, its stylesheet, one bundled script, the service worker,
-// manifest and icon that make it an installable app, and Cloudflare's `_headers`.
+// manifest and icon that make it an installable app, the creation skill as a plain text file, and Cloudflare's `_headers`.
 // Run with `npm run build:host`.
 
 import { createHash } from "node:crypto";
@@ -30,6 +30,8 @@ export async function buildHost(): Promise<void> {
   await copyFile(at("../src/style.css"), `${DIST}/style.css`);
   await copyFile(at("../src/manifest.webmanifest"), `${DIST}/manifest.webmanifest`);
   await copyFile(at("../src/icon.svg"), `${DIST}/icon.svg`);
+  // Plain text, so browsers display it for a Creator to paste into an LLM; not in SHELL, it is not needed offline.
+  await copyFile(at("../../../skills/create-tessello-module/SKILL.md"), `${DIST}/create-tessello-module.txt`);
   // The version follows the shell's content: a deployment that changes a file changes sw.js, so browsers install it.
   const hash = createHash("sha256");
   for (const file of SHELL) hash.update(await readFile(`${DIST}/${file}`));

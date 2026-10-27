@@ -16,6 +16,7 @@ const TYPES: Record<string, string> = {
   ".map": "application/json",
   ".webmanifest": "application/manifest+json",
   ".svg": "image/svg+xml",
+  ".txt": "text/plain; charset=utf-8",
 };
 
 /** Starts serving `dist/` on `port` (0 picks a free one); resolves with the server and its URL. */
