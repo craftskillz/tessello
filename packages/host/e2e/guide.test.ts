@@ -2,7 +2,7 @@
 
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { dropFile, showLauncher, useHost, zip } from "./browser.ts";
+import { dropFile, showLauncher, until, useHost, zip } from "./browser.ts";
 
 const host = useHost();
 
@@ -68,10 +68,7 @@ describe("the User guide of a Module", () => {
     const top = () => guide.locator("#your-data").evaluate((heading) => heading.getBoundingClientRect().top);
     assert.ok((await top()) > 600, "the section starts below the fold");
     await guide.getByRole("link", { name: "Your data" }).click();
-    for (let tries = 0; (await top()) > 100; tries++) {
-      assert.ok(tries < 50, "the guide scrolls to the section");
-      await page.waitForTimeout(100);
-    }
+    await until(async () => (await top()) <= 100, "the guide to scroll to the section");
     assert.equal(await guide.locator("body").evaluate(() => location.href), "about:srcdoc#your-data");
 
     await dialog.getByRole("button", { name: "Back" }).click();

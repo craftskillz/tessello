@@ -3,9 +3,8 @@
 
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { until } from "@tessello/sdk/testing";
 import type { Page } from "playwright";
-import { dropFile, moduleFixture, readFolder, useHost, writeFolder } from "./browser.ts";
+import { dropFile, moduleFixture, readFolder, until, useHost, writeFolder } from "./browser.ts";
 
 const host = useHost();
 

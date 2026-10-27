@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import type { Page } from "playwright";
-import { chooseFolder, dropFile, readFolder, showLauncher, showLauncherTools, useHost, zipExample } from "./browser.ts";
+import { chooseFolder, dropFile, readFolder, showLauncher, showLauncherTools, until, useHost, zipExample } from "./browser.ts";
 
 const host = useHost();
 
@@ -81,6 +81,7 @@ describe("the Modules folder", () => {
     await (await showLauncherTools(page)).getByRole("button", { name: "Modules folder: elsewhere" }).waitFor();
     await (await showLauncher(page)).getByRole("button", { name: "Notes" }).click();
     await notes(page).getByText("Buy oat milk").waitFor();
+    await until(async () => JSON.stringify(await readFolder(page, "elsewhere")) === JSON.stringify(before), "the Modules to be copied to the new folder");
     assert.deepEqual(await readFolder(page, "elsewhere"), before);
     assert.deepEqual(await readFolder(page, "modules"), before);
   });

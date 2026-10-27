@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { dropFile, readFolder, showLauncher, useHost, zip } from "./browser.ts";
+import { dropFile, readFolder, showLauncher, until, useHost, zip } from "./browser.ts";
 
 const host = useHost();
 
@@ -40,7 +40,9 @@ test("a Module's storage is one indented JSON file per key under .tessello/data/
   const results = page.frameLocator("iframe[title='Keys']").locator("#results");
   await results.filter({ hasText: "{" }).waitFor();
 
-  const files = await readFolder(page, "modules/.tessello/data/@test/keys");
+  const keys = "modules/.tessello/data/@test/keys";
+  await until(async () => Object.keys(await readFolder(page, keys)).length === 5, "the five keys to be written");
+  const files = await readFolder(page, keys);
   const names = Object.keys(files);
   assert.equal(names.length, 5, "one file per key");
   assert.equal(new Set(names.map((name) => name.toLowerCase())).size, 5, "no two names differ only in case");

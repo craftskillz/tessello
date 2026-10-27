@@ -7,8 +7,7 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { strFromU8, unzipSync } from "fflate";
 import type { FrameLocator, Locator, Page } from "playwright";
-import { until } from "@tessello/sdk/testing";
-import { dropFile, moduleFixture, readFolder, showLauncher, useHost } from "./browser.ts";
+import { dropFile, moduleFixture, readFolder, showLauncher, until, useHost } from "./browser.ts";
 
 const host = useHost();
 

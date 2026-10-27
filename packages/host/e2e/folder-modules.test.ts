@@ -1,12 +1,11 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import type { Page } from "playwright";
-import { dropFile, exampleFiles, readFolder, removeFolder, showLauncher, useHost, writeFolder, zip, zipExample } from "./browser.ts";
+import { dropFile, exampleFiles, readFolder, registry, registryWhere, removeFolder, showLauncher, useHost, writeFolder, zip, zipExample } from "./browser.ts";
 
 const host = useHost();
 
 const notes = (page: Page) => page.frameLocator("iframe[title='Notes']");
-const registry = async (page: Page) => JSON.parse((await readFolder(page, "modules/.tessello"))["modules.json"]);
 
 /** Places Notes in the Modules folder as `git clone` would, then activates it from the Launcher. */
 async function activateNotes(page: Page) {
@@ -32,7 +31,7 @@ describe("Modules in the Modules folder", () => {
 
     const unpacked = await readFolder(page, "modules/notes-2");
     assert.deepEqual(Object.keys(unpacked).sort(), Object.keys(await exampleFiles("notes")).sort());
-    assert.deepEqual(await registry(page), { modules: [{ id: "@craftskillz/notes", folder: "notes-2", version: "1.1.0", permissions: {} }] });
+    assert.deepEqual(await registryWhere(page, "the Module to be registered", (current) => current.modules.length), { modules: [{ id: "@craftskillz/notes", folder: "notes-2", version: "1.1.0", permissions: {} }] });
   });
 
   test("a .zip the Validator refuses writes nothing in the folder", async () => {
@@ -53,7 +52,7 @@ describe("Modules in the Modules folder", () => {
     await preview.getByRole("button", { name: "Accept and activate" }).click();
 
     await notes(page).getByText("No notes yet.").waitFor();
-    assert.equal((await registry(page)).modules[0].folder, "notes");
+    await registryWhere(page, "the folder to be registered", (current) => current.modules[0]?.folder === "notes");
   });
 
   test("a non-compliant folder shows the Validator's report when activated", async () => {
@@ -131,7 +130,8 @@ describe("Modules in the Modules folder", () => {
     await open();
     await page.getByRole("alert").getByRole("button", { name: "Accept" }).click();
     await notes(page).getByText("Buy oat milk").waitFor();
-    assert.deepEqual((await registry(page)).modules[0].permissions, { network: ["https://api.example.com"] });
+    const accepted = await registryWhere(page, "the accepted Permissions to be written", (current) => current.modules[0]?.permissions.network);
+    assert.deepEqual(accepted.modules[0].permissions, { network: ["https://api.example.com"] });
   });
 
   test("a Module whose folder has disappeared shows as not found, and is found again under another name", async () => {
@@ -152,6 +152,6 @@ describe("Modules in the Modules folder", () => {
     await page.reload();
     await (await showLauncher(page)).getByRole("button", { name: "Notes", exact: true }).click();
     await notes(page).getByText("Buy oat milk").waitFor();
-    assert.equal((await registry(page)).modules[0].folder, "renamed-notes");
+    await registryWhere(page, "the new folder to be registered", (current) => current.modules[0]?.folder === "renamed-notes");
   });
 });

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { strToU8, zipSync } from "fflate";
 import type { Page } from "playwright";
-import { dropFile, exampleFiles, readFolder, showLauncher, useHost, zipExample } from "./browser.ts";
+import { dropFile, exampleFiles, readFolder, showLauncher, until, useHost, zipExample } from "./browser.ts";
 
 const host = useHost();
 
@@ -86,7 +86,8 @@ describe("uninstalling a Module", () => {
     await page.getByRole("heading", { name: "Your space is ready" }).waitFor();
     assert.equal(await (await showLauncher(page)).getByRole("listitem").count(), 0);
     assert.equal(await page.getByRole("listitem", { name: "Notes" }).count(), 0);
-    assert.deepEqual(await readFolder(page, "modules/notes"), {});
-    assert.deepEqual(await readFolder(page, "modules/.tessello/data/@craftskillz/notes"), {});
+    for (const folder of ["modules/notes", "modules/.tessello/data/@craftskillz/notes"]) {
+      await until(async () => Object.keys(await readFolder(page, folder)).length === 0, `${folder} to be removed`);
+    }
   });
 });

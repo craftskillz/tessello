@@ -48,7 +48,7 @@ describe("downloads", () => {
 
     const view = page.frameLocator("iframe[title='Downloader']");
     const download = async (button: string) => {
-      const [file] = await Promise.all([page.waitForEvent("download", { timeout: 5000 }), view.getByRole("button", { name: button, exact: true }).click()]);
+      const [file] = await Promise.all([page.waitForEvent("download"), view.getByRole("button", { name: button, exact: true }).click()]);
       return { name: file.suggestedFilename(), content: await readFile((await file.path())!, "utf8") };
     };
     assert.deepEqual(await download("Download"), { name: "hello.txt", content: "Hello from the View" });
@@ -66,9 +66,15 @@ describe("downloads", () => {
     const widget = page.frameLocator("iframe[title='Downloader widget']");
     await widget.getByRole("button", { name: "Download", exact: true }).click();
     await widget.getByText("Asked for hello.txt").waitFor();
-    // A blocked download leaves no event to wait for: the View's download arrives well within this time.
-    await page.waitForTimeout(1000);
-    assert.deepEqual(downloads, []);
+    // A blocked download leaves no event to wait for: the View's download, asked for afterwards, is the one that does.
+    // Download events arrive in the order the downloads start, so if the Widget's had started, it would be listed first.
+    await (await showLauncher(page)).getByRole("button", { name: "Downloader" }).click();
+    const [viewDownload] = await Promise.all([
+      page.waitForEvent("download"),
+      page.frameLocator("iframe[title='Downloader']").getByRole("button", { name: "Download", exact: true }).click(),
+    ]);
+    assert.equal(await readFile((await viewDownload.path())!, "utf8"), "Hello from the View");
+    assert.deepEqual(downloads, ["hello.txt"], "only the View's download arrived");
     assert.equal(await page.locator("iframe[title='Downloader widget']").getAttribute("sandbox"), "allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox");
   });
 });

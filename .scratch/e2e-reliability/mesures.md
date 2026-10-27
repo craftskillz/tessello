@@ -126,3 +126,21 @@ Le ralentissement ×4 ne suffit donc pas à reproduire la CI : 3 de ses 4 échec
 - **Instabilités** : aucune dans la suite du Module, ni normale ni ralentie (3 passages de chaque, 6/6, et 3 passages ralentis de plus après chaque lot de tests écrit).
 - **`survival-kit.test.ts:136`** (instable ralenti, 2/3 : `NotFoundError` en lisant le dossier pendant que l'Hôte remplace le fichier) disparaît avec le test : la suite du Module lit le stockage en mémoire de l'Hôte de test, par `until`.
 - **Suite navigateur de ce dépôt** après le ticket : 96 tests, 96 passent, 90,2 s (100,5 s après le ticket 08).
+
+## Après le ticket 10 (une seule façon d'attendre)
+
+2026-10-27, même machine et mêmes versions. Suite navigateur complète de ce dépôt (`packages/*/e2e/`, 22 fichiers, 96 tests), un fichier après l'autre : `just e2e-repeat 2`, puis `E2E_CPU_SLOWDOWN=4 just e2e-repeat 3`. **5 passages sur 5 sans échec**, dont 3 ralentis.
+
+| Suite | Tests | Normal : total des médianes | Ralenti ×4 : total des médianes |
+|---|---|---|---|
+| Avant la spec (ticket 02) | 206 | 275,5 s (4 min 36) | 1 283 s (21 min 23) |
+| Après le ticket 10 | 96 | 90,4 s (1 min 30) | 132,2 s (2 min 12) |
+
+- Les fichiers les plus longs : `home` (16,6 s ; 19,6 s ralenti), `modules-contract` (16,1 s ; 32,9 s), `document-size` (13,9 s ; 17,4 s). Tous les autres font moins de 6 s (9 s ralentis).
+- **En CI** (`browser-tests.yml`, durée de `npm run test:browser`) : 497 s pour 203 tests avant la spec (run 40208924784) ; 173 s pour 102 tests après le ticket 08 (run 40391584064). La durée après le ticket 10 se mesurera au premier push.
+- **Attentes.** `browser.ts` réexporte `until` du SDK et fixe son échéance en un seul endroit (5 s, 15 s en CI, fois `E2E_CPU_SLOWDOWN`). `readFolder` passe par lui, et les lectures du Dossier des Modules qui attendent une écriture de l'Hôte attendent l'état écrit. Il ne reste aucun `setTimeout` ni `waitForTimeout` dans `packages/host/e2e/`.
+- **`home.test.ts:95`** (échec CI : `filechooser` jamais reçu). Cause : après Entrée sur « Manage », le test appuyait aussitôt sur Tab puis Entrée, sans attendre que le tiroir de gestion soit ouvert (`aria-expanded="true"`) ni que « Install a Module… » soit affiché. Sur une machine chargée, Tab partait avant l'ouverture du tiroir : le focus n'était pas sur le bouton, et Entrée n'ouvrait aucun sélecteur. Le test attend maintenant ces deux états, puis le focus. Après Échap, il attend le tiroir refermé, le focus sur la poignée et le bouton retiré. Cette cause vient de la lecture du test : l'échec ne se reproduisait plus en local (0/3 normal et ralenti, ticket 02). Ce n'est pas un défaut de l'Hôte.
+- **`survival-kit.test.ts:136`** (`NotFoundError`, encore vu en CI au run 40391584064) : le test a été déplacé au ticket 09. Sa cause, `readFolder` qui lit un fichier pendant que l'Hôte le remplace, est corrigée pour tous les tests restants : une lecture qui lève est réessayée.
+- **`downloads.test.ts`** : la seconde d'attente qui prouvait qu'un téléchargement du Widget n'arrive pas est remplacée par un état observable. La Vue demande ensuite son propre téléchargement, et le test attend celui-là. Les événements `download` arrivent dans l'ordre où les téléchargements démarrent : un téléchargement du Widget serait donc arrivé avant.
+
+**Recommandation : ne pas faire tourner les fichiers en parallèle.** La suite prend 1 min 30 en local, et sans doute 2 à 3 min en CI. Quatre fichiers en parallèle feraient gagner environ une minute. En contrepartie, les Chromium se disputeraient le processeur, ce qui recrée la machine lente dont la spec vient de se débarrasser. À reconsidérer si la suite dépasse 5 min en CI.

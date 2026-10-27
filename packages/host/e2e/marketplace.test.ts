@@ -8,7 +8,10 @@ import {
   installLink,
   marketplaceAt,
   readFolder,
+  registry,
+  registryWhere,
   showLauncher,
+  until,
   useHost,
   useMarketplaceServer,
   usePackageServer,
@@ -76,8 +79,6 @@ const openLauncher = async (page: Page, name: string) => {
   await (await showLauncher(page)).getByRole("button", { name, exact: true }).click();
 };
 
-const registry = async (page: Page) => JSON.parse((await readFolder(page, "modules/.tessello"))["modules.json"]);
-
 describe("the Marketplace screen", () => {
   test("search, the listing, then installing from the screen shows the warning, runs the Module and records its provenance", async () => {
     const { hash } = await publishNotes();
@@ -115,7 +116,8 @@ describe("the Marketplace screen", () => {
     await accept.getByRole("button", { name: "Accept and install" }).click();
 
     await page.frameLocator("iframe[title='Notes']").getByText("No notes yet.").waitFor();
-    assert.deepEqual((await registry(page)).modules[0].provenance, { source: "marketplace", version: "1.1.0", sha256: hash });
+    const installed = await registryWhere(page, "the Module to be registered", (current) => current.modules[0]?.provenance);
+    assert.deepEqual(installed.modules[0].provenance, { source: "marketplace", version: "1.1.0", sha256: hash });
   });
 
   test("a package that no longer matches the index is refused, and nothing is installed", async () => {
@@ -161,7 +163,8 @@ describe("the Marketplace screen", () => {
     await preview.waitFor();
     await preview.getByRole("button", { name: "Accept and install" }).click();
     await linked.frameLocator("iframe[title='Notes']").getByText("No notes yet.").waitFor();
-    assert.deepEqual((await registry(linked)).modules[0].provenance, { source: "marketplace", version: "1.1.0", sha256: hash });
+    const linkedRegistry = await registryWhere(linked, "the Module to be registered", (current) => current.modules[0]?.provenance);
+    assert.deepEqual(linkedRegistry.modules[0].provenance, { source: "marketplace", version: "1.1.0", sha256: hash });
 
     const dropped = await host.newPage({ init: marketplaceAt(marketplace.indexUrl) });
     await dropFile(dropped, "notes.zip", await zipExample("notes"));
@@ -170,7 +173,8 @@ describe("the Marketplace screen", () => {
     assert.doesNotMatch(await local.innerText(), /Admitted to the Marketplace/);
     await local.getByRole("button", { name: "Accept and install" }).click();
     await dropped.frameLocator("iframe[title='Notes']").getByText("No notes yet.").waitFor();
-    assert.equal((await registry(dropped)).modules[0].provenance, undefined);
+    const droppedRegistry = await registryWhere(dropped, "the Module to be registered", (current) => current.modules.length);
+    assert.equal(droppedRegistry.modules[0].provenance, undefined);
   });
 
   test("the screen is in French when the User chose French", async () => {
@@ -224,7 +228,7 @@ describe("what the Host tells of the Modules installed from the Marketplace", ()
 
   /** Opens the Host again a day after its copy of the index was received: its start reads the index again. */
   async function startNextDay(page: Page, launcher = "Launcher") {
-    const copy = JSON.parse((await readFolder(page, "modules/.tessello"))["marketplace.json"]);
+    const copy = JSON.parse(await until(async () => (await readFolder(page, "modules/.tessello"))["marketplace.json"], "the copy of the index to be written"));
     await writeFolder(page, "modules/.tessello", { "marketplace.json": { ...copy, receivedAt: "2026-01-01T00:00:00.000Z" } });
     await page.reload();
     await page.getByRole("navigation", { name: launcher }).waitFor();
@@ -245,9 +249,9 @@ describe("what the Host tells of the Modules installed from the Marketplace", ()
     assert.match(await update.innerText(), /Admitted to the Marketplace at its first publication/);
     await update.getByRole("button", { name: "Update", exact: true }).click();
     await update.waitFor({ state: "hidden" });
-    const [module] = (await registry(page)).modules;
+    const [module] = (await registryWhere(page, "the update to be written", (current) => current.modules[0]?.version === "1.2.0")).modules;
     assert.equal(module.version, "1.2.0");
-    assert.equal(module.provenance.version, "1.2.0");
+    assert.equal(module.provenance?.version, "1.2.0");
     await (await showLauncher(page)).getByRole("button", { name: "Update to 1.2.0" }).waitFor({ state: "detached" });
   });
 
@@ -276,7 +280,7 @@ describe("what the Host tells of the Modules installed from the Marketplace", ()
     await update.getByRole("button", { name: "Update", exact: true }).click();
     await update.waitFor({ state: "hidden" });
     await widget.getByRole("button", { name: "Banned" }).waitFor({ state: "detached" });
-    assert.equal((await registry(page)).modules[0].version, "1.2.0");
+    await registryWhere(page, "the update to be written", (current) => current.modules[0]?.version === "1.2.0");
   });
 
   test("a withdrawn Module gives a neutral note, in French when the User chose French", async () => {

@@ -13,22 +13,19 @@ import { fileURLToPath } from "node:url";
 import { after, before } from "node:test";
 import { strToU8, zipSync } from "fflate";
 import { type Browser, chromium, type Locator, type Page } from "playwright";
+import { setWaitTimeout, slowDownCpu, until } from "@tessello/sdk/testing";
 import { serveHost } from "../scripts/serve.ts";
+
+// Every wait of the tests goes through `until`, with one deadline set here: CI machines are slower, and E2E_CPU_SLOWDOWN
+// multiplies it.
+setWaitTimeout(process.env.CI ? 15_000 : 5_000);
+export { until };
 
 /** The folder `showDirectoryPicker` returns: `window.tesselloPick` under the OPFS root, "modules" by default. */
 const FOLDER_PICKER = `window.showDirectoryPicker = async () => {
   const root = await navigator.storage.getDirectory();
   return root.getDirectoryHandle(window.tesselloPick ?? "modules", { create: true });
 };`;
-
-/** How many times slower `E2E_CPU_SLOWDOWN` makes the processor of each page: 1, unchanged, without it. */
-function cpuSlowdown(): number {
-  const value = process.env.E2E_CPU_SLOWDOWN;
-  if (!value) return 1;
-  const rate = Number(value);
-  if (!(rate >= 1)) throw new Error(`E2E_CPU_SLOWDOWN is how many times slower the processor runs, 1 or more, not "${value}".`);
-  return rate;
-}
 
 export interface PageOptions {
   /** A browser without `showDirectoryPicker`, as Firefox, Safari and every phone. */
@@ -54,14 +51,13 @@ export interface HostOptions {
 export function useHost({ public: publicSite = false }: HostOptions = {}) {
   let browser: Browser;
   let close: () => void;
-  const state = { url: "", cpuSlowdown: 1 };
+  const state = { url: "" };
   before(async () => {
     const { server, url } = await serveHost();
     state.url = url;
     close = () => server.close();
     const { host } = new URL(url);
     const headed = process.env.HEADED === "1";
-    state.cpuSlowdown = cpuSlowdown();
     browser = await chromium.launch({
       headless: !headed,
       slowMo: headed ? 200 : 0,
@@ -79,10 +75,7 @@ export function useHost({ public: publicSite = false }: HostOptions = {}) {
     /** A page in a new browser context, so no folder or IndexedDB data is shared with other tests. */
     async newPage({ unsupported = false, choose = true, hash = "", init }: PageOptions = {}): Promise<Page> {
       const page = await (await browser.newContext()).newPage();
-      if (state.cpuSlowdown > 1) {
-        const cdp = await page.context().newCDPSession(page);
-        await cdp.send("Emulation.setCPUThrottlingRate", { rate: state.cpuSlowdown });
-      }
+      await slowDownCpu(page);
       // Playwright turns on file chooser interception, without waiting, when a test starts listening for one, and off
       // when it stops: a click right after `waitForEvent("filechooser")` could beat it and open no chooser it sees.
       // A listener kept from the start keeps interception on for the whole test.
@@ -155,24 +148,49 @@ export async function removeFolder(page: Page, folder: string): Promise<void> {
 
 /** Every file under a folder of the OPFS, as text: path → content. `{}` when the folder does not exist. */
 export async function readFolder(page: Page, folder: string): Promise<Record<string, string>> {
-  return page.evaluate(async (folder) => {
-    let directory = await navigator.storage.getDirectory();
-    try {
-      for (const name of folder.split("/")) directory = await directory.getDirectoryHandle(name);
-    } catch {
-      return {};
-    }
-    const files: Record<string, string> = {};
-    const walk = async (handle: FileSystemDirectoryHandle, prefix: string) => {
-      for await (const [name, entry] of handle.entries()) {
-        if (entry.kind === "directory") await walk(entry as FileSystemDirectoryHandle, `${prefix}${name}/`);
-        else files[prefix + name] = await (await (entry as FileSystemFileHandle).getFile()).text();
-      }
-    };
-    await walk(directory, "");
-    return files;
-  }, folder);
+  // A read that throws, as when the Host is replacing a file, is tried again.
+  return until(
+    () =>
+      page.evaluate(async (folder) => {
+        let directory = await navigator.storage.getDirectory();
+        try {
+          for (const name of folder.split("/")) directory = await directory.getDirectoryHandle(name);
+        } catch {
+          return {};
+        }
+        const files: Record<string, string> = {};
+        const walk = async (handle: FileSystemDirectoryHandle, prefix: string) => {
+          for await (const [name, entry] of handle.entries()) {
+            if (entry.kind === "directory") await walk(entry as FileSystemDirectoryHandle, `${prefix}${name}/`);
+            else files[prefix + name] = await (await (entry as FileSystemFileHandle).getFile()).text();
+          }
+        };
+        await walk(directory, "");
+        return files;
+      }, folder),
+    `the files of ${folder}`,
+  );
 }
+
+/** A Module as `.tessello/modules.json` registers it. */
+export interface Registered {
+  id: string;
+  folder: string;
+  version: string;
+  permissions: { network?: string[] };
+  provenance?: { source: string; version: string; sha256: string };
+}
+
+/** The registry of the Modules folder, `.tessello/modules.json`, as it is now. */
+export const registry = async (page: Page): Promise<{ modules: Registered[] }> =>
+  JSON.parse((await readFolder(page, "modules/.tessello"))["modules.json"]);
+
+/** The registry once `matches` gives a value: the Host writes it a moment after the interface shows the change. */
+export const registryWhere = (page: Page, what: string, matches: (registry: { modules: Registered[] }) => unknown) =>
+  until(async () => {
+    const current = await registry(page);
+    return matches(current) ? current : undefined;
+  }, what);
 
 /** The files of an example Module folder. */
 export const exampleFiles = (name: string) => filesOf(fileURLToPath(new URL(`../../../examples/${name}`, import.meta.url)));

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import type { Page } from "playwright";
-import { dropFile, exampleFiles, removeFolder, showLauncher, useHost, writeFolder, zip, zipExample } from "./browser.ts";
+import { dropFile, exampleFiles, removeFolder, showLauncher, until, useHost, writeFolder, zip, zipExample } from "./browser.ts";
 
 const host = useHost();
 
@@ -97,15 +97,19 @@ describe("the Home", () => {
     const toggle = page.getByRole("button", { name: "Manage" });
     await toggle.focus();
     await page.keyboard.press("Enter");
+    // The management drawer is ready once it is open and its actions are shown; Tab and Enter before that go nowhere.
+    await until(async () => (await toggle.getAttribute("aria-expanded")) === "true", "the management drawer to open");
+    const install = page.getByRole("button", { name: "Install a Module…" });
+    await install.waitFor();
     await page.keyboard.press("Tab");
-    assert.equal(await page.getByRole("button", { name: "Install a Module…" }).evaluate((button) => button === document.activeElement), true);
+    await until(() => install.evaluate((button) => button === document.activeElement), "focus to move to Install a Module…");
     const chooser = page.waitForEvent("filechooser");
     await page.keyboard.press("Enter");
     assert.equal((await chooser).isMultiple(), false, "installing a Module is keyboard accessible");
     await page.keyboard.press("Escape");
-    assert.equal(await toggle.getAttribute("aria-expanded"), "false");
-    assert.equal(await toggle.evaluate((button) => button === document.activeElement), true);
-    assert.equal(await page.getByRole("button", { name: "Install a Module…" }).count(), 0);
+    await until(async () => (await toggle.getAttribute("aria-expanded")) === "false", "the management drawer to collapse");
+    await until(() => toggle.evaluate((button) => button === document.activeElement), "focus to return to the handle");
+    await install.waitFor({ state: "detached" });
     assert.equal(await page.getByRole("button", { name: "Marketplace" }).isVisible(), true);
   });
 
