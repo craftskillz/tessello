@@ -15,7 +15,7 @@ The work is done when the `.zip` passes `tessello validate` with **zero errors**
 
 ### 1. Agree on the Module
 
-With the user, settle before writing files:
+With the Creator, settle before writing files:
 
 - **What it does**, in a sentence: this becomes `description` (≤ 200 characters) and the opening of the guide.
 - **The Module ID**, `@namespace/name` (§3, regex there). The namespace is the Creator's own: their GitHub account, lowercase (`@jane/pomodoro`). It identifies the Module forever: changing it later makes a different Module and the Users' data stays behind. A Module listed on the Marketplace must use the namespace of the GitHub account that publishes it. Ask for the account name when you do not know it.
@@ -55,7 +55,7 @@ curl -fsSLo tessello-sdk.js https://unpkg.com/@tessello/sdk/tessello-sdk.js
 # or: npm install @tessello/sdk && cp node_modules/@tessello/sdk/tessello-sdk.js .
 ```
 
-When you cannot run commands, ask the user to save that URL as `tessello-sdk.js` at the package root.
+When you cannot run commands, ask the Creator to save that URL as `tessello-sdk.js` at the package root.
 
 Import it with a relative path from each entry page's script (`<script type="module" src="app.js">`):
 
@@ -112,7 +112,7 @@ Run the Validator on the folder, then fix and rerun until it ends with `✓ … 
 npx tessello validate pomodoro
 ```
 
-Each issue names the file and its code (§9 lists them). Fix warnings too, unless one is a harmless mention the static scan flagged (a comment naming `localStorage`, say); tell the user which warnings remain and why. When you cannot run commands, give the user the command and work from the output they paste back, round after round.
+Each issue names the file and its code (§9 lists them). Fix warnings too, unless one is a harmless mention the static scan flagged (a comment naming `localStorage`, say); tell the Creator which warnings remain and why. When you cannot run commands, give the Creator the command and work from the output they paste back, round after round.
 
 ### 7. Package as a `.zip`
 
@@ -123,7 +123,7 @@ cd pomodoro && zip -r ../pomodoro-1.0.0.zip . -x '.*' && cd ..
 npx tessello validate pomodoro-1.0.0.zip
 ```
 
-The `.zip` must also validate with zero errors. Done: hand the user the `.zip` and how to try it: in the Host (https://tessello.pages.dev/, Chrome or Edge on a computer), **Install a Module…** with the `.zip`, or copy the folder into their Modules folder while developing, then reopen the View after each change.
+The `.zip` must also validate with zero errors. Done: hand the Creator the `.zip` and how to try it: in the Host (https://tessello.pages.dev/, Chrome or Edge on a computer), **Install a Module…** with the `.zip`, or copy the folder into their Modules folder while developing, then reopen the View after each change.
 
 ## Publishing
 
