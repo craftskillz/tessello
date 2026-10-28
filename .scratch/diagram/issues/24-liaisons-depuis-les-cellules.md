@@ -49,3 +49,9 @@ Les formes personnalisées ont déjà des points d'attache libres, leurs ancres,
 - Mode Sélection : survoler une cellule de bord montre ses points ; les 4 flèches de liaison communes ne s'affichent plus sur un tableau. Pour ne recouvrir ni les poignées de côté et de coin (jusqu'à 5 pixels hors du bord), ni celles de rotation (à partir de 18 pixels), les poignées de cellule sont plus petites (rayon 4,5 pixels au lieu de 9) et placées à 13 pixels vers l'extérieur.
 - Validation : 290 tests unitaires et 56 tests navigateur réussis, dont un test de non-chevauchement à 51 %, 100 % et 156 %. Typage sans erreur. Revues Standards et Spec faites ; le format des noms de points n'est plus analysé dans la Vue, et le guide précise le cas d'un point qui quitte le bord quand on ajoute une ligne.
 - Non couvert par un test : un tracé en coude depuis un point de coin du tableau ; les libellés français des poignées.
+
+### Retours de test (2026-10-28)
+
+- Les poignées de cellule ont maintenant la taille des flèches de liaison des autres formes (rayon 9 pixels, même flèche), à 15 pixels vers l'extérieur. Sur un tableau, la poignée de rotation est remontée (tige de 36 pixels au lieu de 26) pour rester hors de leur portée.
+- Un tableau n'a plus de rotation du texte seul : ni poignée « T », ni boutons dans le panneau. Le texte des cellules ignore `textRotation` ; il tourne seulement avec le tableau. L'export draw.io ne compte plus de rotation perdue pour un tableau.
+- Validation : 291 tests unitaires et 56 tests navigateur réussis, typage sans erreur.
