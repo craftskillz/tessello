@@ -48,3 +48,8 @@ Le Module ne connaît aucune famille de police : le texte s'affiche dans la poli
 - Retours à la ligne, hauteur de ligne, champ d'édition, rendu, export PNG et export draw.io (`fillColor`, `fontColor`, `fontSize`, `fontStyle`, alignements par cellule) suivent le style réel de chaque cellule. Le redimensionnement par un coin met aussi à l'échelle la taille propre des cellules.
 - Validation : 312 tests unitaires et 60 tests navigateur réussis, typage sans erreur. Revues Standards et Spec faites ; le champ d'édition d'une cellule a été corrigé pour suivre son style.
 - Limites connues : l'ancre d'un Maj+clic après une barre de ligne ou de colonne est la première cellule de cette ligne ou colonne. Le gras, l'italique et le souligné ne sont proposés que pour les tableaux (le ticket 21 garde la forme Texte).
+
+### Seconde revue (2026-10-28)
+
+- Revues Standards et Spec relancées sur `d122e90`. Corrigé dans `tessello-diagram` (7dc0067) : « Copier le style » d'un tableau emporte son gras, italique et souligné, collés sur les tableaux seulement ; un commentaire CSS de `Canvas.svelte` remis au-dessus de sa règle. Suite complète verte (313 unitaires, 63 navigateur).
+- Non corrigé, à juger plus tard : `Canvas.svelte` grossit avec la sélection de cellules (à extraire dans un module) ; petites duplications dans `table.ts` (copie des styles de cellule) et dans `pickCells` ; type `{row, col}` sans nom ; noms `styled()`/`style()` proches de `shared()`/`apply()` dans `ShapePanel` ; boutons gras/italique/souligné sans état « mixte » quand la sélection diffère.
