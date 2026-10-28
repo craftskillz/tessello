@@ -1,6 +1,6 @@
 # 25 : Styliser les cellules d'un tableau
 
-Status: ready-for-agent
+Status: resolved
 
 Spec parente : `.scratch/diagram/spec.md`. Code et tests du Module : `../tessello-diagram/`. Suite des tickets 19 (forme Tableau) et 24 (liaisons depuis les cellules). Lié au ticket 21 (gras, italique et souligné).
 
@@ -38,3 +38,13 @@ Le Module ne connaît aucune famille de police : le texte s'affiche dans la poli
 
 - 2026-10-28 : demande recueillie après les retours de test du ticket 24 ; aucun code du Module modifié.
 - 2026-10-28 : décisions prises avec le Créateur ; ticket prêt pour un agent.
+
+### Implémentation (2026-10-28)
+
+- Code et tests dans `../tessello-diagram/`, sur `main` (commit `d122e90`). Modèle : `cellStyles` (un style propre par cellule, `{}` pour une cellule qui suit le tableau) et, sur le tableau, `bold`, `italic` et `underline`, lus défensivement ; les tableaux existants se lisent sans style propre. Fonctions pures dans `src/lib/table.ts` (`cellStyleOf`, `styleCells`, `styleTable`, `sharedCellStyle`, plages de cellules).
+- Sélection : sur un tableau déjà seul sélectionné, un clic sélectionne une cellule, Maj+clic étend en rectangle (Maj+clic suit le lien du tableau seulement sans sélection de cellules), des barres au-dessus des colonnes et à gauche des lignes sélectionnent une colonne ou une ligne (Maj étend). Échap, un clic hors du tableau, une autre sélection, un verrou ou une annulation rendent la sélection au tableau entier. Un appui sur une cellule déplace toujours le tableau s'il est glissé.
+- Panneau : couleur, taille, gras, italique, souligné et alignements s'appliquent aux cellules sélectionnées, sinon au tableau entier en effaçant le style propre des cellules. « Coller le style » sur un tableau l'efface aussi. La valeur commune s'affiche, aucune si elles diffèrent.
+- Barres de sélection centrées à 32 pixels écran du bord (8 d'épaisseur), au-delà des poignées de liaison (jusqu'à 24) ; la tige de rotation d'un tableau passe à 52 pixels. Un test navigateur vérifie l'absence de recouvrement à 100 % et à un autre zoom.
+- Retours à la ligne, hauteur de ligne, champ d'édition, rendu, export PNG et export draw.io (`fillColor`, `fontColor`, `fontSize`, `fontStyle`, alignements par cellule) suivent le style réel de chaque cellule. Le redimensionnement par un coin met aussi à l'échelle la taille propre des cellules.
+- Validation : 312 tests unitaires et 60 tests navigateur réussis, typage sans erreur. Revues Standards et Spec faites ; le champ d'édition d'une cellule a été corrigé pour suivre son style.
+- Limites connues : l'ancre d'un Maj+clic après une barre de ligne ou de colonne est la première cellule de cette ligne ou colonne. Le gras, l'italique et le souligné ne sont proposés que pour les tableaux (le ticket 21 garde la forme Texte).
