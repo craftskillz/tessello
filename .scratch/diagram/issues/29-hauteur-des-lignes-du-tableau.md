@@ -1,6 +1,6 @@
 # 29 : Redimensionner la hauteur de chaque ligne d'un tableau
 
-Status: ready-for-agent
+Status: resolved
 
 Spec parente : `.scratch/diagram/spec.md`. Code et tests du Module : `../tessello-diagram/`.
 
@@ -23,13 +23,15 @@ Symétrique des colonnes :
 
 ## Critères d'acceptation
 
-- [ ] Une poignée, avec le curseur `row-resize`, entre deux lignes change la hauteur de la ligne au-dessus, bornée à `MIN_ROW`, y compris pour un tableau tourné.
-- [ ] Les cellules, leur texte, leur sélection, la saisie et les points d'attache des cellules (ticket 24) suivent les hauteurs réelles.
-- [ ] Les anciens diagrammes, sans `rows`, s'ouvrent avec des lignes égales.
-- [ ] Sauvegarde/rechargement, annuler/rétablir, copier/coller et ajout ou retrait de lignes préservent les hauteurs.
-- [ ] Les exports PNG et draw.io gardent la hauteur de chaque ligne.
-- [ ] Guide mis à jour ; tests unitaires (`table.ts`, lecture, draw.io) et test navigateur dans `e2e/tables.test.ts`.
+- [x] Une poignée, avec le curseur `row-resize`, entre deux lignes change la hauteur de la ligne au-dessus, bornée à `MIN_ROW`, y compris pour un tableau tourné.
+- [x] Les cellules, leur texte, leur sélection, la saisie et les points d'attache des cellules (ticket 24) suivent les hauteurs réelles.
+- [x] Les anciens diagrammes, sans `rows`, s'ouvrent avec des lignes égales.
+- [x] Sauvegarde/rechargement, annuler/rétablir, copier/coller et ajout ou retrait de lignes préservent les hauteurs.
+- [x] Les exports PNG et draw.io gardent la hauteur de chaque ligne.
+- [x] Guide mis à jour ; tests unitaires (`table.ts`, lecture, draw.io) et test navigateur dans `e2e/tables.test.ts`.
 
 ## Comments
 
 - 2026-10-29 : demande recueillie ; aucun code du Module modifié.
+- 2026-10-29 : réalisé dans `tessello-diagram` (ab03861). Modèle : champ `rows` (parts de la hauteur) créé avec le tableau et lu par `readTable` avec repli sur des parts égales, comme `columns`. `src/lib/table.ts` gagne `rowEdges` et `dragRowSeparator` (seule la ligne au-dessus change, bornée à `MIN_ROW`, haut du tableau fixe) ; `cellBox`, `cellAt` et `tableAnchors` suivent les hauteurs réelles ; `setRowCount` donne aux nouvelles lignes la hauteur moyenne ; les redimensionnements gardent les proportions des lignes, et la hauteur minimale devient `MIN_ROW` sur la ligne la plus basse. Export draw.io : chaque ligne a son `y` et sa hauteur. Canevas : une poignée `row-resize` par séparation de lignes (`{ row }`), barres de sélection des lignes et lignes de la grille sur `rowEdges`. Libellés « Resize row {n} » / « Redimensionner la ligne {n} ». Guide : une puce sur le séparateur de lignes. Tests unitaires (`table`, `diagram`, `drawio`, `arrows`, `clipboard`) et test navigateur dans `e2e/tables.test.ts` (glisser, tableau tourné de 30°, sélection de la ligne agrandie, annulation). Suite complète verte (341 unitaires, 67 navigateur), typage sans erreur.
+- 2026-10-29 : relecture à deux axes (Standards, Spec). Corrigé : `columnEdges` et `rowEdges` partagent `edgesAlong`, réutilisé par `tableAnchors`. Reste ouvert : `dragRowSeparator` et `setRowCount` dupliquent encore leurs jumeaux de colonnes. Pas de test navigateur dédié au PNG, au rechargement de la page, au curseur ni au champ d'édition d'une cellule après redimensionnement d'une ligne : ils passent par `ShapeView`, `readTable` et `cellBox`, couverts par ailleurs.
