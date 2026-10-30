@@ -1,6 +1,6 @@
 # 38 : 24 points d'attache par forme au lieu de 8
 
-Status: needs-triage
+Status: resolved
 
 Spec parente : `.scratch/diagram/spec.md`. Code et tests du Module : `../tessello-diagram/`. Prolonge le ticket 03 (connexions et points d'attache).
 
@@ -31,7 +31,7 @@ Lecture du code le 2026-10-30, dans `src/lib/geometry.ts` :
 - Plusieurs flèches sur un **même** port sont déjà écartées de `FAN` = 8 unités le long du contour (`arrows.ts`). Ce décalage est automatique et ne se choisit pas, d'où la demande de points distincts.
 - `Canvas.svelte` (l.1032) dessine un repère par port de `portsOf(shape)` pendant le tracé d'une flèche. Il en dessinerait donc 24.
 
-## Choix proposés (à valider)
+## Choix retenus
 
 - **Disposition** : sur chaque côté de la boîte de la forme, 7 points régulièrement espacés aux fractions 0, 1/6, 2/6, …, 1 de la longueur du côté. Cela fait 4 coins et 5 points intermédiaires par côté, 24 en tout, comme sur le schéma.
 - **Noms** : les 8 noms actuels gardent leur place (les coins et le point du milieu de chaque côté), pour que les diagrammes existants ne bougent pas. Les 16 nouveaux points sont nommés par leur décalage par rapport au milieu, du nord dans le sens horaire : `N+1`, `N+2`, `E-2`, `E-1`, `E+1`, `E+2`, etc.
@@ -43,14 +43,16 @@ Lecture du code le 2026-10-30, dans `src/lib/geometry.ts` :
 
 ## Critères d'acceptation
 
-- [ ] Les formes intégrées (rectangle, ellipse, cercle, acteur, Post-it, Texte, base de données, image) offrent 24 points d'attache disposés comme sur le schéma, sur le contour réel, et qui suivent la rotation.
-- [ ] Une flèche s'attache à chacun d'eux par tirage et par déplacement de son extrémité ; deux flèches aller et retour entre deux points voisins sont parallèles, en tracé droit comme en tracé coudé.
-- [ ] Les diagrammes existants gardent exactement leurs attaches (les 8 noms actuels sont inchangés) ; sauvegarde/rechargement, annuler/rétablir et copier/coller conservent les nouveaux ports.
-- [ ] L'export draw.io place les extrémités sur les nouveaux points (`exitX`/`entryX`…), et l'export PNG les dessine au même endroit.
-- [ ] Un côté trop court à l'écran n'offre que ses coins et son milieu, et ses points intermédiaires apparaissent quand on agrandit la forme ou le zoom. Une flèche déjà posée sur un point caché reste attachée.
-- [ ] Guide mis à jour, tests unitaires (`portPoint`/`portDirection` des nouveaux ports, rotation, formes rondes, lecture d'un port inconnu, draw.io) et test navigateur d'une attache sur un point intermédiaire.
+- [x] Les formes intégrées (rectangle, ellipse, cercle, acteur, Post-it, Texte, base de données, image) offrent 24 points d'attache disposés comme sur le schéma, sur le contour réel, et qui suivent la rotation.
+- [x] Une flèche s'attache à chacun d'eux par tirage et par déplacement de son extrémité ; deux flèches aller et retour entre deux points voisins sont parallèles, en tracé droit comme en tracé coudé.
+- [x] Les diagrammes existants gardent exactement leurs attaches (les 8 noms actuels sont inchangés) ; sauvegarde/rechargement, annuler/rétablir et copier/coller conservent les nouveaux ports.
+- [x] L'export draw.io place les extrémités sur les nouveaux points (`exitX`/`entryX`…), et l'export PNG les dessine au même endroit.
+- [x] Un côté trop court à l'écran n'offre que ses coins et son milieu, et ses points intermédiaires apparaissent quand on agrandit la forme ou le zoom. Une flèche déjà posée sur un point caché reste attachée.
+- [x] Guide mis à jour, tests unitaires (`portPoint`/`portDirection` des nouveaux ports, rotation, formes rondes, lecture d'un port inconnu, draw.io) et test navigateur d'une attache sur un point intermédiaire.
 
 ## Comments
 
 - 2026-10-30 : demande recueillie, avec le schéma de l'utilisateur ; aucun code du Module modifié. À trancher avec l'utilisateur : nommage des ports, sens de sortie des points sur les formes rondes, affichage des repères sur les petites formes ou à faible zoom.
 - 2026-10-30 : tranché avec l'utilisateur : les points intermédiaires s'affichent selon la taille de la forme, côté par côté (voir Choix proposés, Affichage).
+- 2026-10-30 : réalisé dans `tessello-diagram` (374bf82). `geometry.ts` : `BOX_PORTS` décrit les 24 points (nom, côté, point de la boîte, normale) ; `portsOf` rend les 24 ports connus d'une forme intégrée, du nord dans le sens horaire (`N`, `N+1`, `N+2`, `NE`, `E-2` … `N-1`) ; `portPoint` projette un point intermédiaire depuis le centre sur le contour réel, puis le tourne ; `portDirection` lui donne la normale de son côté. Les 8 ports d'origine gardent leur calcul (y compris les coins de la base de données à la jonction des couvercles, alors que les points intermédiaires sont projetés depuis la boîte entière). `PORTS` reste à 8 pour les cellules de tableau. Nouveau `offeredPorts(shape, zoom)` et `PORT_MIN_GAP = 12` : un côté n'offre ses 4 points intermédiaires que si longueur / 6 × zoom ≥ 12 px. `arrows.ts` : `endAt` prend le zoom, n'accroche qu'aux ports offerts et choisit le plus proche à portée (et non plus le premier de la liste). `drawnEnd` et l'export draw.io gardent `portsOf` : une flèche sur un point caché reste attachée. `Canvas.svelte` dessine les repères de `offeredPorts`. Le PNG reprend `layoutArrows`, et sauvegarde, copier/coller et historique stockent le port tel quel : aucun changement nécessaire. Guide mis à jour. Tests : `geometry` (24 noms, positions, rotation, ellipse, cercle, base de données, coins arrondis, directions, seuils, port inconnu `N+3`), `arrows` (accroche selon le zoom, plus proche, point caché, aller-retour parallèles droit et coudé, `E+1` sur une forme personnalisée), `drawio` (`exitX`/`entryX`), navigateur (`e2e/arrows.test.ts` : attache sur `N+1`, `E+1` absent sur un petit côté). 415 tests unitaires et 79 tests navigateur verts, typage sans erreur.
+- 2026-10-30 : relecture à deux axes. Standards : lignes trop longues, recherche de `BOX_PORTS` dupliquée et `if`/`else` mal formé dans `geometry.ts`, corrigés avant le commit. Spec : aucun écart. Reste ouvert : aucun test dédié pour sauvegarde/annuler/copier avec un nouveau port ni pour le PNG (le port est une chaîne opaque, et le PNG partage les tracés), le test navigateur ne vérifie pas l'apparition des points après un zoom (couvert en unitaire), et le parallélisme n'est testé ni sur forme tournée ni sur forme ronde.
