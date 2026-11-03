@@ -36,6 +36,10 @@ export interface PageOptions {
   hash?: string;
   /** A script run in the page before the Host starts, such as one setting a preference in the local storage. */
   init?: string;
+  /** Opens this address instead of the Host these tests started, such as another copy of the Host. */
+  address?: string;
+  /** Runs before the page opens, such as to filter its requests. */
+  prepare?: (page: Page) => Promise<void>;
 }
 
 export interface HostOptions {
@@ -73,7 +77,7 @@ export function useHost({ public: publicSite = false }: HostOptions = {}) {
       return state.url;
     },
     /** A page in a new browser context, so no folder or IndexedDB data is shared with other tests. */
-    async newPage({ unsupported = false, choose = true, hash = "", init }: PageOptions = {}): Promise<Page> {
+    async newPage({ unsupported = false, choose = true, hash = "", init, address, prepare }: PageOptions = {}): Promise<Page> {
       const page = await (await browser.newContext()).newPage();
       await slowDownCpu(page);
       // Playwright turns on file chooser interception, without waiting, when a test starts listening for one, and off
@@ -82,7 +86,8 @@ export function useHost({ public: publicSite = false }: HostOptions = {}) {
       page.on("filechooser", () => {});
       await page.addInitScript(unsupported ? "delete window.showDirectoryPicker;" : FOLDER_PICKER);
       if (init) await page.addInitScript(init);
-      await page.goto(state.url + hash);
+      await prepare?.(page);
+      await page.goto((address ?? state.url) + hash);
       if (!unsupported && choose) await chooseFolder(page);
       return page;
     },

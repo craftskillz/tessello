@@ -2,11 +2,12 @@
 // pointing at them, the README and the license. `dist/` is the package: publish it with `npm publish packages/<name>/dist`.
 // Run with `npm run build:packages`.
 
-import { copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { copyFile, cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 import ts from "typescript";
+import { buildHost, DIST as HOST_DIST } from "../packages/host/scripts/build.ts";
 import { buildLocalCopy } from "../packages/sdk/scripts/build-local-copy.ts";
 
 const at = (path: string) => fileURLToPath(new URL(path, import.meta.url));
@@ -55,6 +56,11 @@ async function buildPackage(name: Published): Promise<void> {
   await copyFile(`${root}/README.md`, `${dist}/README.md`);
   // The single-file copy a Creator puts in a package, so that a Module needs neither a build tool nor the network.
   if (name === "sdk") await writeFile(`${dist}/tessello-sdk.js`, await buildLocalCopy());
+  // The Host that `tessello serve` runs when its site cannot be reached.
+  if (name === "cli") {
+    await buildHost();
+    await cp(HOST_DIST, `${dist}/host`, { recursive: true, filter: (file) => !file.endsWith(".map") });
+  }
 }
 
 /**

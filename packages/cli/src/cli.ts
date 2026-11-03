@@ -2,6 +2,7 @@
 import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { execCommand, publishCommand, type Gh, type GhResult, type PublishDeps } from "./publish-command.ts";
+import { serveCommand, type ServeDeps } from "./serve-command.ts";
 import { formatReport, validatePath } from "./validate-command.ts";
 
 const USAGE = `Usage: tessello <command>
@@ -11,7 +12,9 @@ Commands:
                              Exits with 1 if the Module is not installable.
   publish <package.zip> --url <URL>
                              Prepare the Marketplace listing for a package you have published
-                             at <URL> and open the pull request (run \`tessello publish\` for options).`;
+                             at <URL> and open the pull request (run \`tessello publish\` for options).
+  serve [--port <number>]    Run the Host on this computer, to reach your installed Modules
+                             when its site cannot be reached (http://127.0.0.1:7355/ by default).`;
 
 interface Output {
   out: (text: string) => void;
@@ -19,10 +22,12 @@ interface Output {
 }
 
 /** Runs the CLI and returns the process exit code: 0 success, 1 invalid Module, 2 usage error. */
-export async function run(args: string[], output: Output, deps: Partial<PublishDeps> = {}): Promise<number> {
+export async function run(args: string[], output: Output, deps: Partial<PublishDeps & ServeDeps> = {}): Promise<number> {
   const [command, ...rest] = args;
 
   if (command === "publish") return publishCommand(rest, output, await publishDeps(deps));
+
+  if (command === "serve") return serveCommand(rest, output, deps);
 
   if (command === "validate") {
     const json = rest.includes("--json");

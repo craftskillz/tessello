@@ -37,6 +37,16 @@ PORT=3000 npm run start:host  # on another port
 
 On the first launch, click **Choose a folder…** and pick an empty folder: it becomes your **Modules folder**, where the Host keeps your Modules and, under `.tessello/`, their data.
 
+### If the Host's site cannot be reached
+
+Your Modules and their data are in your Modules folder, not on the site. A browser that has already opened the Host keeps opening it from its cache. Otherwise, run the copy of the Host in the npm package, then choose the same folder:
+
+```sh
+npx tessello serve          # serves it on http://127.0.0.1:7355/
+```
+
+See [the CLI's README](packages/cli/README.md#running-the-host-on-your-computer).
+
 ## Install a Module in the Host
 
 A package must have `manifest.json` at its root. Two ways to install it:

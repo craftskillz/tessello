@@ -36,3 +36,17 @@ With the [GitHub CLI](https://cli.github.com) (`gh`) installed and logged in, th
 Without `gh`, or with `--dry-run`, the listing is written to `tessello-listing/modules/<namespace>/<name>/entry.json`. Without `gh` the command also lists the steps by hand: fork the Marketplace, add that file at the same path, open a pull request, tick the box.
 
 It exits with 0 when done, 1 when a check or a step fails, and 2 on a usage error.
+
+## Running the Host on your computer
+
+If https://tessello.pages.dev/ is filtered or stopped, your installed Modules are still in your Modules folder. To reach them:
+
+```sh
+npx tessello serve
+```
+
+Open http://127.0.0.1:7355/ in Chrome or Edge and choose your Modules folder: your Modules, their data, their accepted Permissions and your Home are there. Only your theme and language are set again. Nothing else on your network can reach this server. To be ready even when npm cannot be reached, run `npm install --global tessello` beforehand; `tessello serve` then needs no network.
+
+The port is part of the address, so use `--port <number>` only if 7355 is taken: on another port you choose the folder again. Once opened, the Host also reopens at this address when the command is not running, but it only updates while it runs. Modules that call an outside service still need that service to be reachable.
+
+It exits with 1 if the port is already in use and 2 on a usage error.

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { HEADERS, type HeaderRule, headersFile, headersFor } from "../scripts/headers.ts";
+import { type HeaderRule, headersFor, parseHeaders } from "../../cli/src/serve-site.ts";
+import { HEADERS, headersFile } from "../scripts/headers.ts";
 
 describe("the _headers file", () => {
   test("lists each path, then its indented headers, with a blank line between rules and a trailing newline", () => {
@@ -9,6 +10,10 @@ describe("the _headers file", () => {
       { path: "/sw.js", headers: { "Cache-Control": "no-cache" } },
     ]);
     assert.equal(text, "/*\n  X-A: 1\n  X-B: 2\n\n/sw.js\n  Cache-Control: no-cache\n");
+  });
+
+  test("reads back as the same rules, so the local server applies what Cloudflare gets", () => {
+    assert.deepEqual(parseHeaders(headersFile()), HEADERS);
   });
 });
 
@@ -53,7 +58,7 @@ describe("the Host's headers", () => {
   });
 
   test("the service worker is always revalidated", () => {
-    assert.equal(headersFor("/sw.js")["Cache-Control"], "no-cache");
-    assert.equal(headersFor("/main.js")["Cache-Control"], undefined);
+    assert.equal(headersFor("/sw.js", HEADERS)["Cache-Control"], "no-cache");
+    assert.equal(headersFor("/main.js", HEADERS)["Cache-Control"], undefined);
   });
 });

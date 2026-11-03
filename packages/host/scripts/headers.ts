@@ -1,6 +1,6 @@
-// The Host's HTTP headers, the single source for the `_headers` file of Cloudflare Pages and the local server.
+// The Host's HTTP headers, the single source for the `_headers` file that Cloudflare Pages and the local server read.
 
-export type HeaderRule = { path: string; headers: Record<string, string> };
+import type { HeaderRule } from "../../cli/src/serve-site.ts";
 
 export const HEADERS: readonly HeaderRule[] = [
   {
@@ -23,11 +23,4 @@ export function headersFile(rules: readonly HeaderRule[] = HEADERS): string {
     .map(({ path, headers }) => [path, ...Object.entries(headers).map(([name, value]) => `  ${name}: ${value}`)].join("\n"))
     .join("\n\n")
     .concat("\n");
-}
-
-/** The headers of every rule matching `pathname`, merged in order (a later rule wins), as Cloudflare applies them. */
-export function headersFor(pathname: string, rules: readonly HeaderRule[] = HEADERS): Record<string, string> {
-  const matches = (path: string) =>
-    path.endsWith("/*") ? pathname.startsWith(path.slice(0, -1)) : pathname === path;
-  return Object.assign({}, ...rules.filter(({ path }) => matches(path)).map(({ headers }) => headers));
 }

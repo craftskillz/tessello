@@ -2,13 +2,15 @@
 // Nothing is published. Run with `npm run test:packed` (it needs npm and, the first time, the registry for fflate and marked).
 
 import assert from "node:assert/strict";
-import { execFile } from "node:child_process";
+import { type ChildProcess, execFile, spawn } from "node:child_process";
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { after, before, describe, test } from "node:test";
 import { promisify } from "node:util";
+import { chooseFolder, dropFile, readFolder, registry, showLauncher, useHost, writeFolder, zipExample } from "../../host/e2e/browser.ts";
 import { buildPackages, distOf, PUBLISHED } from "../../../scripts/build-packages.ts";
 
 const exec = promisify(execFile);
@@ -28,6 +30,9 @@ before(async () => {
   await exec("npm", ["install", "--no-audit", "--no-fund", "--prefer-offline", ...tarballs.values()], { cwd: project });
 });
 after(() => rm(project, { recursive: true, force: true }));
+
+// After the hook above, which builds the Host this one serves: this copy stands for the Host at its hosted address.
+const hosted = useHost();
 
 async function tessello(...args: string[]) {
   try {
@@ -115,5 +120,91 @@ describe("installed outside this repository", () => {
     const code = await readFile(join(dir, "tessello-sdk.js"), "utf8");
     assert.doesNotMatch(code, /^\s*import\b|\bimport\s*\(|\brequire\s*\(/m);
     assert.match(code, /export\s*\{[^}]*\bconnect\b/);
+  });
+});
+
+/** A port nothing listens on now. */
+const freePort = () =>
+  new Promise<number>((resolve) => {
+    const probe = createServer().listen(0, "127.0.0.1", () => {
+      const { port } = probe.address() as { port: number };
+      probe.close(() => resolve(port));
+    });
+  });
+
+describe("`tessello serve`, installed outside this repository", () => {
+  let serving: ChildProcess;
+  let port: number;
+  let address: string;
+
+  before(async () => {
+    port = await freePort();
+    address = `http://127.0.0.1:${port}/`;
+    serving = spawn(join(project, "node_modules/.bin/tessello"), ["serve", "--port", String(port)], { cwd: project });
+    await new Promise<void>((resolve, reject) => {
+      serving.stdout!.on("data", (data) => String(data).includes(address) && resolve());
+      serving.once("exit", (code) => reject(new Error(`tessello serve exited with ${code}`)));
+    });
+  });
+  after(() => void serving.kill());
+
+  test("the package holds the Host, without its source map", async () => {
+    const { stdout } = await exec("tar", ["-tzf", tarballs.get("cli")!]);
+    for (const file of ["index.html", "main.js", "style.css", "sw.js", "_headers"]) assert.ok(stdout.includes(`package/host/${file}`), file);
+    assert.doesNotMatch(stdout, /\.map$/m);
+  });
+
+  test("serves the Host with the headers Cloudflare gets", async () => {
+    const page = await fetch(address);
+    assert.equal(page.status, 200);
+    assert.equal(page.headers.get("content-security-policy"), "frame-src 'none'");
+    assert.equal((await fetch(`${address}sw.js`)).headers.get("cache-control"), "no-cache");
+  });
+
+  test("says so when the port is already in use, and exits with 1", async () => {
+    const result = await tessello("serve", "--port", String(port));
+    assert.equal(result.code, 1, result.out);
+    assert.match(result.out, /already in use/);
+  });
+
+  test("with every outside domain blocked, finds the Modules of the folder, then opens once it has stopped", async () => {
+    // The hosted address, where the User installed a Module.
+    const hostedPage = await hosted.newPage();
+    await dropFile(hostedPage, "Notes.zip", await zipExample("notes"));
+    await hostedPage.getByRole("dialog", { name: "Install Notes?" }).getByRole("button", { name: "Accept and install" }).click();
+    await hostedPage.locator("iframe[title='Notes']").waitFor();
+    const { modules } = await registry(hostedPage);
+    const files = await readFolder(hostedPage, "modules");
+
+    // The same folder on disk, at the local address: browser tests get a private folder per address, so it is copied.
+    const blocked: string[] = [];
+    const page = await hosted.newPage({
+      address,
+      choose: false,
+      prepare: async (page) => {
+        await page.context().route("**/*", (route) => {
+          if (route.request().url().startsWith(address)) return route.continue();
+          blocked.push(route.request().url());
+          return route.abort();
+        });
+      },
+    });
+    await writeFolder(page, "modules", files);
+    await chooseFolder(page);
+
+    assert.deepEqual((await registry(page)).modules, modules);
+    await (await showLauncher(page)).getByRole("button", { name: "Notes" }).click();
+    await page.locator("iframe[title='Notes']").waitFor();
+    assert.equal(await page.getByRole("dialog", { name: "Install Notes?" }).count(), 0);
+    assert.deepEqual(blocked.filter((url) => !url.startsWith("https://tessello-marketplace.pages.dev/")), []);
+
+    await page.waitForFunction(() => navigator.serviceWorker?.controller);
+    const stopped = new Promise((resolve) => serving.once("exit", resolve));
+    serving.kill();
+    await stopped;
+    const reloaded = await page.reload();
+    assert.equal(reloaded?.fromServiceWorker(), true);
+    await (await showLauncher(page)).getByRole("button", { name: "Notes" }).click();
+    await page.locator("iframe[title='Notes']").waitFor();
   });
 });
