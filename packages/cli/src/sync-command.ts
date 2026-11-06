@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { mkdir, readFile, readdir, rename, stat, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
+import { visibilityFor, type RemoteVisibility, type VisibilityFetch, type VisibilityMemo } from "./remote-visibility.ts";
 import { acquireLock, type LockDeps } from "./sync-lock.ts";
 
 export type ProblemKind = "push-rejected" | "auth" | "remote-unreachable" | "git-missing" | "not-a-modules-folder" | "no-config";
@@ -23,6 +24,8 @@ export interface SyncStatus {
   ownRepositories: string[];
   lastCommit?: { sha: string; at: string; modules: string[] };
   lastPush?: { at: string };
+  /** Whether the remote repository is public, so that the Module can warn. Absent without a remote. */
+  remoteVisibility?: RemoteVisibility;
   problem?: { kind: ProblemKind; message: string; since: string };
 }
 
@@ -30,6 +33,10 @@ export interface SyncDeps {
   /** The git binary. */
   git: string;
   now: () => Date;
+  /** Asks the repository host whether the repository is public. */
+  fetch: VisibilityFetch;
+  /** What was last asked, to ask at most once an hour. A fresh one (the default) checks at once, as `--once` must. */
+  visibility: VisibilityMemo;
 }
 
 interface Output {
@@ -110,6 +117,7 @@ export async function syncOnce(folder: string, deps: Partial<SyncDeps> = {}): Pr
   const status: SyncStatus = { heartbeat: now.toISOString(), installed, ownRepositories };
   if (previous?.lastCommit) status.lastCommit = previous.lastCommit;
   if (previous?.lastPush) status.lastPush = previous.lastPush;
+  if (previous?.remoteVisibility) status.remoteVisibility = previous.remoteVisibility;
 
   let interval = DEFAULT_INTERVAL_SECONDS;
   let pushed = false;
@@ -139,6 +147,10 @@ export async function syncOnce(folder: string, deps: Partial<SyncDeps> = {}): Pr
   }
 
   interval = intervalOf(config);
+  // Before the index.lock return, so that a skipped round still reports it.
+  const visibility = await visibilityFor(config.remote, previous?.remoteVisibility, deps.visibility ?? {}, now, deps.fetch ?? globalThis.fetch);
+  if (visibility) status.remoteVisibility = visibility;
+  else delete status.remoteVisibility;
   const rules = ignoreRules(config, ownRepositories);
   const wroteGitignore = await writeGitignore(root, rules);
 
@@ -255,10 +267,12 @@ export async function syncLoop(folder: string, signal: AbortSignal, deps: Partia
   const now = deps.now ?? (() => new Date());
   const sleep = deps.sleep ?? interruptibleSleep;
   const log = deps.log ?? (() => {});
+  // One memo for all the rounds: that is what keeps the check to once an hour.
+  const visibility = deps.visibility ?? {};
   while (!signal.aborted) {
     let seconds = DEFAULT_INTERVAL_SECONDS;
     try {
-      const result = await syncOnce(folder, deps);
+      const result = await syncOnce(folder, { ...deps, visibility });
       seconds = result.intervalSeconds;
       const last = result.status?.lastCommit;
       if (result.committed && last) log(`${now().toISOString()} Committed ${last.sha}: ${last.modules.join(", ") || "no Module data"}`);

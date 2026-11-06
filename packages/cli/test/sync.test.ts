@@ -766,3 +766,120 @@ describe("push", () => {
     assert.equal(log[1], `${NOW.toISOString()} Pushed to origin.`);
   });
 });
+
+describe("remote visibility", () => {
+  const GH = "https://github.com/o/r.git";
+  const HOUR = 3_600_000;
+  const withRemote = (remote: string) => ({ ...CONFIG, remote });
+  const setRemote = (dir: string, remote: string) =>
+    put(dir, `${DATA}/${GIT_INTEGRATION}/config.json`, json({ key: "config", value: withRemote(remote) }));
+  const at = (ms: number) => ({ now: () => new Date(NOW.getTime() + ms) });
+
+  /** A fetch that records the URLs asked and answers like GitHub for a public repository, or fails like a network. */
+  function fakeFetch(mode: { offline: boolean } = { offline: false }) {
+    const urls: string[] = [];
+    const fetch = async (url: string) => {
+      urls.push(url);
+      if (mode.offline) throw new TypeError("fetch failed");
+      return { status: 200, json: async () => ({ private: false }) };
+    };
+    return { urls, fetch, mode };
+  }
+
+  test("a public github remote gives public", async () => {
+    const dir = await modulesFolder({ config: withRemote(GH) });
+    const { urls, fetch } = fakeFetch();
+    const result = await syncOnce(dir, { ...deps, fetch });
+    assert.equal(result.status?.remoteVisibility, "public");
+    assert.equal((await statusOf(dir)).remoteVisibility, "public");
+    assert.deepEqual(urls, ["https://api.github.com/repos/o/r"]);
+  });
+
+  test("a second round within the hour does not ask again, one after the hour does", async () => {
+    const dir = await modulesFolder({ config: withRemote(GH) });
+    const { urls, fetch } = fakeFetch();
+    const visibility = {};
+    await syncOnce(dir, { ...at(0), fetch, visibility });
+    const second = await syncOnce(dir, { ...at(HOUR - 1), fetch, visibility });
+    assert.equal(urls.length, 1);
+    assert.equal(second.status?.remoteVisibility, "public");
+    await syncOnce(dir, { ...at(HOUR), fetch, visibility });
+    assert.equal(urls.length, 2);
+  });
+
+  test("a changed remote is checked again", async () => {
+    const dir = await modulesFolder({ config: withRemote(GH) });
+    const { urls, fetch } = fakeFetch();
+    const visibility = {};
+    await syncOnce(dir, { ...at(0), fetch, visibility });
+    await setRemote(dir, "git@github.com:o/other.git");
+    await syncOnce(dir, { ...at(1000), fetch, visibility });
+    assert.deepEqual(urls, ["https://api.github.com/repos/o/r", "https://api.github.com/repos/o/other"]);
+  });
+
+  test("offline keeps the last known value", async () => {
+    const dir = await modulesFolder({ config: withRemote(GH) });
+    const { urls, fetch, mode } = fakeFetch();
+    const visibility = {};
+    await syncOnce(dir, { ...at(0), fetch, visibility });
+    mode.offline = true;
+    const result = await syncOnce(dir, { ...at(HOUR), fetch, visibility });
+    assert.equal(urls.length, 2);
+    assert.equal(result.status?.remoteVisibility, "public");
+    assert.equal((await statusOf(dir)).remoteVisibility, "public");
+  });
+
+  test("separate calls without a shared memo each ask (--once)", async () => {
+    const dir = await modulesFolder({ config: withRemote(GH) });
+    const { urls, fetch } = fakeFetch();
+    await syncOnce(dir, { ...deps, fetch });
+    await syncOnce(dir, { ...deps, fetch });
+    assert.equal(urls.length, 2);
+  });
+
+  test("a local remote is unknown and nothing is asked", async () => {
+    const dir = await modulesFolder({ config: withRemote("/srv/git/r.git") });
+    const { urls, fetch } = fakeFetch();
+    const result = await syncOnce(dir, { ...deps, fetch });
+    assert.equal(result.status?.remoteVisibility, "unknown");
+    assert.equal(urls.length, 0);
+  });
+
+  test("an empty remote leaves the field out", async () => {
+    const dir = await modulesFolder();
+    const { urls, fetch } = fakeFetch();
+    const result = await syncOnce(dir, { ...deps, fetch });
+    assert.equal("remoteVisibility" in result.status!, false);
+    assert.equal(urls.length, 0);
+  });
+
+  test("a round skipped by index.lock still reports it", async () => {
+    const dir = await modulesFolder({ config: withRemote(GH) });
+    const { fetch } = fakeFetch();
+    await syncOnce(dir, { ...deps, fetch });
+    await writeFile(join(dir, ".git", "index.lock"), "");
+    const result = await syncOnce(dir, { ...deps, fetch, visibility: {} });
+    assert.equal(result.status?.remoteVisibility, "public");
+  });
+
+  test("without a valid config the last known value is carried over", async () => {
+    const dir = await modulesFolder({ config: withRemote(GH) });
+    const { urls, fetch } = fakeFetch();
+    await syncOnce(dir, { ...deps, fetch });
+    await put(dir, `${DATA}/${GIT_INTEGRATION}/config.json`, "not json");
+    const result = await syncOnce(dir, { ...deps, fetch });
+    assert.equal(result.problem, "no-config");
+    assert.equal(result.status?.remoteVisibility, "public");
+    assert.equal(urls.length, 1);
+  });
+
+  test("the loop asks once over several rounds", async () => {
+    const dir = await modulesFolder({ config: withRemote(GH) });
+    const { urls, fetch } = fakeFetch();
+    const controller = new AbortController();
+    let rounds = 0;
+    await syncLoop(dir, controller.signal, { ...deps, fetch, log: () => {}, sleep: async () => void (++rounds >= 3 && controller.abort()) });
+    assert.equal(rounds, 3);
+    assert.equal(urls.length, 1);
+  });
+});
