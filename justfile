@@ -117,7 +117,13 @@ new-module name template="svelte":
     git -C "$pages" commit --quiet -m "Start the GitHub Pages of the published packages"
     git -C "$pages" push --quiet "https://github.com/$repo.git" gh-pages
     rm -rf "$pages"
-    gh api -X POST "repos/$repo/pages" -f "source[branch]=gh-pages" -f "source[path]=/" --silent
+    # GitHub may already have turned Pages on for the gh-pages branch it just received: the POST then answers 409.
+    if ! refused=$(gh api -X POST "repos/$repo/pages" -f "source[branch]=gh-pages" -f "source[path]=/" --silent 2>&1) \
+        && [ "$(gh api "repos/$repo/pages" --jq .source.branch 2>/dev/null)" != gh-pages ]; then
+        echo "$refused" >&2
+        echo "GitHub Pages could not be turned on for gh-pages: see Settings → Pages of $repo." >&2
+        exit 1
+    fi
     echo "$repo is ready in $dir: write the Module, then \`just publish minor\` there."
 
 # Browser tests of the given files only, e.g. `just e2e-only home install`
