@@ -3,6 +3,7 @@ import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { execCommand, publishCommand, type Gh, type GhResult, type PublishDeps } from "./publish-command.ts";
 import { serveCommand, type ServeDeps } from "./serve-command.ts";
+import { syncCommand, type SyncDeps } from "./sync-command.ts";
 import { formatReport, validatePath } from "./validate-command.ts";
 
 const USAGE = `Usage: tessello <command>
@@ -14,20 +15,24 @@ Commands:
                              Prepare the Marketplace listing for a package you have published
                              at <URL> and open the pull request (run \`tessello publish\` for options).
   serve [--port <number>]    Run the Host on this computer, to reach your installed Modules
-                             when its site cannot be reached (http://127.0.0.1:7355/ by default).`;
+                             when its site cannot be reached (http://127.0.0.1:7355/ by default).
+  sync --once [folder]       Commit the changes of your Modules folder to its git repository
+                             (the current folder by default). Exits with 1 on a problem.`;
 
 interface Output {
   out: (text: string) => void;
   err: (text: string) => void;
 }
 
-/** Runs the CLI and returns the process exit code: 0 success, 1 invalid Module, 2 usage error. */
-export async function run(args: string[], output: Output, deps: Partial<PublishDeps & ServeDeps> = {}): Promise<number> {
+/** Runs the CLI and returns the process exit code: 0 success, 1 invalid Module or failed command, 2 usage error. */
+export async function run(args: string[], output: Output, deps: Partial<PublishDeps & ServeDeps & SyncDeps> = {}): Promise<number> {
   const [command, ...rest] = args;
 
   if (command === "publish") return publishCommand(rest, output, await publishDeps(deps));
 
   if (command === "serve") return serveCommand(rest, output, deps);
+
+  if (command === "sync") return syncCommand(rest, output, deps);
 
   if (command === "validate") {
     const json = rest.includes("--json");

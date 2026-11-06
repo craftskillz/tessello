@@ -50,3 +50,20 @@ Open http://127.0.0.1:7355/ in Chrome or Edge and choose your Modules folder: yo
 The port is part of the address, so use `--port <number>` only if 7355 is taken: on another port you choose the folder again. Once opened, the Host also reopens at this address when the command is not running, but it only updates while it runs. Modules that call an outside service still need that service to be reachable.
 
 It exits with 1 if the port is already in use and 2 on a usage error.
+
+## Backing up your Modules folder with git
+
+```sh
+npx tessello sync --once              # the current folder
+npx tessello sync --once my-modules   # or the folder you choose
+```
+
+Run it in your Modules folder. For now, only `--once` exists: one round, then it stops. The settings come from the Git Integration Module, which writes its configuration in your Modules folder; without it, the round commits nothing and says so.
+
+A round turns the folder into a git repository on the branch `main` if it is not one yet, keeps a section of `.gitignore` up to date (between `# >>> tessello sync` and `# <<< tessello sync`; your own lines are never touched), and commits what changed with a message naming the Modules concerned, such as `tessello sync: @craftskillz/notes, home`. Nothing is pushed.
+
+What is versioned: your Modules, your Home, the list of installed Modules, the Git Integration settings, and the data of the Modules you chose in those settings. Never versioned: the data of any other Module, the status file of the command, `.DS_Store`, and every folder holding its own `.git` repository. A Module you stop choosing leaves the repository's index, and its files stay on your disk. Without an identity set in git, commits are signed `tessello sync`.
+
+It writes what it did (last commit, problem, installed Modules) in the Git Integration Module's data, for that Module to show. A `.git/index.lock` skips the commit for that round without any error.
+
+It exits with 0 when the round ran without problem, 1 when there is one (not a Modules folder, git missing, no configuration; the message says what to do), and 2 on a usage error.
