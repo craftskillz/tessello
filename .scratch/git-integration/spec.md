@@ -78,7 +78,7 @@ Clés de `@craftskillz/git-integration`, au format de l'Hôte (`{ "key", "value"
 - `tessello sync` écrit `status.json` de façon atomique (fichier temporaire sans extension `.json`, que l'Hôte ignore, puis renommage).
 - Le Module relit `status` toutes les quelques secondes tant qu'il est visible, et s'arrête quand il est caché (Convention §6.4).
 - Le moteur est « arrêté » quand `heartbeat` a plus de 2 × `intervalSeconds` + 10 s.
-- `tessello sync` dépend ici de l'organisation interne du Dossier (ADR 0007), pas seulement de la Convention. C'est acceptable parce que les deux vivent dans ce dépôt. **Un ADR est à écrire** pour cette décision.
+- `tessello sync` dépend ici de l'organisation interne du Dossier (ADR 0007), pas seulement de la Convention : voir l'ADR 0020.
 
 ### Ce qui est versionné
 
