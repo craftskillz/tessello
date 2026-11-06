@@ -54,10 +54,11 @@ It exits with 1 if the port is already in use and 2 on a usage error.
 ## Backing up your Modules folder with git
 
 ```sh
-npx tessello sync --once              # the current folder
-npx tessello sync --once my-modules   # or the folder you choose
+npx tessello sync                     # the current folder, until Ctrl+C
+npx tessello sync my-modules          # or the folder you choose
+npx tessello sync --once              # a single round, then it stops
 ```
 
-Run it in your Modules folder: it commits what changed to the folder's git repository. It is the engine of the Git Integration Module, where you choose what is versioned. That Module's guide explains how to set it up, what is kept out of the repository and how to restore on another machine. For now, only `--once` exists: one round, then it stops, with nothing pushed.
+Run it in your Modules folder: it commits what changed to the folder's git repository. It is the engine of the Git Integration Module, where you choose what is versioned. That Module's guide explains how to set it up, what is kept out of the repository and how to restore on another machine. It runs in the foreground, one round every interval you set in that Module (re-read at each round), and stops cleanly on Ctrl+C; `--once` makes a single round. Only one instance runs per folder (`.tessello/sync.lock`; a lock left by a dead process is taken over). Nothing is pushed yet.
 
-It exits with 0 when the round ran without problem, 1 when there is one (not a Modules folder, git missing, no configuration; the message says what to do), and 2 on a usage error.
+With `--once` it exits with 0 when the round ran without problem, 1 when there is one (not a Modules folder, git missing, no configuration, another instance running; the message says what to do), and 2 on a usage error.

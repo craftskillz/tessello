@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
@@ -13,7 +13,7 @@ process.env.GIT_CONFIG_NOSYSTEM = "1";
 
 const { keyFileName } = await import("../../host/src/folder-persistence.ts");
 const { run } = await import("../src/cli.ts");
-const { syncOnce } = await import("../src/sync-command.ts");
+const { intervalOf, syncLoop, syncOnce } = await import("../src/sync-command.ts");
 
 const DATA = ".tessello/data";
 const GIT_INTEGRATION = "@craftskillz/git-integration";
@@ -261,7 +261,7 @@ describe("tessello sync --once", () => {
     const output = { out: (t: string) => out.push(t), err: (t: string) => err.push(t) };
 
     const good = await modulesFolder();
-    assert.equal(await run(["sync", "--once", good], output), 0);
+    assert.equal(await run(["sync", "--once", good], output, deps), 0);
     assert.equal(commitCount(good), 1);
 
     const bad = await mkdtemp(join(tmpdir(), "tessello-sync-"));
@@ -269,7 +269,247 @@ describe("tessello sync --once", () => {
     assert.match(err.join("\n"), /modules\.json/);
 
     err.length = 0;
-    assert.equal(await run(["sync", good], output), 2);
-    assert.match(err.join("\n"), /--once/);
+    assert.equal(await run(["sync", "--once", "--bogus", good], output), 2);
+    assert.match(err.join("\n"), /Usage: tessello sync/);
+  });
+});
+
+describe("quiet period and interval", () => {
+  const at = (offsetMs: number) => new Date(NOW.getTime() + offsetMs);
+  const dataFile = async () => `${DATA}/${NOTES.id}/${await keyFileName("k")}`;
+  const touch = async (dir: string, path: string, when: Date) => utimes(join(dir, path), when, when);
+
+  /** A folder already committed once, then with its Notes data rewritten and dated `ageMs` before NOW. */
+  async function editedFolder(mtime: Date): Promise<{ dir: string; before: number }> {
+    const dir = await modulesFolder();
+    await syncOnce(dir, deps);
+    const path = await dataFile();
+    await writeFile(join(dir, path), json({ key: "k", value: "edited" }));
+    await touch(dir, path, mtime);
+    return { dir, before: commitCount(dir) };
+  }
+
+  test("a file modified less than 10 s ago postpones the commit, the heartbeat is still written, the next round commits", async () => {
+    const { dir, before } = await editedFolder(at(-5_000));
+    const postponed = await syncOnce(dir, deps);
+
+    assert.equal(postponed.committed, false);
+    assert.equal(postponed.postponed, true);
+    assert.equal(postponed.problem, undefined);
+    assert.equal(commitCount(dir), before);
+    assert.equal((await statusOf(dir)).heartbeat, NOW.toISOString());
+    assert.equal((await statusOf(dir)).lastCommit.at, NOW.toISOString());
+
+    const later = await syncOnce(dir, { now: () => at(20_000) });
+    assert.equal(later.committed, true);
+    assert.equal(later.postponed, undefined);
+    assert.equal(commitCount(dir), before + 1);
+  });
+
+  test("a file dated more than 10 s in the future does not block commits", async () => {
+    const { dir, before } = await editedFolder(at(60_000));
+    const result = await syncOnce(dir, deps);
+    assert.equal(result.committed, true);
+    assert.equal(result.postponed, undefined);
+    assert.equal(commitCount(dir), before + 1);
+  });
+
+  test("a file deleted just now does not postpone: the deletion is committed", async () => {
+    const dir = await modulesFolder();
+    await syncOnce(dir, deps);
+    await rm(join(dir, await dataFile()));
+    const result = await syncOnce(dir, deps);
+    assert.equal(result.committed, true);
+    assert.equal(result.postponed, undefined);
+  });
+
+  /** A fresh Modules folder whose files are all dated an hour before `now` (the real clock). */
+  async function agedFolder(now: Date): Promise<string> {
+    const dir = await modulesFolder();
+    const hourAgo = new Date(now.getTime() - 3_600_000);
+    for (const path of [".tessello/modules.json", "notes/manifest.json", "todo/manifest.json", await dataFile(), `${DATA}/${TODO.id}/${await keyFileName("k")}`, `${DATA}/${GIT_INTEGRATION}/config.json`]) {
+      await touch(dir, path, hourAgo);
+    }
+    return dir;
+  }
+
+  test("the .gitignore the round itself rewrites does not postpone the first round", async () => {
+    const now = new Date();
+    const dir = await agedFolder(now);
+    const first = await syncOnce(dir, { now: () => now });
+    assert.equal(first.committed, true);
+    assert.equal(first.postponed, undefined);
+  });
+
+  test("a .gitignore the User has just edited, outside the command's section, does wait", async () => {
+    const now = new Date();
+    const dir = await agedFolder(now);
+    await syncOnce(dir, { now: () => now });
+    await writeFile(join(dir, ".gitignore"), `*.log\n${await readFile(join(dir, ".gitignore"), "utf8")}`);
+    await touch(dir, ".gitignore", new Date(now.getTime() + 30_000 - 2_000));
+    const result = await syncOnce(dir, { now: () => new Date(now.getTime() + 30_000) });
+    assert.equal(result.committed, false);
+    assert.equal(result.postponed, true);
+  });
+
+  test("intervalSeconds: 60 without a valid config, clamped to 10..3600, normal values pass through", async () => {
+    assert.equal(intervalOf(null), 60);
+    assert.equal(intervalOf({ ...CONFIG, intervalSeconds: 5 }), 10);
+    assert.equal(intervalOf({ ...CONFIG, intervalSeconds: 99999 }), 3600);
+    assert.equal(intervalOf({ ...CONFIG, intervalSeconds: 120 }), 120);
+    assert.equal(intervalOf({ ...CONFIG, intervalSeconds: Number.NaN }), 60);
+
+    const noConfig = await syncOnce(await modulesFolder({ config: null }), deps);
+    assert.equal(noConfig.intervalSeconds, 60);
+    const low = await syncOnce(await modulesFolder({ config: { ...CONFIG, intervalSeconds: 5 } }), deps);
+    assert.equal(low.intervalSeconds, 10);
+    const notModules = await syncOnce(await mkdtemp(join(tmpdir(), "tessello-sync-")), deps);
+    assert.equal(notModules.intervalSeconds, 60);
+  });
+});
+
+describe("tessello sync (continuous loop)", () => {
+  /**
+   * Drives syncLoop without sleeping: the fake sleep records the wait it was asked for, runs the hook of that round
+   * (to change files or config between rounds), advances the clock and aborts after `rounds` rounds.
+   */
+  async function drive(dir: string, rounds: number, hooks: ((dir: string) => Promise<void>)[] = [], startMs = 0) {
+    const controller = new AbortController();
+    const sleeps: number[] = [];
+    const log: string[] = [];
+    let clock = NOW.getTime() + startMs;
+    await syncLoop(dir, controller.signal, {
+      now: () => new Date(clock),
+      log: (line) => log.push(line),
+      sleep: async (ms) => {
+        sleeps.push(ms);
+        clock += 20_000;
+        await hooks[sleeps.length - 1]?.(dir);
+        if (sleeps.length >= rounds) controller.abort();
+      },
+    });
+    return { sleeps, log };
+  }
+  const dataPath = async () => `${DATA}/${NOTES.id}/${await keyFileName("k")}`;
+
+  test("a round postponed by the quiet period logs nothing, the next one logs its commit", async () => {
+    const dir = await modulesFolder();
+    await syncOnce(dir, deps);
+    const path = await dataPath();
+    await writeFile(join(dir, path), json({ key: "k", value: "edited" }));
+    const recent = new Date(NOW.getTime() - 5_000);
+    await utimes(join(dir, path), recent, recent);
+
+    const { log, sleeps } = await drive(dir, 2);
+
+    assert.equal(sleeps.length, 2);
+    assert.equal(log.length, 1);
+    assert.match(log[0]!, /^2026-03-01T10:00:20\.000Z Committed [0-9a-f]+: @craftskillz\/notes$/);
+  });
+
+  test("a change of intervalSeconds between two rounds applies to the next sleep", async () => {
+    const dir = await modulesFolder();
+    const rewrite = async (d: string) =>
+      put(d, `${DATA}/${GIT_INTEGRATION}/config.json`, json({ key: "config", value: { ...CONFIG, intervalSeconds: 30 } }));
+    const { sleeps } = await drive(dir, 2, [rewrite]);
+    assert.deepEqual(sleeps, [60_000, 30_000]);
+  });
+
+  test("an empty round logs nothing; a folder without config logs the message", async () => {
+    const quiet = await modulesFolder();
+    await syncOnce(quiet, deps);
+    assert.deepEqual((await drive(quiet, 1)).log, []);
+
+    const bare = await modulesFolder({ config: null });
+    const { log } = await drive(bare, 1);
+    assert.equal(log.length, 1);
+    assert.match(log[0]!, /^2026-03-01T10:00:00\.000Z The Git Integration Module has not saved a valid configuration/);
+  });
+
+  test("a commit with no Module data is logged as such", async () => {
+    const dir = await modulesFolder();
+    await syncOnce(dir, deps);
+    await writeFile(join(dir, ".tessello/home.json"), json({ pinned: [] }));
+    const { log } = await drive(dir, 1);
+    assert.match(log[0]!, / Committed [0-9a-f]+: no Module data$/);
+  });
+
+  test("a round that throws is logged and the loop keeps going with the default interval", async () => {
+    const broken = await modulesFolder();
+    // A git that starts but fails on everything else: `git init` throws inside the round.
+    const fake = join(await mkdtemp(join(tmpdir(), "tessello-fakegit-")), "git");
+    await writeFile(fake, '#!/bin/sh\n[ "$1" = "--version" ] && exit 0\necho boom >&2\nexit 1\n', { mode: 0o755 });
+    const controller = new AbortController();
+    const lines: string[] = [];
+    const waits: number[] = [];
+    await syncLoop(broken, controller.signal, {
+      git: fake,
+      now: () => NOW,
+      log: (l) => lines.push(l),
+      sleep: async (ms) => {
+        waits.push(ms);
+        if (waits.length >= 2) controller.abort();
+      },
+    });
+    assert.deepEqual(waits, [60_000, 60_000]);
+    assert.equal(lines.length, 2);
+    assert.match(lines[0]!, /^2026-03-01T10:00:00\.000Z Round failed: git init failed: boom$/);
+  });
+});
+
+describe("tessello sync (command, lock and signal)", () => {
+  const lockPath = (dir: string) => join(dir, ".tessello", "sync.lock");
+  function capture() {
+    const out: string[] = [];
+    const err: string[] = [];
+    return { out, err, output: { out: (t: string) => out.push(t), err: (t: string) => err.push(t) } };
+  }
+  const continuous = (signal: AbortSignal, extra = {}) => ({ now: () => NOW, signal, sleep: async () => {}, ...extra });
+
+  test("a live lock refuses --once and continuous mode, naming the PID, and is left untouched", async () => {
+    const dir = await modulesFolder();
+    await writeFile(lockPath(dir), `${process.pid}\n`);
+    for (const args of [["--once", dir], [dir]]) {
+      const { err, output } = capture();
+      assert.equal(await run(["sync", ...args], output, continuous(AbortSignal.abort())), 1);
+      assert.match(err.join("\n"), new RegExp(`Another tessello sync \\(PID ${process.pid}\\) is already running`));
+    }
+    assert.equal(existsSync(lockPath(dir)), true);
+  });
+
+  test("a stale lock is taken over and the lock file is gone afterwards, in both modes", async () => {
+    for (const args of [["--once"], []]) {
+      const dir = await modulesFolder();
+      await writeFile(lockPath(dir), "999999\n");
+      const { output } = capture();
+      const code = await run(["sync", ...args, dir], output, continuous(AbortSignal.abort(), { lock: { isRunning: () => false } }));
+      assert.equal(code, 0);
+      assert.equal(existsSync(lockPath(dir)), false);
+    }
+  });
+
+  test("an abort during the sleep stops the loop, returns 0, releases the lock and prints the log on out", async () => {
+    const dir = await modulesFolder();
+    const controller = new AbortController();
+    const { out, output } = capture();
+    const code = await run(["sync", dir], output, {
+      now: () => NOW,
+      signal: controller.signal,
+      sleep: async () => {
+        assert.equal(existsSync(lockPath(dir)), true);
+        controller.abort();
+      },
+    });
+    assert.equal(code, 0);
+    assert.equal(existsSync(lockPath(dir)), false);
+    assert.ok(out.some((line) => / Committed [0-9a-f]+: /.test(line)));
+  });
+
+  test("continuous mode on a folder that is not a Modules folder returns 1 and creates nothing", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "tessello-sync-"));
+    const { err, output } = capture();
+    assert.equal(await run(["sync", dir], output, continuous(AbortSignal.abort())), 1);
+    assert.match(err.join("\n"), /is not a Modules folder/);
+    assert.equal(existsSync(join(dir, ".tessello")), false);
   });
 });

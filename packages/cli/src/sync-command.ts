@@ -1,7 +1,9 @@
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rename, stat, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
+import { acquireLock, type LockDeps } from "./sync-lock.ts";
 
 export type ProblemKind = "push-rejected" | "auth" | "remote-unreachable" | "git-missing" | "not-a-modules-folder" | "no-config";
 
@@ -34,7 +36,7 @@ interface Output {
   err: (text: string) => void;
 }
 
-const USAGE = "Usage: tessello sync --once [folder]";
+const USAGE = "Usage: tessello sync [--once] [folder]";
 
 // The channel with the Git Integration Module is its storage (ADR 0020). The CLI cannot depend on the private host
 // package, so these names are the ones the Host's `keyFileName` gives to the keys `config` and `status`; a test
@@ -55,12 +57,30 @@ interface Registry {
   modules: { id: string; folder: string }[];
 }
 
-interface RoundResult {
+/** What one round reports. */
+export interface RoundResult {
   status: SyncStatus | null;
   committed: boolean;
+  /** Seconds to wait before the next round: the configured interval brought within bounds. */
+  intervalSeconds: number;
+  /** The quiet period put the commit off to the next round. */
+  postponed?: true;
   problem?: ProblemKind;
   /** What to tell the User about the problem. */
   message?: string;
+}
+
+const DEFAULT_INTERVAL_SECONDS = 60;
+const MIN_INTERVAL_SECONDS = 10;
+const MAX_INTERVAL_SECONDS = 3600;
+/** A changed file younger than this is probably still being written: its commit waits for the next round. */
+const QUIET_MS = 10_000;
+
+/** The interval between rounds: the configured one brought within [10, 3600], 60 without a valid config. */
+export function intervalOf(config: SyncConfig | null): number {
+  const value = config?.intervalSeconds;
+  if (typeof value !== "number" || !Number.isFinite(value)) return DEFAULT_INTERVAL_SECONDS;
+  return Math.min(MAX_INTERVAL_SECONDS, Math.max(MIN_INTERVAL_SECONDS, value));
 }
 
 /** One round. Never throws for the expected problems: returns them. */
@@ -74,8 +94,9 @@ export async function syncOnce(folder: string, deps: Partial<SyncDeps> = {}): Pr
     return {
       status: null,
       committed: false,
+      intervalSeconds: DEFAULT_INTERVAL_SECONDS,
       problem: "not-a-modules-folder",
-      message: `"${root}" is not a Modules folder: .tessello/modules.json is missing or unreadable. Choose it in the Host first.`,
+      message: notAModulesFolder(root),
     };
   }
 
@@ -85,13 +106,14 @@ export async function syncOnce(folder: string, deps: Partial<SyncDeps> = {}): Pr
   const status: SyncStatus = { heartbeat: now.toISOString(), installed, ownRepositories };
   if (previous?.lastCommit) status.lastCommit = previous.lastCommit;
 
-  const finish = async (committed: boolean, problem?: { kind: ProblemKind; message: string }): Promise<RoundResult> => {
+  let interval = DEFAULT_INTERVAL_SECONDS;
+  const finish = async (committed: boolean, problem?: { kind: ProblemKind; message: string }, postponed = false): Promise<RoundResult> => {
     if (problem) {
       const since = previous?.problem?.kind === problem.kind ? previous.problem.since : now.toISOString();
       status.problem = { ...problem, since };
     }
     await writeStatus(root, status);
-    return { status, committed, ...(problem && { problem: problem.kind, message: problem.message }) };
+    return { status, committed, intervalSeconds: interval, ...(postponed && { postponed: true as const }), ...(problem && { problem: problem.kind, message: problem.message }) };
   };
 
   const version = await runGit(git, ["--version"], root);
@@ -110,37 +132,155 @@ export async function syncOnce(folder: string, deps: Partial<SyncDeps> = {}): Pr
     });
   }
 
+  interval = intervalOf(config);
   const rules = ignoreRules(config, ownRepositories);
-  await writeGitignore(root, rules);
+  const wroteGitignore = await writeGitignore(root, rules);
 
   // Another git (the User's, an editor) is working: the next round will see what it leaves.
   if (existsSync(join(root, ".git", "index.lock"))) return finish(false);
+
+  // A file still being written would be committed half done: wait for the next round (the heartbeat is written anyway).
+  if (await hasRecentChange(git, root, now, wroteGitignore)) return finish(false, undefined, true);
 
   const commit = await commitChanges(git, root, registry, rules, now);
   if (commit) status.lastCommit = commit;
   return finish(commit !== null);
 }
 
-/** `tessello sync --once [folder]`: 0 when the round ran without problem, 1 on a problem (message on err), 2 on a usage error. */
-export async function syncCommand(args: string[], output: Output, deps: Partial<SyncDeps> = {}): Promise<number> {
+function notAModulesFolder(root: string): string {
+  return `"${root}" is not a Modules folder: .tessello/modules.json is missing or unreadable. Choose it in the Host first.`;
+}
+
+/** What the continuous loop depends on besides git and the clock; tests replace them so that nothing really sleeps. */
+export interface LoopDeps extends SyncDeps {
+  /** Waits `ms`, or less when the signal aborts. Never rejects. */
+  sleep: (ms: number, signal: AbortSignal) => Promise<void>;
+  /** Receives one line per round that did something. */
+  log: (line: string) => void;
+}
+
+async function interruptibleSleep(ms: number, signal: AbortSignal): Promise<void> {
+  try {
+    await delay(ms, undefined, { signal });
+  } catch {
+    // Aborted: that is the way out of the wait, not a failure.
+  }
+}
+
+/**
+ * Rounds until `signal` aborts. The signal is only looked at between rounds, so a round already running finishes (and
+ * its status is written) before the loop stops. The interval comes from each round, hence a changed config applies
+ * at the next wait.
+ */
+export async function syncLoop(folder: string, signal: AbortSignal, deps: Partial<LoopDeps> = {}): Promise<void> {
+  const now = deps.now ?? (() => new Date());
+  const sleep = deps.sleep ?? interruptibleSleep;
+  const log = deps.log ?? (() => {});
+  while (!signal.aborted) {
+    let seconds = DEFAULT_INTERVAL_SECONDS;
+    try {
+      const result = await syncOnce(folder, deps);
+      seconds = result.intervalSeconds;
+      const last = result.status?.lastCommit;
+      if (result.committed && last) log(`${now().toISOString()} Committed ${last.sha}: ${last.modules.join(", ") || "no Module data"}`);
+      else if (result.problem) log(`${now().toISOString()} ${result.message ?? result.problem}`);
+    } catch (error) {
+      // An unexpected git failure must not end a backup that runs for days: say it and try again next round.
+      log(`${now().toISOString()} Round failed: ${(error as Error).message}`);
+    }
+    if (signal.aborted) return;
+    await sleep(seconds * 1000, signal);
+  }
+}
+
+/** What `syncCommand` accepts besides the round's: the loop's and the lock's, and the signal that stops it. */
+export interface SyncCommandDeps extends LoopDeps {
+  /** Stops the continuous mode; by default Ctrl+C (SIGINT) and SIGTERM do. */
+  signal: AbortSignal;
+  lock: Partial<LockDeps>;
+}
+
+/**
+ * `tessello sync [--once] [folder]`: one round with `--once`, otherwise rounds in the foreground until Ctrl+C.
+ * 0 when it ran (once: without problem), 1 on a problem or when another instance holds the folder (message on err),
+ * 2 on a usage error.
+ */
+export async function syncCommand(args: string[], output: Output, deps: Partial<SyncCommandDeps> = {}): Promise<number> {
   const once = args.includes("--once");
   const rest = args.filter((arg) => arg !== "--once");
   if (rest.length > 1 || rest.some((arg) => arg.startsWith("-"))) {
     output.err(USAGE);
     return 2;
   }
-  if (!once) {
-    output.err(`The continuous mode is not available yet: use \`tessello sync --once [folder]\`.\n${USAGE}`);
-    return 2;
-  }
-  const result = await syncOnce(rest[0] ?? process.cwd(), deps);
-  if (result.problem) {
-    output.err(result.message ?? `Sync failed: ${result.problem}.`);
+  const root = resolve(rest[0] ?? process.cwd());
+
+  // Checked before the lock, which lives in `.tessello/`: a wrong folder must not get one created.
+  if (!(await readRegistry(root))) {
+    output.err(notAModulesFolder(root));
     return 1;
   }
-  const last = result.status?.lastCommit;
-  output.out(result.committed && last ? `Committed ${last.sha}.` : "Nothing to commit.");
-  return 0;
+
+  const lock = await acquireLock(root, deps.lock);
+  if (!lock.acquired) {
+    output.err(`Another tessello sync (PID ${lock.pid}) is already running on "${root}".`);
+    return 1;
+  }
+  try {
+    if (once) {
+      const result = await syncOnce(root, deps);
+      if (result.problem) {
+        output.err(result.message ?? `Sync failed: ${result.problem}.`);
+        return 1;
+      }
+      const last = result.status?.lastCommit;
+      output.out(result.committed && last ? `Committed ${last.sha}.` : "Nothing to commit.");
+      return 0;
+    }
+
+    output.out(`Syncing "${root}" round after round. Press Ctrl+C to stop.`);
+    const controller = new AbortController();
+    const stop = () => controller.abort();
+    const external = deps.signal;
+    if (external) {
+      if (external.aborted) stop();
+      else external.addEventListener("abort", stop, { once: true });
+    } else {
+      process.once("SIGINT", stop);
+      process.once("SIGTERM", stop);
+    }
+    try {
+      await syncLoop(root, controller.signal, { ...deps, log: deps.log ?? output.out });
+    } finally {
+      external?.removeEventListener("abort", stop);
+      process.off("SIGINT", stop);
+      process.off("SIGTERM", stop);
+    }
+    return 0;
+  } finally {
+    await lock.release();
+  }
+}
+
+/**
+ * Whether a changed file (per `git status`) was modified within the quiet period. The difference is absolute on purpose:
+ * a file dated in the future (clock skew, copied file) must not block commits forever. Deleted files have no date, and
+ * `.gitignore` is skipped when the command rewrote its section in this very round (a User's edit alone still waits).
+ */
+async function hasRecentChange(git: string, root: string, now: Date, wroteGitignore: boolean): Promise<boolean> {
+  const entries = (await runGit(git, ["status", "--porcelain", "-z", "--untracked-files=all"], root)).stdout.split("\0").filter(Boolean);
+  for (let i = 0; i < entries.length; i++) {
+    const entry = entries[i]!;
+    // A rename or copy is followed by its original path as its own entry: not a changed file, skip it.
+    if (entry[0] === "R" || entry[0] === "C" || entry[1] === "R" || entry[1] === "C") i++;
+    const path = entry.slice(3);
+    if (path === ".gitignore" && wroteGitignore) continue;
+    try {
+      if (Math.abs(now.getTime() - (await stat(join(root, path))).mtimeMs) < QUIET_MS) return true;
+    } catch {
+      // Deleted: nothing to wait for.
+    }
+  }
+  return false;
 }
 
 /** Commits what changed; describes the commit, or null when there was nothing to commit. */
@@ -194,7 +334,8 @@ function ignoreRules(config: SyncConfig, ownRepositories: string[]): string[] {
     ...[...new Set(config.dataModules)].sort().map((id) => `!${data}/${id}/`),
     `!${own}/`,
     `${own}/${STATUS_FILE}`,
-    "/.tessello/sync.lock",
+    // The lock and the stale lock a takeover moves aside for an instant.
+    "/.tessello/sync.lock*",
     "*.crswap",
     ".DS_Store",
     "*.tessello-sync-tmp",
@@ -202,8 +343,8 @@ function ignoreRules(config: SyncConfig, ownRepositories: string[]): string[] {
   ];
 }
 
-/** The section of `.gitignore` this command owns; the User's lines around it are left byte for byte. */
-async function writeGitignore(root: string, rules: string[]): Promise<void> {
+/** The section of `.gitignore` this command owns; the User's lines around it are left byte for byte. True when the file was rewritten. */
+async function writeGitignore(root: string, rules: string[]): Promise<boolean> {
   const section = [SECTION_START, "# Generated at every round: edit the lines outside this section.", ...rules, SECTION_END].join("\n");
   const path = join(root, ".gitignore");
   const current = existsSync(path) ? await readFile(path, "utf8") : null;
@@ -216,7 +357,9 @@ async function writeGitignore(root: string, rules: string[]): Promise<void> {
   // A section whose end was deleted runs to the end of the file.
   else if (start >= 0) next = `${current.slice(0, start)}${section}\n`;
   else next = `${current}${current === "" || current.endsWith("\n") ? "" : "\n"}${section}\n`;
-  if (next !== current) await writeFile(path, next);
+  if (next === current) return false;
+  await writeFile(path, next);
+  return true;
 }
 
 async function ownRepositoriesOf(root: string): Promise<string[]> {

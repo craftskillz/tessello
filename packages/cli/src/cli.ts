@@ -3,7 +3,7 @@ import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { execCommand, publishCommand, type Gh, type GhResult, type PublishDeps } from "./publish-command.ts";
 import { serveCommand, type ServeDeps } from "./serve-command.ts";
-import { syncCommand, type SyncDeps } from "./sync-command.ts";
+import { syncCommand, type SyncCommandDeps } from "./sync-command.ts";
 import { formatReport, validatePath } from "./validate-command.ts";
 
 const USAGE = `Usage: tessello <command>
@@ -16,8 +16,10 @@ Commands:
                              at <URL> and open the pull request (run \`tessello publish\` for options).
   serve [--port <number>]    Run the Host on this computer, to reach your installed Modules
                              when its site cannot be reached (http://127.0.0.1:7355/ by default).
-  sync --once [folder]       Commit the changes of your Modules folder to its git repository
-                             (the current folder by default). Exits with 1 on a problem.`;
+  sync [--once] [folder]     Commit the changes of your Modules folder to its git repository
+                             (the current folder by default), round after round until Ctrl+C,
+                             or once with --once. One instance per folder (a lock file).
+                             Exits with 1 on a problem.`;
 
 interface Output {
   out: (text: string) => void;
@@ -25,7 +27,7 @@ interface Output {
 }
 
 /** Runs the CLI and returns the process exit code: 0 success, 1 invalid Module or failed command, 2 usage error. */
-export async function run(args: string[], output: Output, deps: Partial<PublishDeps & ServeDeps & SyncDeps> = {}): Promise<number> {
+export async function run(args: string[], output: Output, deps: Partial<PublishDeps & ServeDeps & SyncCommandDeps> = {}): Promise<number> {
   const [command, ...rest] = args;
 
   if (command === "publish") return publishCommand(rest, output, await publishDeps(deps));
