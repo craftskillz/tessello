@@ -158,6 +158,28 @@ const CONTRACTS: Contract[] = [
       },
     },
   },
+  {
+    fixture: "git-integration",
+    started: async (view) => {
+      await shown(view.getByRole("heading", { name: "Git Integration", level: 1 }));
+      await shown(view.getByRole("heading", { name: "Settings" }));
+    },
+    async write(view) {
+      await view.getByRole("textbox", { name: "Remote repository URL" }).fill("git@github.com:acme/backup.git");
+    },
+    written: (storage) => storage.config?.remote === "git@github.com:acme/backup.git",
+    readBack: async (view) => {
+      await until(async () => (await view.getByRole("textbox", { name: "Remote repository URL" }).inputValue()) === "git@github.com:acme/backup.git", "the View to show the remote repository");
+    },
+    widget: {
+      // No engine has run: no status, so the Widget says the backup is stopped. It opens the View without params.
+      shows: (widget) => shown(widget.getByRole("button", { name: /Stopped/ })),
+      async opensView(widget, view) {
+        await widget.getByRole("button", { name: /Stopped/ }).click();
+        await shown(view.getByRole("heading", { name: "Engine" }));
+      },
+    },
+  },
 ];
 
 interface Manifest {

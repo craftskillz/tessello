@@ -151,30 +151,49 @@ export async function removeFolder(page: Page, folder: string): Promise<void> {
   }, folder);
 }
 
-/** Every file under a folder of the OPFS, as text: path → content. `{}` when the folder does not exist. */
-export async function readFolder(page: Page, folder: string): Promise<Record<string, string>> {
-  // A read that throws, as when the Host is replacing a file, is tried again.
+/**
+ * Every file under a folder of the OPFS, as text or as bytes (numbers, to cross `page.evaluate`). `{}` when the folder
+ * does not exist. A read that throws, as when the Host is replacing a file, is tried again.
+ */
+function walkFolder(page: Page, folder: string, as: "text" | "bytes"): Promise<Record<string, string | number[]>> {
   return until(
     () =>
-      page.evaluate(async (folder) => {
-        let directory = await navigator.storage.getDirectory();
-        try {
-          for (const name of folder.split("/")) directory = await directory.getDirectoryHandle(name);
-        } catch {
-          return {};
-        }
-        const files: Record<string, string> = {};
-        const walk = async (handle: FileSystemDirectoryHandle, prefix: string) => {
-          for await (const [name, entry] of handle.entries()) {
-            if (entry.kind === "directory") await walk(entry as FileSystemDirectoryHandle, `${prefix}${name}/`);
-            else files[prefix + name] = await (await (entry as FileSystemFileHandle).getFile()).text();
+      page.evaluate(
+        async ({ folder, as }) => {
+          let directory = await navigator.storage.getDirectory();
+          try {
+            for (const name of folder.split("/")) directory = await directory.getDirectoryHandle(name);
+          } catch {
+            return {};
           }
-        };
-        await walk(directory, "");
-        return files;
-      }, folder),
+          const files: Record<string, string | number[]> = {};
+          const walk = async (handle: FileSystemDirectoryHandle, prefix: string) => {
+            for await (const [name, entry] of handle.entries()) {
+              if (entry.kind === "directory") await walk(entry as FileSystemDirectoryHandle, `${prefix}${name}/`);
+              else {
+                const file = await (entry as FileSystemFileHandle).getFile();
+                files[prefix + name] = as === "text" ? await file.text() : [...new Uint8Array(await file.arrayBuffer())];
+              }
+            }
+          };
+          await walk(directory, "");
+          return files;
+        },
+        { folder, as },
+      ),
     `the files of ${folder}`,
   );
+}
+
+/** Every file under a folder of the OPFS, as text: path → content. `{}` when the folder does not exist. */
+export async function readFolder(page: Page, folder: string): Promise<Record<string, string>> {
+  return (await walkFolder(page, folder, "text")) as Record<string, string>;
+}
+
+/** Every file under a folder of the OPFS, byte for byte: path → bytes (a package holds images, which text would corrupt). */
+export async function readFolderBytes(page: Page, folder: string): Promise<Record<string, Uint8Array>> {
+  const files = (await walkFolder(page, folder, "bytes")) as Record<string, number[]>;
+  return Object.fromEntries(Object.entries(files).map(([path, bytes]) => [path, new Uint8Array(bytes)]));
 }
 
 /** A Module as `.tessello/modules.json` registers it. */

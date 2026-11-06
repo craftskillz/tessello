@@ -59,6 +59,8 @@ npx tessello sync my-modules          # or the folder you choose
 npx tessello sync --once              # a single round, then it stops
 ```
 
-Run it in your Modules folder: it commits what changed to the folder's git repository. It is the engine of the Git Integration Module, where you choose what is versioned. That Module's guide explains how to set it up, what is kept out of the repository and how to restore on another machine. It runs in the foreground, one round every interval you set in that Module (re-read at each round), and stops cleanly on Ctrl+C; `--once` makes a single round. Only one instance runs per folder (`.tessello/sync.lock`; a lock left by a dead process is taken over). Nothing is pushed yet.
+Run it in your Modules folder: it commits what changed to the folder's git repository, then pushes it to the repository you entered. It is the engine of the Git Integration Module, where you set it up. How to use it, what is kept out of the repository, the alerts and how to restore on another machine are in the [User guide of Git Integration](https://github.com/craftskillz/tessello-git-integration/blob/main/guide/guide.md), also shown inside Tessello.
 
-With `--once` it exits with 0 when the round ran without problem, 1 when there is one (not a Modules folder, git missing, no configuration, another instance running; the message says what to do), and 2 on a usage error.
+It runs in the foreground, one round every interval set in that Module (re-read at each round), and stops cleanly on Ctrl+C; `--once` makes a single round. Only one instance runs per folder (`.tessello/sync.lock`; a lock left by a dead process is taken over). It never pulls, merges or forces a push.
+
+With `--once` it exits with 0 when the round ran without problem, 1 when there is one (not a Modules folder, git missing, no configuration, a refused or failed push, another instance running; the message says what to do), and 2 on a usage error.

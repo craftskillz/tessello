@@ -116,7 +116,7 @@ Two variables change how the browser tests run: `HEADED=1` shows the browser, sl
 
 What blocks a deployment of the Host, and where every browser test runs: see [DEPLOYING.md](DEPLOYING.md#how-it-deploys).
 
-The browser tests install the four @craftskillz Modules from their packages in `packages/host/e2e/fixtures/`. The first time, Playwright may need its browser: `npx playwright install chromium`.
+The browser tests install the five @craftskillz Modules from their packages in `packages/host/e2e/fixtures/`. The first time, Playwright may need its browser: `npx playwright install chromium`.
 
 ## Other commands
 
