@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
+import { createServer } from "node:http";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { describe, test } from "node:test";
 
 // The tests must not depend on (or touch) the identity and settings of whoever runs them.
@@ -13,7 +14,7 @@ process.env.GIT_CONFIG_NOSYSTEM = "1";
 
 const { keyFileName } = await import("../../host/src/folder-persistence.ts");
 const { run } = await import("../src/cli.ts");
-const { intervalOf, syncLoop, syncOnce } = await import("../src/sync-command.ts");
+const { classifyPushFailure, intervalOf, syncLoop, syncOnce } = await import("../src/sync-command.ts");
 
 const DATA = ".tessello/data";
 const GIT_INTEGRATION = "@craftskillz/git-integration";
@@ -511,5 +512,257 @@ describe("tessello sync (command, lock and signal)", () => {
     assert.equal(await run(["sync", dir], output, continuous(AbortSignal.abort())), 1);
     assert.match(err.join("\n"), /is not a Modules folder/);
     assert.equal(existsSync(join(dir, ".tessello")), false);
+  });
+});
+
+describe("push", () => {
+  const at = (offsetMs: number) => new Date(NOW.getTime() + offsetMs);
+  const dataFile = async () => `${DATA}/${NOTES.id}/${await keyFileName("k")}`;
+  const IDENTITY = ["-c", "user.name=x", "-c", "user.email=x@y"];
+
+  async function bareRepo(): Promise<string> {
+    const bare = await mkdtemp(join(tmpdir(), "tessello-bare-"));
+    git(bare, "init", "--bare", "-b", "main");
+    return bare;
+  }
+  const pushConfig = (remote: string, push = true) => ({ ...CONFIG, remote, push });
+  async function pushingFolder(remote: string): Promise<string> {
+    return modulesFolder({ config: pushConfig(remote) });
+  }
+  async function edit(dir: string, value: string): Promise<void> {
+    const path = await dataFile();
+    await writeFile(join(dir, path), json({ key: "k", value }));
+    const old = new Date(NOW.getTime() - 3_600_000);
+    await utimes(join(dir, path), old, old);
+  }
+  const head = (dir: string) => git(dir, "rev-parse", "HEAD").trim();
+  const mainOf = (bare: string) => git(bare, "rev-parse", "main").trim();
+  /** Another clone of `bare` that commits something and pushes it, as a second machine would. */
+  async function pushElsewhere(bare: string): Promise<string> {
+    const other = await mkdtemp(join(tmpdir(), "tessello-other-"));
+    git(other, "clone", "-q", bare, ".");
+    await writeFile(join(other, "elsewhere.txt"), "x");
+    git(other, "add", "-A");
+    git(other, ...IDENTITY, "commit", "-q", "-m", "elsewhere");
+    git(other, "push", "-q", "origin", "main");
+    return head(other);
+  }
+
+  test("the first push creates origin from the config and publishes main", async () => {
+    const bare = await bareRepo();
+    const dir = await pushingFolder(bare);
+    const result = await syncOnce(dir, deps);
+
+    assert.equal(result.pushed, true);
+    assert.equal(result.problem, undefined);
+    assert.equal(git(dir, "remote", "get-url", "origin").trim(), bare);
+    assert.equal(mainOf(bare), head(dir));
+    assert.equal(result.status?.lastPush?.at, NOW.toISOString());
+    assert.equal("problem" in result.status!, false);
+  });
+
+  test("a following change is pushed; a round with nothing new pushes nothing and keeps lastPush", async () => {
+    const bare = await bareRepo();
+    const dir = await pushingFolder(bare);
+    await syncOnce(dir, deps);
+    await edit(dir, "second");
+    const second = await syncOnce(dir, { now: () => at(60_000) });
+    assert.equal(second.pushed, true);
+    assert.equal(mainOf(bare), head(dir));
+    assert.equal(second.status?.lastPush?.at, at(60_000).toISOString());
+
+    const idle = await syncOnce(dir, { now: () => at(120_000) });
+    assert.equal(idle.pushed, false);
+    assert.equal(idle.problem, undefined);
+    assert.equal(idle.status?.lastPush?.at, at(60_000).toISOString());
+  });
+
+  test("origin is corrected when it points elsewhere", async () => {
+    const bare = await bareRepo();
+    const dir = await pushingFolder(bare);
+    git(dir, "init", "-b", "main");
+    git(dir, "remote", "add", "origin", "/somewhere/else.git");
+    await syncOnce(dir, deps);
+    assert.equal(git(dir, "remote", "get-url", "origin").trim(), bare);
+    assert.equal(mainOf(bare), head(dir));
+  });
+
+  test("a remote changed in the config receives main even when nothing new was committed", async () => {
+    const first = await bareRepo();
+    const dir = await pushingFolder(first);
+    await syncOnce(dir, deps);
+    const second = await bareRepo();
+    await put(dir, `${DATA}/${GIT_INTEGRATION}/config.json`, json({ key: "config", value: pushConfig(second) }));
+    const old = new Date(NOW.getTime() - 3_600_000);
+    await utimes(join(dir, DATA, GIT_INTEGRATION, "config.json"), old, old);
+
+    const result = await syncOnce(dir, deps);
+    assert.equal(result.pushed, true);
+    assert.equal(mainOf(second), head(dir));
+  });
+
+  test("a remote rewritten by url.insteadOf is not set again nor pushed again at every round", async () => {
+    const bare = await bareRepo();
+    const alias = `alias:${basename(bare)}`;
+    const dir = await pushingFolder(alias);
+    git(dir, "init", "-b", "main");
+    git(dir, "config", `url.${dirname(bare)}/.insteadOf`, "alias:");
+    assert.equal((await syncOnce(dir, deps)).pushed, true);
+    const again = await syncOnce(dir, deps);
+    assert.equal(again.pushed, false);
+    assert.equal(again.problem, undefined);
+    assert.equal(git(dir, "config", "--get", "remote.origin.url").trim(), alias);
+  });
+
+  test("an index.lock skips the push too, the next round pushes", async () => {
+    const bare = await bareRepo();
+    const dir = await pushingFolder(bare);
+    await syncOnce(dir, deps);
+    await edit(dir, "local");
+    await syncOnce(dir, { now: () => new Date(NOW.getTime() + 60_000) });
+    git(bare, "update-ref", "refs/heads/main", `${head(dir)}~1`);
+    git(dir, "update-ref", "refs/remotes/origin/main", `${head(dir)}~1`);
+    await put(dir, ".git/index.lock", "");
+    assert.equal((await syncOnce(dir, deps)).pushed, false);
+    assert.notEqual(mainOf(bare), head(dir));
+    await rm(join(dir, ".git/index.lock"));
+    assert.equal((await syncOnce(dir, deps)).pushed, true);
+    assert.equal(mainOf(bare), head(dir));
+  });
+
+  test("a refused push is a problem kept across rounds, never forced; commits continue locally", async () => {
+    const bare = await bareRepo();
+    const dir = await pushingFolder(bare);
+    await syncOnce(dir, deps);
+    const elsewhere = await pushElsewhere(bare);
+
+    await edit(dir, "local");
+    const first = await syncOnce(dir, { now: () => at(60_000) });
+    assert.equal(first.committed, true);
+    assert.equal(first.pushed, false);
+    assert.equal(first.problem, "push-rejected");
+    assert.match(first.message!, /^git push failed: .*rejected/s);
+    assert.ok(!first.message!.includes("hint:"));
+    assert.equal(first.status?.problem?.since, at(60_000).toISOString());
+
+    await edit(dir, "local again");
+    const second = await syncOnce(dir, { now: () => at(120_000) });
+    assert.equal(second.committed, true);
+    assert.equal(second.problem, "push-rejected");
+    assert.equal(second.status?.problem?.since, at(60_000).toISOString());
+    assert.equal(mainOf(bare), elsewhere);
+  });
+
+  test("back to normal once the conflict is resolved by hand", async () => {
+    const bare = await bareRepo();
+    const dir = await pushingFolder(bare);
+    await syncOnce(dir, deps);
+    await pushElsewhere(bare);
+    await edit(dir, "local");
+    assert.equal((await syncOnce(dir, { now: () => at(60_000) })).problem, "push-rejected");
+
+    git(dir, ...IDENTITY, "pull", "--no-rebase", "--no-edit", "origin", "main");
+    const fixed = await syncOnce(dir, { now: () => at(120_000) });
+    assert.equal(fixed.pushed, true);
+    assert.equal(fixed.problem, undefined);
+    assert.equal("problem" in fixed.status!, false);
+    assert.equal(fixed.status?.lastPush?.at, at(120_000).toISOString());
+    assert.equal(mainOf(bare), head(dir));
+  });
+
+  test("push disabled, or an empty remote: no origin, nothing pushed", async () => {
+    const bare = await bareRepo();
+    const off = await modulesFolder({ config: pushConfig(bare, false) });
+    const result = await syncOnce(off, deps);
+    assert.equal(result.pushed, false);
+    assert.equal(git(off, "remote").trim(), "");
+    assert.equal(git(bare, "branch", "--list").trim(), "");
+
+    const empty = await modulesFolder({ config: pushConfig("  ") });
+    const none = await syncOnce(empty, deps);
+    assert.equal(none.pushed, false);
+    assert.equal(none.problem, undefined);
+    assert.equal(git(empty, "remote").trim(), "");
+  });
+
+  test("a push is retried when the round's commit is postponed by the quiet period", async () => {
+    const bare = await bareRepo();
+    const dir = await pushingFolder(bare);
+    await syncOnce(dir, deps);
+    await pushElsewhere(bare);
+    await edit(dir, "local");
+    await syncOnce(dir, { now: () => at(60_000) });
+    git(dir, ...IDENTITY, "pull", "--no-rebase", "--no-edit", "origin", "main");
+
+    const path = await dataFile();
+    await writeFile(join(dir, path), json({ key: "k", value: "being written" }));
+    const now = new Date();
+    await utimes(join(dir, path), now, now);
+    const result = await syncOnce(dir, { now: () => now });
+    assert.equal(result.postponed, true);
+    assert.equal(result.pushed, true);
+    assert.equal(mainOf(bare), head(dir));
+  });
+
+  test("a remote asking for credentials is an auth problem and does not block", async () => {
+    const server = createServer((_req, res) => {
+      res.writeHead(401, { "WWW-Authenticate": 'Basic realm="x"' });
+      res.end();
+    });
+    await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
+    try {
+      const { port } = server.address() as { port: number };
+      const dir = await pushingFolder(`http://127.0.0.1:${port}/repo.git`);
+      const result = await syncOnce(dir, deps);
+      assert.equal(result.problem, "auth");
+      assert.equal(result.committed, true);
+    } finally {
+      server.close();
+      server.closeAllConnections();
+    }
+  });
+
+  test("an unreachable remote is remote-unreachable", async () => {
+    for (const remote of ["/nonexistent/tessello-remote.git", "http://127.0.0.1:1/x.git"]) {
+      const result = await syncOnce(await pushingFolder(remote), deps);
+      assert.equal(result.problem, "remote-unreachable");
+      assert.equal(result.pushed, false);
+    }
+  });
+
+  test("classifyPushFailure reads git's output", () => {
+    const cases: [string, string][] = [
+      [" ! [rejected]        main -> main (fetch first)\nerror: failed to push some refs", "push-rejected"],
+      [" ! [rejected]        main -> main (non-fast-forward)", "push-rejected"],
+      ["Updates were rejected because the remote contains work", "push-rejected"],
+      ["git@github.com: Permission denied (publickey).", "auth"],
+      ["remote: Invalid username or password.\nfatal: Authentication failed for 'https://x/y.git/'", "auth"],
+      ["fatal: could not read Username for 'https://x': terminal prompts disabled", "auth"],
+      ["fatal: unable to access 'https://x/': The requested URL returned error: 403", "auth"],
+      ["ERROR: Repository not found.", "auth"],
+      ["fatal: Could not resolve host: example.invalid", "remote-unreachable"],
+      ["ssh: connect to host x port 22: Connection refused", "remote-unreachable"],
+      ["ssh: connect to host x port 22: Operation timed out", "remote-unreachable"],
+      ["connect: Network is unreachable", "remote-unreachable"],
+      ["fatal: '/x' does not appear to be a git repository", "remote-unreachable"],
+      ["something git never said before", "remote-unreachable"],
+    ];
+    for (const [output, kind] of cases) assert.equal(classifyPushFailure(output), kind, output);
+  });
+
+  test("--once says Pushed; the loop logs Pushed to origin", async () => {
+    const out: string[] = [];
+    const output = { out: (t: string) => out.push(t), err: () => {} };
+    const once = await pushingFolder(await bareRepo());
+    assert.equal(await run(["sync", "--once", once], output, deps), 0);
+    assert.match(out[0]!, /^Committed [0-9a-f]+\. Pushed\.$/);
+
+    const dir = await pushingFolder(await bareRepo());
+    const controller = new AbortController();
+    const log: string[] = [];
+    await syncLoop(dir, controller.signal, { now: () => NOW, log: (l) => log.push(l), sleep: async () => controller.abort() });
+    assert.equal(log.length, 2);
+    assert.match(log[0]!, / Committed /);
+    assert.equal(log[1], `${NOW.toISOString()} Pushed to origin.`);
   });
 });

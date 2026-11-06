@@ -22,6 +22,7 @@ export interface SyncStatus {
   /** Top-level folders holding their own `.git`, sorted. */
   ownRepositories: string[];
   lastCommit?: { sha: string; at: string; modules: string[] };
+  lastPush?: { at: string };
   problem?: { kind: ProblemKind; message: string; since: string };
 }
 
@@ -61,6 +62,8 @@ interface Registry {
 export interface RoundResult {
   status: SyncStatus | null;
   committed: boolean;
+  /** A push succeeded in this round. */
+  pushed: boolean;
   /** Seconds to wait before the next round: the configured interval brought within bounds. */
   intervalSeconds: number;
   /** The quiet period put the commit off to the next round. */
@@ -94,6 +97,7 @@ export async function syncOnce(folder: string, deps: Partial<SyncDeps> = {}): Pr
     return {
       status: null,
       committed: false,
+      pushed: false,
       intervalSeconds: DEFAULT_INTERVAL_SECONDS,
       problem: "not-a-modules-folder",
       message: notAModulesFolder(root),
@@ -105,15 +109,17 @@ export async function syncOnce(folder: string, deps: Partial<SyncDeps> = {}): Pr
   const ownRepositories = await ownRepositoriesOf(root);
   const status: SyncStatus = { heartbeat: now.toISOString(), installed, ownRepositories };
   if (previous?.lastCommit) status.lastCommit = previous.lastCommit;
+  if (previous?.lastPush) status.lastPush = previous.lastPush;
 
   let interval = DEFAULT_INTERVAL_SECONDS;
+  let pushed = false;
   const finish = async (committed: boolean, problem?: { kind: ProblemKind; message: string }, postponed = false): Promise<RoundResult> => {
     if (problem) {
       const since = previous?.problem?.kind === problem.kind ? previous.problem.since : now.toISOString();
       status.problem = { ...problem, since };
     }
     await writeStatus(root, status);
-    return { status, committed, intervalSeconds: interval, ...(postponed && { postponed: true as const }), ...(problem && { problem: problem.kind, message: problem.message }) };
+    return { status, committed, pushed, intervalSeconds: interval, ...(postponed && { postponed: true as const }), ...(problem && { problem: problem.kind, message: problem.message }) };
   };
 
   const version = await runGit(git, ["--version"], root);
@@ -136,15 +142,88 @@ export async function syncOnce(folder: string, deps: Partial<SyncDeps> = {}): Pr
   const rules = ignoreRules(config, ownRepositories);
   const wroteGitignore = await writeGitignore(root, rules);
 
+  // Pushing commits already made is safe whatever the working tree is doing, so a round that postpones its commit
+  // still pushes: a refused push is retried at every round.
+  const pushStep = async (committed: boolean, postponed = false): Promise<RoundResult> => {
+    const push = await pushCommits(git, root, config);
+    if (push === "pushed") {
+      pushed = true;
+      status.lastPush = { at: now.toISOString() };
+    }
+    return finish(committed, typeof push === "object" ? push : undefined, postponed);
+  };
+
   // Another git (the User's, an editor) is working: the next round will see what it leaves.
+  // The push waits too: `push -u` writes to .git as well.
   if (existsSync(join(root, ".git", "index.lock"))) return finish(false);
 
   // A file still being written would be committed half done: wait for the next round (the heartbeat is written anyway).
-  if (await hasRecentChange(git, root, now, wroteGitignore)) return finish(false, undefined, true);
+  if (await hasRecentChange(git, root, now, wroteGitignore)) return pushStep(false, true);
 
   const commit = await commitChanges(git, root, registry, rules, now);
   if (commit) status.lastCommit = commit;
-  return finish(commit !== null);
+  return pushStep(commit !== null);
+}
+
+/** Time allowed to one push: a hung network must not stall the rounds. */
+const PUSH_TIMEOUT_MS = 120_000;
+const MAX_PUSH_MESSAGE = 500;
+
+/** Which problem a failed push is, from git's own output. A rejection is checked first: its text can mention the URL. */
+export function classifyPushFailure(output: string): "push-rejected" | "auth" | "remote-unreachable" {
+  if (/\[(remote )?rejected\]|non-fast-forward|fetch first|Updates were rejected/i.test(output)) return "push-rejected";
+  if (
+    /Permission denied|Authentication failed|terminal prompts disabled|could not read (Username|Password)|returned error: 40[13]|Repository not found|access denied|publickey/i.test(
+      output,
+    )
+  ) {
+    return "auth";
+  }
+  // Network errors, a wrong URL or path, and anything git says that is not recognised.
+  return "remote-unreachable";
+}
+
+/** git's stderr without its advice, shortened. */
+function shortened(output: string): string {
+  const lines = output.split("\n").map((l) => l.trim()).filter((l) => l && !l.startsWith("hint:"));
+  const text = lines.join("\n");
+  return text.length > MAX_PUSH_MESSAGE ? `${text.slice(0, MAX_PUSH_MESSAGE - 1)}…` : text;
+}
+
+/**
+ * Publishes the commits `origin/main` lacks. "skipped" when there is nothing to do (push off, no remote, no commit,
+ * not ahead), "pushed" on success, otherwise the problem. Never pulls, merges, rebases or forces.
+ */
+async function pushCommits(git: string, root: string, config: SyncConfig): Promise<"skipped" | "pushed" | { kind: ProblemKind; message: string }> {
+  const remote = config.remote.trim();
+  if (!config.push || remote === "") return "skipped";
+  if ((await runGit(git, ["rev-parse", "--verify", "--quiet", "HEAD"], root)).code !== 0) return "skipped";
+
+  // The URL as stored, not as `get-url` shows it after `url.<base>.insteadOf`: otherwise it would never match.
+  const current = await runGit(git, ["config", "--get", "remote.origin.url"], root);
+  if (current.code !== 0) await runGit(git, ["remote", "add", "origin", remote], root);
+  else if (current.stdout.trim() !== remote) {
+    await runGit(git, ["remote", "set-url", "origin", remote], root);
+    // What we knew of the old remote says nothing of the new one: forget it, so that main is pushed there.
+    await runGit(git, ["update-ref", "-d", "refs/remotes/origin/main"], root);
+  }
+
+  // Without fetching: what the last push left in refs/remotes/origin/main is enough to know whether we are ahead.
+  const known = (await runGit(git, ["rev-parse", "--verify", "--quiet", "refs/remotes/origin/main"], root)).code === 0;
+  if (known) {
+    const ahead = Number((await runGit(git, ["rev-list", "--count", "origin/main..main"], root)).stdout.trim());
+    if (!(ahead > 0)) return "skipped";
+  }
+
+  // Nothing may ask the User anything: a missing credential must fail (auth), not block the command.
+  const configured = (await runGit(git, ["config", "core.sshCommand"], root)).stdout.trim();
+  const ssh = process.env.GIT_SSH_COMMAND || configured || "ssh";
+  const env = { ...process.env, GIT_TERMINAL_PROMPT: "0", GIT_SSH_COMMAND: `${ssh} -o BatchMode=yes` };
+  const result = await runGit(git, ["push", "-u", "origin", "main"], root, { env, timeout: PUSH_TIMEOUT_MS });
+  if (result.code === 0) return "pushed";
+  if (result.timedOut) return { kind: "remote-unreachable", message: `git push timed out after ${PUSH_TIMEOUT_MS / 1000} s.` };
+  const output = result.stderr.trim() || result.stdout.trim();
+  return { kind: classifyPushFailure(output), message: `git push failed: ${shortened(output)}` };
 }
 
 function notAModulesFolder(root: string): string {
@@ -183,7 +262,8 @@ export async function syncLoop(folder: string, signal: AbortSignal, deps: Partia
       seconds = result.intervalSeconds;
       const last = result.status?.lastCommit;
       if (result.committed && last) log(`${now().toISOString()} Committed ${last.sha}: ${last.modules.join(", ") || "no Module data"}`);
-      else if (result.problem) log(`${now().toISOString()} ${result.message ?? result.problem}`);
+      if (result.pushed) log(`${now().toISOString()} Pushed to origin.`);
+      if (result.problem) log(`${now().toISOString()} ${result.message ?? result.problem}`);
     } catch (error) {
       // An unexpected git failure must not end a backup that runs for days: say it and try again next round.
       log(`${now().toISOString()} Round failed: ${(error as Error).message}`);
@@ -233,7 +313,7 @@ export async function syncCommand(args: string[], output: Output, deps: Partial<
         return 1;
       }
       const last = result.status?.lastCommit;
-      output.out(result.committed && last ? `Committed ${last.sha}.` : "Nothing to commit.");
+      output.out(`${result.committed && last ? `Committed ${last.sha}.` : "Nothing to commit."}${result.pushed ? " Pushed." : ""}`);
       return 0;
     }
 
@@ -431,13 +511,15 @@ interface GitResult {
   stderr: string;
   /** The binary could not be started. */
   missing: boolean;
+  /** Killed because it ran past its timeout. */
+  timedOut: boolean;
 }
 
-function runGit(git: string, args: string[], cwd: string): Promise<GitResult> {
+function runGit(git: string, args: string[], cwd: string, options: { env?: NodeJS.ProcessEnv; timeout?: number } = {}): Promise<GitResult> {
   return new Promise((done) => {
-    execFile(git, args, { cwd, encoding: "utf8", maxBuffer: 256 * 1024 * 1024 }, (error, stdout, stderr) => {
+    execFile(git, args, { cwd, encoding: "utf8", maxBuffer: 256 * 1024 * 1024, ...options }, (error, stdout, stderr) => {
       const code = error ? (typeof error.code === "number" ? error.code : 1) : 0;
-      done({ code, stdout, stderr, missing: (error as NodeJS.ErrnoException | null)?.code === "ENOENT" });
+      done({ code, stdout, stderr, missing: (error as NodeJS.ErrnoException | null)?.code === "ENOENT", timedOut: Boolean(error?.killed) });
     });
   });
 }
