@@ -50,12 +50,15 @@ export const WIDGET_SANDBOX = "allow-scripts allow-forms allow-popups allow-popu
 export const VIEW_SANDBOX = `${WIDGET_SANDBOX} allow-downloads`;
 
 /**
- * The `allow` attribute of a Module iframe: Chrome and Edge ask the User before a public site reaches the local network,
- * and only for a frame the page delegates it to (ADR 0012). Delegated only to a Module that declares `localNetwork`.
- * `local-network-access` is the name of Chrome 142, split since into `local-network` and `loopback-network`.
+ * The `allow` attribute of a Module iframe. Every Module may write to the clipboard, never read it (ADR 0021): without
+ * `clipboard-write`, `navigator.clipboard.writeText` is refused in the iframe. Chrome and Edge ask the User before a
+ * public site reaches the local network, and only for a frame the page delegates it to (ADR 0012): delegated only to a
+ * Module that declares `localNetwork`. `local-network-access` is the name of Chrome 142, split since into
+ * `local-network` and `loopback-network`.
  */
 export function iframeAllow(permissions: Permissions = {}): string {
-  return (permissions.localNetwork ?? []).length > 0 ? "local-network-access; local-network; loopback-network" : "";
+  const localNetwork = (permissions.localNetwork ?? []).length > 0 ? ["local-network-access", "local-network", "loopback-network"] : [];
+  return ["clipboard-write", ...localNetwork].join("; ");
 }
 
 /** The CSP of a View or Widget: only its declared origins, and no URL of the Host. */

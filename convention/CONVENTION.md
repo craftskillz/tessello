@@ -146,7 +146,7 @@ Screenshots help: take them in the Host, and keep them small, since they count i
 
 ## 4. Runtime environment
 
-Each View and Widget is loaded in an `<iframe>` with the `sandbox` attribute; only a View's allows downloads. A Module runs in an **opaque origin** (its origin is `"null"`). The iframe of a Module that declares `localNetwork` also delegates to it the browser's access to the local network (`allow="local-network-access; local-network; loopback-network"`, §3.1).
+Each View and Widget is loaded in an `<iframe>` with the `sandbox` attribute; only a View's allows downloads. A Module runs in an **opaque origin** (its origin is `"null"`). The iframe of a Module that declares `localNetwork` also delegates to it the browser's access to the local network (`allow="local-network-access; local-network; loopback-network"`, §3.1). Every View and Widget may write to the clipboard (`navigator.clipboard.writeText`; the iframe has `allow="clipboard-write"`), never read it.
 
 A Module CAN rely on:
 
