@@ -172,10 +172,10 @@ const CONTRACTS: Contract[] = [
       await until(async () => (await view.getByRole("textbox", { name: "Remote repository URL" }).inputValue()) === "git@github.com:acme/backup.git", "the View to show the remote repository");
     },
     widget: {
-      // No engine has run: no status, so the Widget says the backup is stopped. It opens the View without params.
-      shows: (widget) => shown(widget.getByRole("button", { name: /Stopped/ })),
+      // No engine has run: no status, so the Widget says the backup is stopped. Its Open button opens the View without params.
+      shows: (widget) => shown(widget.getByText("Stopped", { exact: true })),
       async opensView(widget, view) {
-        await widget.getByRole("button", { name: /Stopped/ }).click();
+        await widget.getByRole("button", { name: /Open/ }).click();
         await shown(view.getByRole("heading", { name: "Engine" }));
       },
     },
