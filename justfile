@@ -66,7 +66,7 @@ marketplace *args:
             *) names+=("$arg") ;;
         esac
     done
-    if [ ${#names[@]} -eq 0 ]; then names=(diagram skills-library survival-kit watch-later); fi
+    if [ ${#names[@]} -eq 0 ]; then names=(diagram git-integration skills-library survival-kit watch-later); fi
     work=$(mktemp -d)
     trap 'rm -rf "$work"' EXIT
     failed=()

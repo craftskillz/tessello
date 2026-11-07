@@ -72,12 +72,13 @@ cd examples/notes && zip -r ../../notes.zip . && cd -
 
 ### The Modules of @craftskillz
 
-Four larger Modules, written in Svelte, each live in their own repository, which builds, tests and publishes its `.zip` on GitHub Pages (`https://craftskillz.github.io/tessello-<name>/<version>.zip`):
+Five larger Modules, written in Svelte, each live in their own repository, which builds, tests and publishes its `.zip` on GitHub Pages (`https://craftskillz.github.io/tessello-<name>/<version>.zip`):
 
 - [`tessello-diagram`](https://github.com/craftskillz/tessello-diagram)
 - [`tessello-watch-later`](https://github.com/craftskillz/tessello-watch-later)
 - [`tessello-survival-kit`](https://github.com/craftskillz/tessello-survival-kit)
 - [`tessello-skills-library`](https://github.com/craftskillz/tessello-skills-library)
+- [`tessello-git-integration`](https://github.com/craftskillz/tessello-git-integration)
 
 Here, their published packages are kept in `packages/host/e2e/fixtures/`: the browser tests of the Host run on them, and the Validator is run on each one. See the `README.md` there to refresh one (`just fixture <name> <version>`).
 

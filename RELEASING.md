@@ -25,7 +25,7 @@ None of this needs the Host running. You need [just](https://github.com/casey/ju
 
 3. Optionally, refresh the copy the Host's browser tests use: `just fixture watch-later <version>` in `tessello`, then commit it.
 
-If you answered no, or the listing failed, `just marketplace` in the Module's repository lists its current version (`--dry-run` only checks). From `tessello`, `just marketplace <name>` does the same for one Module, and `just marketplace` with no name for all four; a Module already listed at its published version is reported as "already listed" (and among the "Not done" at the end), and nothing is opened for it.
+If you answered no, or the listing failed, `just marketplace` in the Module's repository lists its current version (`--dry-run` only checks). From `tessello`, `just marketplace <name>` does the same for one Module, and `just marketplace` with no name for all five; a Module already listed at its published version is reported as "already listed" (and among the "Not done" at the end), and nothing is opened for it.
 
 ## A new @craftskillz Module
 
