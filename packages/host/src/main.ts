@@ -19,6 +19,7 @@ import {
   type Persistence,
 } from "@tessello/host-core";
 import { PERMISSION_FILTERS, permissionFilter } from "@tessello/marketplace";
+import { createFolderDrive } from "./folder-drive.ts";
 import { copyModulesFolder, createFolderPersistence } from "./folder-persistence.ts";
 import { GUIDE_SANDBOX, guideDocument } from "./guide.ts";
 import { assetUrl, createHttpIndexSource, MARKETPLACE_INDEX_URL } from "./marketplace-index.ts";
@@ -323,6 +324,7 @@ async function start(folder: FileSystemDirectoryHandle) {
   persistence = createFolderPersistence(folder);
   host = createHost({
     persistence,
+    drive: createFolderDrive(),
     locale: language,
     theme,
     marketplace: { source: createHttpIndexSource(marketplaceIndexUrl) },

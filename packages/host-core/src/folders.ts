@@ -34,10 +34,12 @@ export function createFolders(persistence: Persistence, drive: Drive) {
   };
 
   // The requests on one folder run one after the other, so a version check always sees the writes that came before it.
-  const queues = new Map<DriveFolder, Promise<unknown>>();
-  const queued = <T>(folder: DriveFolder, run: () => Promise<T>): Promise<T> => {
-    const result = (queues.get(folder) ?? Promise.resolve()).then(run);
-    queues.set(folder, result.catch(() => {}));
+  // A Drive may give a new DriveFolder at each read of the grants: the queue is the grant's, by Module and id.
+  const queues = new Map<string, Promise<unknown>>();
+  const queued = <T>(moduleId: string, request: Record<string, unknown>, run: () => Promise<T>): Promise<T> => {
+    const key = `${moduleId}\u0000${request.folder as string}`;
+    const result = (queues.get(key) ?? Promise.resolve()).then(run);
+    queues.set(key, result.catch(() => {}));
     return result;
   };
 
@@ -49,7 +51,7 @@ export function createFolders(persistence: Persistence, drive: Drive) {
       const content = contentOf(request.content);
       const ifVersion = request.ifVersion;
       if (ifVersion !== undefined && ifVersion !== null && typeof ifVersion !== "string") throw invalid("ifVersion must be a version, or null");
-      return queued(folder, async () => {
+      return queued(moduleId, request, async () => {
         if (ifVersion !== undefined) {
           const current = await folder.read(path);
           const now = current ? versionOf(current) : null;
@@ -86,7 +88,7 @@ export function createFolders(persistence: Persistence, drive: Drive) {
       const request = payloadObject(payload);
       const folder = await usable(moduleId, request);
       const path = pathOf(request.path);
-      return queued(folder, async () => {
+      return queued(moduleId, request, async () => {
         if ((await folder.kind(path)) === null) throw new ProtocolError("not_found", `There is nothing at "${path.join("/")}".`);
         await folder.remove(path);
         return {};
@@ -100,7 +102,7 @@ export function createFolders(persistence: Persistence, drive: Drive) {
       if (to.length > from.length && from.every((part, index) => to[index] === part)) {
         throw invalid(`"${from.join("/")}" cannot move into itself`);
       }
-      return queued(folder, async () => {
+      return queued(moduleId, request, async () => {
         const kind = await folder.kind(from);
         if (kind === null) throw new ProtocolError("not_found", `There is nothing at "${from.join("/")}".`);
         if ((await folder.kind(to)) !== null) throw new ProtocolError("conflict", `"${to.join("/")}" already exists.`);

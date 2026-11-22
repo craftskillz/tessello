@@ -11,4 +11,4 @@ export { createMemoryIndexSource } from "./marketplace.ts";
 export type { MarketplaceNotice, MarketplaceReading, IndexSource, MarketplaceOptions, MemoryIndexSource } from "./marketplace.ts";
 export type { IndexModule, IndexRelease, MarketplaceIndex, SearchOptions } from "@tessello/marketplace";
 export { createMemoryDrive } from "./drive.ts";
-export type { Drive, DriveFolder, MemoryDrive, MemoryFiles, MemoryFolder } from "./drive.ts";
+export type { Drive, DriveEntry, DriveFile, DriveFolder, FolderState, MemoryDrive, MemoryFiles, MemoryFolder } from "./drive.ts";

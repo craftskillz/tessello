@@ -21,10 +21,14 @@ import { serveHost } from "../scripts/serve.ts";
 setWaitTimeout(process.env.CI ? 15_000 : 5_000);
 export { until };
 
-/** The folder `showDirectoryPicker` returns: `window.tesselloPick` under the OPFS root, "modules" by default. */
+/**
+ * The folder `showDirectoryPicker` returns: `window.tesselloPick` under the OPFS root, "modules" by default; a path such
+ * as "project/docs" picks a folder inside another.
+ */
 const FOLDER_PICKER = `window.showDirectoryPicker = async () => {
-  const root = await navigator.storage.getDirectory();
-  return root.getDirectoryHandle(window.tesselloPick ?? "modules", { create: true });
+  let folder = await navigator.storage.getDirectory();
+  for (const name of (window.tesselloPick ?? "modules").split("/")) folder = await folder.getDirectoryHandle(name, { create: true });
+  return folder;
 };`;
 
 export interface PageOptions {
