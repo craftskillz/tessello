@@ -43,6 +43,18 @@ describe("declaring Permissions", () => {
     assert.deepEqual(moduleWith({}).issues, []);
   });
 
+  test("folders is declared as true, with no entries", () => {
+    const report = moduleWith({ folders: true });
+    assert.deepEqual(report.issues, []);
+    assert.equal(report.manifest?.permissions?.folders, true);
+  });
+
+  test("folders with any other value is invalid", () => {
+    for (const value of [false, [], ["/Users/me/docs"], "yes"]) {
+      assert.deepEqual(codes(moduleWith({ folders: value })), ["permissions/invalid"], JSON.stringify(value));
+    }
+  });
+
   test("unknown Permission", () => {
     assert.deepEqual(codes(moduleWith({ commands: ["kubectl get pods"] })), ["permissions/unknown"]);
   });

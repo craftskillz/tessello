@@ -7,6 +7,7 @@ import {
   LIMITS,
   type Manifest,
   type PackageFiles,
+  ORIGIN_PERMISSION_NAMES,
   PERMISSION_NAMES,
   type Permissions,
   validatePackage,
@@ -108,7 +109,7 @@ function checkPermissions(id: string, permissions: unknown, declared: Permission
     }
   }
   const granted: Permissions = {};
-  for (const name of PERMISSION_NAMES as (keyof Permissions)[]) {
+  for (const name of ORIGIN_PERMISSION_NAMES) {
     const entries = ((permissions as Permissions)[name] ?? []).filter((entry) => (declared[name] ?? []).includes(entry));
     if (entries.length > 0) granted[name] = entries;
   }
