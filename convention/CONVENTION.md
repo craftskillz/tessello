@@ -8,7 +8,7 @@ The key words **MUST**, **MUST NOT**, **SHOULD**, **SHOULD NOT** and **MAY** are
 
 A **Module** is an installable unit of a Tessello **Host**. Every Module provides one **View** (a full-screen presentation), MAY provide one **Widget** (a compact presentation shown on the Host's **Home**), and comes with a **User guide** (a Markdown file the Host shows to the User).
 
-Each View and each Widget runs in its own sandboxed `<iframe>`. A Module never touches the Host directly: it only exchanges messages with it, using the protocol defined in this document. Anything a Module needs from the Host (storage, theme, navigation, lifecycle) goes through these messages.
+Each View and each Widget runs in its own sandboxed `<iframe>`. A Module never touches the Host directly: it only exchanges messages with it, using the protocol defined in this document. Anything a Module needs from the Host (storage, theme, navigation, lifecycle, the folders the User grants it) goes through these messages.
 
 ```
 ┌──────────────────────── Host ────────────────────────┐
@@ -106,9 +106,11 @@ A **Permission** is an access a Module needs beyond its own package and the Host
 |---|---|---|
 | `network` | Requests (`fetch`, `XMLHttpRequest`, `WebSocket`, `EventSource`) **and** remote resources (scripts, styles, images, fonts, media) from these public origins. | `https://` or `wss://` origins. The host MAY start with `*.` to match every subdomain (`*.grafana.net` matches `eu.grafana.net`, not `grafana.net`). Loopback and private addresses are not allowed here. |
 | `localNetwork` | The same, towards the User's machine or local network. **Sensitive**: highlighted to the User. | `http://`, `https://`, `ws://` or `wss://` origins whose host is `localhost`, a loopback address (`127.0.0.1`, `[::1]`), a private IPv4 address (`10.x`, `172.16–31.x`, `192.168.x`) or a `.local` name. No wildcard. |
+| `folders` | Asking the User for folders of their disk, then reading and writing the files in them (§6.5). **Sensitive**: highlighted to the User. | None: the value is `true`. |
 
 Rules for every entry:
 
+- `folders` has no entries: it is declared as `"folders": true`, and any other value is an error. The folders themselves are chosen by the User later, one at a time (§6.5).
 - An entry is an **origin**: scheme, host and optional port, with no path, query or trailing `/`. Without a port, only the scheme's default port is allowed.
 - An `https://` entry also allows `wss://` on the same host and port; an `http://` entry also allows `ws://`.
 - Unknown Permission names are an error: a Host cannot grant what it does not know.
@@ -210,6 +212,10 @@ Error codes:
 | `not_allowed` | The request is valid but not permitted in this context (e.g. `navigation.openView` sent from a View). |
 | `quota_exceeded` | A storage limit would be exceeded (§6.1). |
 | `not_ready` | A request was sent before the handshake completed (§6.4). |
+| `not_found` | The folder is not granted to the Module, or there is nothing at this path (§6.5). |
+| `conflict` | The file is not at the version the Module expected, or the destination already exists (§6.5). |
+| `not_containing` | The folder the User chose does not contain the one it must contain (§6.5). |
+| `unavailable` | The browser waits for the User to allow the folder again (§6.5). |
 | `internal` | Unexpected Host failure. |
 
 ### 5.2 Events
@@ -322,6 +328,34 @@ A Module cannot open another Module.
 
 A Module starts **visible** after the handshake. A hidden Module SHOULD stop timers, animations and polling until it becomes visible again.
 
+### 6.5 Folders
+
+A Module that declares the `folders` Permission (§3.1) MAY ask the User for **folders** of their disk, and then read and write the files in them. Each folder is chosen by the User in the Host's folder picker, when the Module asks; the choice is the grant. The Module gets an opaque id and the folder's name, never its path on disk. The grant covers the whole folder, and lasts until the Module or the User releases it; another Module never sees it. The files stay where they are: they are not part of the Module's storage (§6.1), nor of the Host's export.
+
+| Request | Payload | Result |
+|---|---|---|
+| `folders.request` | `{ "mustContain"?: id }` | `{ "folder": { "id": string, "name": string } \| null }`: `null` when the User cancels |
+| `folders.list` | `{}` | `{ "folders": [{ "id": string, "name": string, "state": "granted" \| "prompt" }] }` |
+| `folders.reconnect` | `{ "folder": id }` | `{ "state": "granted" \| "prompt" }` |
+| `folders.release` | `{ "folder": id }` | `{}` |
+| `files.list` | `{ "folder": id, "path"?: string }` | `{ "entries": [{ "kind": "file", "path": string, "version": string } \| { "kind": "folder", "path": string }] }` |
+| `files.read` | `{ "folder": id, "path": string, "as"?: "text" \| "bytes" }` | `{ "content": string \| Uint8Array, "version": string }` |
+| `files.write` | `{ "folder": id, "path": string, "content": string \| Uint8Array, "ifVersion"?: string \| null }` | `{ "version": string }` |
+| `files.move` | `{ "folder": id, "from": string, "to": string }` | `{}` |
+| `files.delete` | `{ "folder": id, "path": string }` | `{}` |
+
+- **The User's gesture.** Browsers open the folder picker, and ask the User to allow a folder again, only while they handle the User's click. A Module MUST send `folders.request` and `folders.reconnect` directly from the click, before waiting for anything else.
+- **The same folder twice.** Choosing a folder already granted to the Module gives its existing id.
+- **A folder that contains another.** With `mustContain`, the id of a folder already granted, the Host refuses with `not_containing`, and grants nothing, a chosen folder that is neither that folder nor holds it (for instance a repository that must hold the documentation folder already granted).
+- **Paths** are relative to the granted folder, with `/` between names. A path with an empty, `.` or `..` name, or with `\`, fails with `invalid_payload`: a Module cannot reach outside its folders.
+- **Versions.** Every file has a `version` that changes with each write, by the Module or by any other program (an editor, a coding agent, `git`). `files.write` with `ifVersion` fails with `conflict`, and writes nothing, unless the file is still at that version; with `ifVersion: null` it only creates a file that does not exist yet. Without `ifVersion` it writes in any case. The Host runs a Module's requests on one folder one after the other, but cannot stop another program from writing between two of them.
+- **Writing** creates the file and its missing folders. `files.read` gives text (UTF-8) by default, bytes with `as: "bytes"`.
+- **Listing** gives every file and folder under `path` (the whole folder by default), at any depth, in no particular order. A path that is not a folder fails with `not_found`.
+- **Moving** a file or a folder creates the destination's missing folders, and fails with `conflict` when the destination exists. Browsers cannot move a folder: the Host moves its files one by one, then removes it. If that fails midway, both folders hold part of the files, and the error says so.
+- **Deleting** a folder removes everything in it.
+- **After a browser restart**, the browser MAY ask the User again before the Host uses a folder: `folders.list` gives it as `"prompt"`, and every `files.*` request on it fails with `unavailable` until `folders.reconnect` returns `"granted"`. A Module SHOULD show such a folder as unavailable, with a way for the User to reconnect it.
+- A Module without the `folders` Permission gets `not_allowed` for every request of this section.
+
 ## 7. Presentation
 
 ### 7.1 Widget sizes
@@ -400,6 +434,11 @@ host.onThemeChange((theme) => applyTheme(theme));
 host.onVisibilityChange((visible) => (visible ? resume() : pause()));
 await host.openView({ city: "Paris" }); // Widget only
 host.onNavigationParams((params) => show(params)); // View only, when opened again while loaded
+
+// With the folders Permission (§6.5), from the User's click:
+const docs = await host.folders.request();           // null when the User cancels
+const { content, version } = await host.files.read(docs, "guide/intro.md");
+await host.files.write(docs, "guide/intro.md", content + "\n", { ifVersion: version }); // "conflict" if changed meanwhile
 ```
 
 ## 11. Limits
