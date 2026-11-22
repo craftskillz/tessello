@@ -4,7 +4,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import type { Page } from "playwright";
-import { dropFile, readFolder, until, useHost, writeFolder, zip } from "./browser.ts";
+import { dropFile, readFolder, showLauncher, until, useHost, writeFolder, zip } from "./browser.ts";
 
 const host = useHost();
 
@@ -148,4 +148,46 @@ describe("folders granted to a Module", () => {
 
     assert.deepEqual(await send(page, "folders.list"), { folders: [{ ...folder, state: "granted" }] });
   });
+
+  test("its About screen lists the folders granted; taking one back revokes it", async () => {
+    const page = await withDocs();
+    await writeFolder(page, "docs", { "intro.md": "x" });
+    await pick(page, "docs");
+    const { folder } = await send(page, "folders.request");
+
+    const about = await openAbout(page);
+    const granted = about.getByRole("region", { name: "Folders granted to Docs" });
+    await granted.getByText("docs", { exact: true }).waitFor();
+    await granted.getByRole("button", { name: "Take back docs" }).click();
+    await granted.getByText("No folder granted.").waitFor();
+    await page.keyboard.press("Escape");
+
+    assert.deepEqual(await send(page, "folders.list"), { folders: [] });
+    assert.equal((await send(page, "files.read", { folder: folder.id, path: "intro.md" })).code, "not_found");
+    assert.deepEqual(await readFolder(page, "docs"), { "intro.md": "x" }, "the files stay on disk");
+  });
+
+  test("uninstalling the Module forgets its folders", async () => {
+    const page = await withDocs();
+    await writeFolder(page, "docs", { "intro.md": "x" });
+    await pick(page, "docs");
+    await send(page, "folders.request");
+
+    const about = await openAbout(page);
+    await about.getByRole("button", { name: "Uninstall…" }).click();
+    await page.getByRole("dialog", { name: "Uninstall Docs?" }).getByRole("button", { name: "Uninstall" }).click();
+    await page.getByRole("heading", { name: "Your space is ready" }).waitFor();
+    await until(async () => Object.keys(await readFolder(page, "modules/docs")).length === 0, "the folder of Docs to be removed");
+    await dropFile(page, "docs.zip", DOCS);
+    await page.getByRole("dialog", { name: "Install Docs?" }).getByRole("button", { name: "Accept and install" }).click();
+
+    assert.deepEqual(await send(page, "folders.list"), { folders: [] });
+  });
 });
+
+/** The About screen of Docs, from the Launcher. */
+async function openAbout(page: Page) {
+  const launcher = await showLauncher(page);
+  await launcher.getByRole("listitem").filter({ hasText: "Docs" }).getByRole("button", { name: "About" }).click();
+  return page.getByRole("dialog", { name: "About Docs" });
+}

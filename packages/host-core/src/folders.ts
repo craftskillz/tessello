@@ -43,6 +43,12 @@ export function createFolders(persistence: Persistence, drive: Drive) {
     return result;
   };
 
+  const granted = async (moduleId: string) => {
+    const folders = [];
+    for (const [id, folder] of await drive.grants.read(moduleId)) folders.push({ id, name: folder.name, state: await folder.state() });
+    return folders;
+  };
+
   const handlers: Record<string, Handler> = {
     "files.write": async (moduleId, payload) => {
       const request = payloadObject(payload);
@@ -138,9 +144,7 @@ export function createFolders(persistence: Persistence, drive: Drive) {
     "folders.list": async (moduleId, payload) => {
       payloadObject(payload);
       await allowed(moduleId);
-      const folders = [];
-      for (const [id, folder] of await drive.grants.read(moduleId)) folders.push({ id, name: folder.name, state: await folder.state() });
-      return { folders };
+      return { folders: await granted(moduleId) };
     },
     "folders.reconnect": async (moduleId, payload) => {
       const folder = await folderOf(moduleId, payloadObject(payload));
@@ -153,7 +157,17 @@ export function createFolders(persistence: Persistence, drive: Drive) {
       return {};
     },
   };
-  return { handlers };
+  return {
+    handlers,
+    /** The folders granted to a Module, for its About screen. */
+    granted,
+    /** Takes a folder back from a Module, as the User asks; its files stay on disk. */
+    revoke: (moduleId: string, id: string) => drive.grants.delete(moduleId, id),
+    /** Forgets every folder granted to a Module, as when it is uninstalled. */
+    async forget(moduleId: string) {
+      for (const id of (await drive.grants.read(moduleId)).keys()) await drive.grants.delete(moduleId, id);
+    },
+  };
 }
 
 /** A file's version: it changes with each write, by the Module or by anyone else. */

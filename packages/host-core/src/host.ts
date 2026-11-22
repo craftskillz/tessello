@@ -16,7 +16,7 @@ import {
   type MarketplaceReading,
 } from "./marketplace.ts";
 import { createSpace, type SpaceExport, type SpaceInspection } from "./space.ts";
-import { createMemoryDrive, type Drive } from "./drive.ts";
+import { createMemoryDrive, type Drive, type FolderState } from "./drive.ts";
 import { createFolders } from "./folders.ts";
 import { createStorage } from "./storage.ts";
 
@@ -118,6 +118,10 @@ export interface Host {
    * its place on the Home.
    */
   uninstall(id: string): Promise<void>;
+  /** The folders the User granted a Module (ADR 0022), and whether the browser lets the Host use each now. */
+  grantedFolders(id: string): Promise<{ id: string; name: string; state: FolderState }[]>;
+  /** Takes a folder back from a Module, as the User asks in its About screen; the files stay on disk. */
+  revokeFolder(id: string, folder: string): Promise<void>;
   /**
    * The whole space in a single `.zip` file (ADR 0002): every registered Module whose folder is found, with its code,
    * its data and the Permissions granted, and the layout of the Home.
@@ -214,11 +218,14 @@ export function createHost(options: HostOptions): Host {
       return modules.inspectZip(zip, checked.provenance);
     },
     open: modules.open,
+    grantedFolders: folders.granted,
+    revokeFolder: folders.revoke,
     exportSpace: space.exportSpace,
     inspectSpace: space.inspectSpace,
     async uninstall(id) {
       await modules.uninstall(id);
       await home.forget(id);
+      await folders.forget(id);
     },
     mountSurface(surfaceOptions) {
       const surface: Surface = { ...surfaceOptions, ready: false, visible: true };

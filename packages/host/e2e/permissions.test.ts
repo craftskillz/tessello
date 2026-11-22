@@ -41,6 +41,30 @@ describe("the consent screen", () => {
     await permissions.getByText("No network access: Notes declares no server, and Tessello blocks the requests it would make.").waitFor();
   });
 
+  test("asking for folders is highlighted, and the Module is no longer said to be kept from your files", async () => {
+    const page = await host.newPage();
+    await dropFile(
+      page,
+      "docs.zip",
+      zip({
+        "manifest.json": {
+          convention: 1,
+          id: "@test/docs",
+          name: "Docs",
+          version: "1.0.0",
+          icon: "icon.svg", guide: "guide.md",
+          view: { entry: "index.html" },
+          permissions: { folders: true },
+        },
+        "icon.svg": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1 1'/>", "guide.md": "# Guide",
+        "index.html": `<script>parent.postMessage({ tessello: 1, type: "ready", id: "1" }, "*")</script>`,
+      }),
+    );
+    const permissions = page.getByRole("dialog", { name: "Install Docs?" }).getByRole("region", { name: "What Docs can do" });
+    assert.match(await permissions.locator(".sensitive").innerText(), /Your folders[\s\S]*folders you choose/);
+    assert.match(await permissions.innerText(), /Isolated[\s\S]*your other files, Tessello or your other Modules/);
+  });
+
   test("access to the local network is highlighted", async () => {
     const page = await host.newPage();
     await dropFile(
