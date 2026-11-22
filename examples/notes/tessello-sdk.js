@@ -54,6 +54,19 @@ async function connect(options = {}) {
       delete: async (key) => void await request("storage.delete", { key }),
       keys: async () => (await request("storage.keys")).keys
     },
+    folders: {
+      request: async ({ mustContain } = {}) => (await request("folders.request", mustContain === void 0 ? {} : { mustContain: mustContain.id })).folder,
+      list: async () => (await request("folders.list")).folders,
+      reconnect: async (folder) => (await request("folders.reconnect", { folder: folder.id })).state,
+      release: async (folder) => void await request("folders.release", { folder: folder.id })
+    },
+    files: {
+      read: (folder, path, { as } = {}) => request("files.read", { folder: folder.id, path, ...as === void 0 ? {} : { as } }),
+      list: async (folder, path) => (await request("files.list", { folder: folder.id, ...path === void 0 ? {} : { path } })).entries,
+      move: async (folder, from, to) => void await request("files.move", { folder: folder.id, from, to }),
+      delete: async (folder, path) => void await request("files.delete", { folder: folder.id, path }),
+      write: (folder, path, content, { ifVersion } = {}) => request("files.write", { folder: folder.id, path, content, ...ifVersion === void 0 ? {} : { ifVersion } })
+    },
     onThemeChange: (listener) => on("theme.changed", readTheme, listener),
     onVisibilityChange: (listener) => on("visibility", readVisible, listener),
     openView: async (params = {}) => void await request("navigation.openView", { params }),

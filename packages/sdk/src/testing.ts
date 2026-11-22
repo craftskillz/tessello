@@ -5,8 +5,8 @@
 import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { extname, resolve, sep } from "node:path";
-import { createHost, createMemoryPersistence, ProtocolError, THEMES } from "@tessello/host-core";
-import type { Json, Storage, Theme, Transport } from "./index.ts";
+import { createHost, createMemoryDrive, createMemoryPersistence, ProtocolError, THEMES, type MemoryFiles, type MemoryFolder } from "@tessello/host-core";
+import type { Json, Permissions, Storage, Theme, Transport } from "./index.ts";
 
 /** One of the Host's two themes, or any theme. */
 export type TestTheme = Theme["mode"] | Theme;
@@ -20,6 +20,8 @@ export interface TestHostOptions {
   theme?: TestTheme;
   /** What the Module's storage holds before the Module starts: key → value. */
   storage?: Record<string, Exclude<Json, null>>;
+  /** The Permissions the User granted the Module, as from its Manifest; none by default. */
+  permissions?: Permissions;
 }
 
 export interface MountOptions {
@@ -38,6 +40,31 @@ export interface TestSurface {
 export interface MountedSurface extends TestSurface {
   /** What the Module passes to `connect({ transport })`. */
   transport: Transport;
+}
+
+/** A folder on the Test Host's disk, which the User may choose in the picker. */
+export interface TestFolder {
+  readonly name: string;
+}
+
+/** The User's disk and folder picker, as the test drives them (ADR 0022). */
+export interface TestFolders {
+  /** Creates a folder holding these files (path → text or bytes). */
+  create(name: string, files?: MemoryFiles): TestFolder;
+  /** What the User picks the next time the Module asks for a folder: a folder, or `null` to cancel. */
+  choose(folder: TestFolder | null): void;
+  /** A file's text, or null when there is none. */
+  read(folder: TestFolder, path: string): string | null;
+  /** Changes a file as another program would (an editor, an agent, git): its version changes. */
+  write(folder: TestFolder, path: string, content: string | Uint8Array): void;
+  /** Deletes a file as another program would. */
+  remove(folder: TestFolder, path: string): void;
+  /** A folder inside another one, such as `docs` in a repository, which the User may also choose. */
+  inside(folder: TestFolder, path: string): TestFolder;
+  /** As after a browser restart: every granted folder waits until the Module asks the User to allow it again. */
+  restart(): void;
+  /** The User refuses the next reconnections. */
+  refuseReconnect(): void;
 }
 
 /** What the Test Host needs of a Playwright `Page`. */
@@ -75,6 +102,8 @@ export interface TestHost {
    * fails. Returns a function that stops refusing them.
    */
   refuseWrites(refusal?: Refusal): () => void;
+  /** The User's disk and folder picker, for a Module that declares the `folders` Permission. */
+  folders: TestFolders;
   /** Changes the theme, and tells every surface past its handshake, as when the User changes the Host's. */
   setTheme(theme: TestTheme): void;
   /** The params of each `openView` of the Widget, in order. */
@@ -128,13 +157,18 @@ export function createTestHost(options: TestHostOptions = {}): TestHost {
     await remove(moduleId, key);
   };
   // Written before any request is handled: the Module starts with this storage.
-  const seeded = Promise.all(
-    Object.entries(options.storage ?? {}).map(([key, value]) => write(module.id, key, JSON.stringify(value))),
-  );
+  const seeded = Promise.all([
+    ...Object.entries(options.storage ?? {}).map(([key, value]) => write(module.id, key, JSON.stringify(value))),
+    persistence.registry.write([{ id: module.id, folder: "module", version: module.version, permissions: options.permissions ?? {} }]),
+  ]);
   const openedViews: Record<string, string>[] = [];
   let openingFromTest = false;
+  const drive = createMemoryDrive();
+  // A TestFolder is always one the drive created.
+  const memory = (folder: TestFolder) => folder as MemoryFolder;
   const host = createHost({
     persistence,
+    drive,
     locale: options.locale ?? "en-US",
     theme: themeOf(options.theme),
     openView({ params }) {
@@ -172,6 +206,20 @@ export function createTestHost(options: TestHostOptions = {}): TestHost {
       const refusal = { key, code, message };
       refusals.add(refusal);
       return () => void refusals.delete(refusal);
+    },
+    folders: {
+      create: (name, files) => drive.create(name, files),
+      choose: (folder) => drive.choose(folder === null ? null : memory(folder)),
+      read(folder, path) {
+        const { disk, at } = memory(folder);
+        const file = disk.get(at === "" ? path : `${at}/${path}`);
+        return file ? new TextDecoder().decode(file.bytes) : null;
+      },
+      inside: (folder, path) => drive.inside(memory(folder), path),
+      restart: () => drive.restart(),
+      refuseReconnect: () => drive.refuseReconnect(),
+      write: (folder, path, content) => drive.write(memory(folder), path, content),
+      remove: (folder, path) => drive.remove(memory(folder), path),
     },
     openedViews,
     openView(params) {

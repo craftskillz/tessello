@@ -16,6 +16,8 @@ import {
   type MarketplaceReading,
 } from "./marketplace.ts";
 import { createSpace, type SpaceExport, type SpaceInspection } from "./space.ts";
+import { createMemoryDrive, type Drive } from "./drive.ts";
+import { createFolders } from "./folders.ts";
 import { createStorage } from "./storage.ts";
 
 export interface Theme {
@@ -53,6 +55,8 @@ export interface HostOptions {
    * If a View of this Module is already mounted, it has already been given the params; otherwise mount one with them.
    */
   openView(request: { module: ModuleRef; params: Record<string, string> }): void;
+  /** The folders the User grants Modules (ADR 0022); in memory when absent. */
+  drive?: Drive;
   /** Where the Marketplace index comes from (ADR 0017). Without it, the Marketplace is `unavailable`. */
   marketplace?: MarketplaceOptions;
 }
@@ -150,6 +154,7 @@ interface Surface extends SurfaceOptions {
 export function createHost(options: HostOptions): Host {
   const surfaces = new Map<unknown, Surface>();
   const storage = createStorage(options.persistence);
+  const folders = createFolders(options.persistence, options.drive ?? createMemoryDrive());
   const marketplace = createMarketplace(options.persistence, options.marketplace);
   const modules = createModules(options.persistence);
   const home = createHome(options.persistence, modules.scan);
@@ -166,7 +171,7 @@ export function createHost(options: HostOptions): Host {
 
   const handlers: Record<string, (surface: Surface, payload: unknown) => Promise<unknown>> = {
     ...Object.fromEntries(
-      Object.entries(storage.handlers).map(([type, handle]) => [
+      [...Object.entries(storage.handlers), ...Object.entries(folders.handlers)].map(([type, handle]) => [
         type,
         (surface: Surface, payload: unknown) => handle(surface.module.id, payload),
       ]),

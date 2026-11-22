@@ -100,6 +100,10 @@ function checkPermissions(id: string, permissions: unknown, declared: Permission
   if (!isObject(permissions)) throw new Refused(`The Permissions granted to ${id} are not an object.`);
   for (const [name, entries] of Object.entries(permissions)) {
     if (!PERMISSION_NAMES.includes(name)) throw new Refused(`${id} was granted an unknown Permission "${name}".`);
+    if (name === "folders") {
+      if (entries !== true) throw new Refused(`The Permission "folders" granted to ${id} is not true.`);
+      continue;
+    }
     if (!Array.isArray(entries) || !entries.every((entry) => typeof entry === "string")) {
       throw new Refused(`The Permission "${name}" granted to ${id} is not a list of origins.`);
     }
@@ -113,6 +117,7 @@ function checkPermissions(id: string, permissions: unknown, declared: Permission
     const entries = ((permissions as Permissions)[name] ?? []).filter((entry) => (declared[name] ?? []).includes(entry));
     if (entries.length > 0) granted[name] = entries;
   }
+  if ((permissions as Permissions).folders && declared.folders) granted.folders = true;
   return granted;
 }
 
