@@ -93,6 +93,10 @@ describe("folders granted to a Module", () => {
       "file intro.md",
       "folder guide",
     ]);
+    const intro = entries.find((entry: { path: string }) => entry.path === "intro.md");
+    assert.equal(typeof intro.modified, "number");
+    assert.ok(Math.abs(intro.modified - Date.now()) < 60_000);
+    assert.ok(!("modified" in entries.find((entry: { kind: string }) => entry.kind === "folder")));
   });
 
   test("a file changed by another program since the View read it is not overwritten", async () => {

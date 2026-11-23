@@ -338,7 +338,7 @@ A Module that declares the `folders` Permission (§3.1) MAY ask the User for **f
 | `folders.list` | `{}` | `{ "folders": [{ "id": string, "name": string, "state": "granted" \| "prompt" }] }` |
 | `folders.reconnect` | `{ "folder": id }` | `{ "state": "granted" \| "prompt" }` |
 | `folders.release` | `{ "folder": id }` | `{}` |
-| `files.list` | `{ "folder": id, "path"?: string }` | `{ "entries": [{ "kind": "file", "path": string, "version": string } \| { "kind": "folder", "path": string }] }` |
+| `files.list` | `{ "folder": id, "path"?: string }` | `{ "entries": [{ "kind": "file", "path": string, "version": string, "modified": number } \| { "kind": "folder", "path": string }] }` |
 | `files.read` | `{ "folder": id, "path": string, "as"?: "text" \| "bytes" }` | `{ "content": string \| Uint8Array, "version": string }` |
 | `files.write` | `{ "folder": id, "path": string, "content": string \| Uint8Array, "ifVersion"?: string \| null }` | `{ "version": string }` |
 | `files.move` | `{ "folder": id, "from": string, "to": string }` | `{}` |
@@ -350,7 +350,7 @@ A Module that declares the `folders` Permission (§3.1) MAY ask the User for **f
 - **Paths** are relative to the granted folder, with `/` between names. A path with an empty, `.` or `..` name, or with `\`, fails with `invalid_payload`: a Module cannot reach outside its folders.
 - **Versions.** Every file has a `version` that changes with each write, by the Module or by any other program (an editor, a coding agent, `git`). `files.write` with `ifVersion` fails with `conflict`, and writes nothing, unless the file is still at that version; with `ifVersion: null` it only creates a file that does not exist yet. Without `ifVersion` it writes in any case. The Host runs a Module's requests on one folder one after the other, but cannot stop another program from writing between two of them.
 - **Writing** creates the file and its missing folders. `files.read` gives text (UTF-8) by default, bytes with `as: "bytes"`.
-- **Listing** gives every file and folder under `path` (the whole folder by default), at any depth, in no particular order. A path that is not a folder fails with `not_found`.
+- **Listing** gives every file and folder under `path` (the whole folder by default), at any depth, in no particular order. A path that is not a folder fails with `not_found`. Each file entry has `modified`, when the file was last modified, in milliseconds since the Unix epoch (as `File.lastModified`); folder entries have none. A Module MUST NOT read a meaning into `version`, which stays opaque: use `modified` to show a date.
 - **Moving** a file or a folder creates the destination's missing folders, and fails with `conflict` when the destination exists. Browsers cannot move a folder: the Host moves its files one by one, then removes it. If that fails midway, both folders hold part of the files, and the error says so.
 - **Deleting** a folder removes everything in it.
 - **After a browser restart**, the browser MAY ask the User again before the Host uses a folder: `folders.list` gives it as `"prompt"`, and every `files.*` request on it fails with `unavailable` until `folders.reconnect` returns `"granted"`. A Module SHOULD show such a folder as unavailable, with a way for the User to reconnect it.

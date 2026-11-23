@@ -85,7 +85,7 @@ export function createFolders(persistence: Persistence, drive: Drive) {
       if ((await folder.kind(path)) !== "folder") throw new ProtocolError("not_found", `There is no folder "${path.join("/")}".`);
       const entries = (await folder.list(path)).map((entry) =>
         entry.kind === "file"
-          ? { kind: "file", path: entry.path.join("/"), version: versionOf({ lastModified: entry.lastModified, size: entry.size }) }
+          ? { kind: "file", path: entry.path.join("/"), version: versionOf({ lastModified: entry.lastModified, size: entry.size }), modified: entry.lastModified }
           : { kind: "folder", path: entry.path.join("/") },
       );
       return { entries };

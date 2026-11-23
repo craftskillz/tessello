@@ -55,8 +55,11 @@ export interface TestFolders {
   choose(folder: TestFolder | null): void;
   /** A file's text, or null when there is none. */
   read(folder: TestFolder, path: string): string | null;
-  /** Changes a file as another program would (an editor, an agent, git): its version changes. */
-  write(folder: TestFolder, path: string, content: string | Uint8Array): void;
+  /**
+   * Changes a file as another program would (an editor, an agent, git): its version changes. Its modification time is
+   * now (always later than the file's last one), or exactly `options.modified` (milliseconds since the Unix epoch).
+   */
+  write(folder: TestFolder, path: string, content: string | Uint8Array, options?: { modified?: number }): void;
   /** Deletes a file as another program would. */
   remove(folder: TestFolder, path: string): void;
   /** A folder inside another one, such as `docs` in a repository, which the User may also choose. */
@@ -218,7 +221,7 @@ export function createTestHost(options: TestHostOptions = {}): TestHost {
       inside: (folder, path) => drive.inside(memory(folder), path),
       restart: () => drive.restart(),
       refuseReconnect: () => drive.refuseReconnect(),
-      write: (folder, path, content) => drive.write(memory(folder), path, content),
+      write: (folder, path, content, options) => drive.write(memory(folder), path, content, options),
       remove: (folder, path) => drive.remove(memory(folder), path),
     },
     openedViews,

@@ -156,6 +156,40 @@ describe("listing a folder", () => {
     assert.equal(b?.kind === "file" && b.version, version);
   });
 
+  test("a file carries when it was last modified, a folder does not", async () => {
+    const before = Date.now();
+    const { module, folder } = await granted({ "guide/b.md": "b" });
+
+    const entries = await module.files.list(folder);
+
+    const file = entries.find((entry) => entry.path === "guide/b.md");
+    assert.ok(file?.kind === "file" && file.modified >= before && file.modified <= Date.now());
+    const guide = entries.find((entry) => entry.path === "guide")!;
+    assert.ok(!("modified" in guide));
+  });
+
+  test("a write by the Module moves the modification time forward", async () => {
+    const { module, folder } = await granted({ "a.md": "a" });
+    const modified = async () => {
+      const entry = (await module.files.list(folder)).find((each) => each.path === "a.md");
+      return entry?.kind === "file" ? entry.modified : NaN;
+    };
+    const before = await modified();
+
+    await module.files.write(folder, "a.md", "changed");
+
+    assert.ok((await modified()) > before);
+  });
+
+  test("a test sets the modification time of a file exactly", async () => {
+    const { host, disk, module, folder } = await granted({ "a.md": "a" });
+
+    host.folders.write(disk, "a.md", "edited", { modified: 1_700_000_000_000 });
+
+    const entry = (await module.files.list(folder)).find((each) => each.path === "a.md");
+    assert.equal(entry?.kind === "file" && entry.modified, 1_700_000_000_000);
+  });
+
   test("only what is under a path", async () => {
     const { module, folder } = await granted({ "a.md": "a", "guide/b.md": "b", "guide/deep/c.md": "c" });
 

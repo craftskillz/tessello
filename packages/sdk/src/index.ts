@@ -95,8 +95,11 @@ export interface FolderFile<Content = string> {
   version: string;
 }
 
-/** A file or a folder of a granted folder, its path from that folder. */
-export type FolderEntry = { kind: "file"; path: string; version: string } | { kind: "folder"; path: string };
+/**
+ * A file or a folder of a granted folder, its path from that folder. A file's `modified` is when it was last modified,
+ * in milliseconds since the Unix epoch (as `File.lastModified`); folders have none.
+ */
+export type FolderEntry = { kind: "file"; path: string; version: string; modified: number } | { kind: "folder"; path: string };
 
 /**
  * The files of the folders the User granted (CONVENTION.md §6.5). Paths are relative to the granted folder, with `/`

@@ -67,7 +67,7 @@ export interface MemoryDrive extends Drive {
   /** What the next picker returns: a folder, or null as when the User cancels. */
   choose(folder: MemoryFolder | null): void;
   /** Changes the disk as another program would (an editor, an agent, git). */
-  write(folder: MemoryFolder, path: string, content: string | Uint8Array): void;
+  write(folder: MemoryFolder, path: string, content: string | Uint8Array, options?: { modified?: number }): void;
   remove(folder: MemoryFolder, path: string): void;
   /** As after a browser restart: every folder waits for the User to allow it again. */
   restart(): void;
@@ -80,9 +80,9 @@ const join = (...parts: string[]) => parts.filter((part) => part !== "").join("/
 
 export function createMemoryDrive(): MemoryDrive {
   let chosen: MemoryFolder | null = null;
-  // Every write is a millisecond later than the one before, so two writes never share a modification time.
-  let clock = Date.now();
-  const tick = () => ++clock;
+  // Real time, but every write is a millisecond later than the one before, so two writes never share a modification time.
+  let clock = 0;
+  const tick = () => (clock = Math.max(Date.now(), clock + 1));
   let restarted = false;
   let refusing = false;
   // The folders the User allowed again since the last restart, by their place on their disk.
@@ -171,8 +171,8 @@ export function createMemoryDrive(): MemoryDrive {
     choose(folder) {
       chosen = folder;
     },
-    write(folder, path, content) {
-      folder.disk.set(join(folder.at, path), { bytes: bytes(content), lastModified: tick() });
+    write(folder, path, content, options) {
+      folder.disk.set(join(folder.at, path), { bytes: bytes(content), lastModified: options?.modified ?? tick() });
     },
     remove(folder, path) {
       folder.disk.delete(join(folder.at, path));
