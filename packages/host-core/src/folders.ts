@@ -24,6 +24,15 @@ export function createFolders(persistence: Persistence, drive: Drive) {
     return folder;
   };
 
+  /** The granted folders a request lists in `mustNotOverlap`, by id, in the order given. */
+  const foldersToKeepApart = async (moduleId: string, ids: unknown): Promise<[string, DriveFolder][]> => {
+    if (ids === undefined) return [];
+    if (!Array.isArray(ids) || ids.some((id) => typeof id !== "string")) {
+      throw invalid("mustNotOverlap must be an array of ids of granted folders");
+    }
+    return Promise.all(ids.map(async (id: string) => [id, await folderOf(moduleId, { folder: id })] as [string, DriveFolder]));
+  };
+
   /** The granted folder a request names, once the browser lets the Host use it. */
   const usable = async (moduleId: string, payload: Record<string, unknown>): Promise<DriveFolder> => {
     const folder = await folderOf(moduleId, payload);
@@ -128,8 +137,14 @@ export function createFolders(persistence: Persistence, drive: Drive) {
       const request = payloadObject(payload);
       await allowed(moduleId);
       const inner = request.mustContain === undefined ? null : await folderOf(moduleId, { folder: request.mustContain });
+      const apart = await foldersToKeepApart(moduleId, request.mustNotOverlap);
       const chosen = await drive.pick();
       if (!chosen) return { folder: null };
+      for (const [id, listed] of apart) {
+        if ((await listed.contains(chosen)) || (await chosen.contains(listed))) {
+          throw new ProtocolError("overlapping", `"${chosen.name}" overlaps the folder "${listed.name}".`, id);
+        }
+      }
       if (inner && !(await chosen.contains(inner))) {
         throw new ProtocolError("not_containing", `"${chosen.name}" does not contain the folder "${inner.name}".`);
       }

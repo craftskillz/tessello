@@ -328,10 +328,76 @@ describe("a folder that must contain a granted one", () => {
   });
 });
 
+describe("a folder that must not overlap granted ones", () => {
+  test("a folder inside a listed one is refused with overlapping, naming it, and not granted", async () => {
+    const { host, module, folder } = await contained();
+    host.folders.choose(host.folders.inside(host.docs, "sub"));
+
+    await assert.rejects(
+      module.folders.request({ mustNotOverlap: [folder] }),
+      (error: unknown) => refusal("overlapping")(error) && (error as TesselloError).folder === folder.id,
+    );
+    assert.deepEqual((await module.folders.list()).map((each) => each.name), ["docs"]);
+  });
+
+  test("a folder around a listed one is refused with overlapping", async () => {
+    const { host, module, folder } = await contained();
+    host.folders.choose(host.repository);
+
+    await assert.rejects(module.folders.request({ mustNotOverlap: [folder] }), refusal("overlapping"));
+    assert.deepEqual((await module.folders.list()).map((each) => each.name), ["docs"]);
+  });
+
+  test("the listed folder itself is refused with overlapping, not returned as already granted", async () => {
+    const { host, module, folder } = await contained();
+    host.folders.choose(host.docs);
+
+    await assert.rejects(module.folders.request({ mustNotOverlap: [folder] }), refusal("overlapping"));
+  });
+
+  test("a folder apart from the listed ones is accepted", async () => {
+    const { host, module, folder } = await contained();
+    host.folders.choose(host.folders.inside(host.repository, "src"));
+
+    const src = await module.folders.request({ mustNotOverlap: [folder] });
+
+    assert.equal(src?.name, "src");
+  });
+
+  test("the error names the first listed folder it clashes with", async () => {
+    const { host, module, folder } = await contained();
+    host.folders.choose(host.folders.inside(host.repository, "src"));
+    const src = (await module.folders.request())!;
+    host.folders.choose(host.repository);
+
+    await assert.rejects(
+      module.folders.request({ mustNotOverlap: [src, folder] }),
+      (error: unknown) => error instanceof TesselloError && error.folder === src.id,
+    );
+  });
+
+  test("an id that is not a granted folder is refused with not_found", async () => {
+    const { module } = await contained();
+
+    await assert.rejects(module.folders.request({ mustNotOverlap: [{ id: "nope", name: "x" }] }), refusal("not_found"));
+  });
+
+  test("it combines with mustContain: both are checked", async () => {
+    const { host, module, folder } = await contained();
+    host.folders.choose(host.folders.inside(host.repository, "src"));
+    const src = (await module.folders.request())!;
+    host.folders.choose(host.repository);
+
+    await assert.rejects(module.folders.request({ mustContain: folder, mustNotOverlap: [src] }), refusal("overlapping"));
+    host.folders.choose(host.folders.create("elsewhere"));
+    await assert.rejects(module.folders.request({ mustContain: folder, mustNotOverlap: [src] }), refusal("not_containing"));
+  });
+});
+
 /** A Module granted `project/docs`, the User's repository being `project`. */
 async function contained() {
   const { host, module } = view();
-  const repository = host.folders.create("project", { "docs/a.md": "a", "src/main.ts": "" });
+  const repository = host.folders.create("project", { "docs/a.md": "a", "docs/sub/b.md": "b", "src/main.ts": "" });
   const docs = host.folders.inside(repository, "docs");
   host.folders.choose(docs);
   const connected = await module;

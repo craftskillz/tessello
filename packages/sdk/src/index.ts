@@ -14,11 +14,14 @@ export interface Transport {
 /** A request the Host refused; `code` is one of the error codes of CONVENTION.md §5.1, such as "quota_exceeded". */
 export class TesselloError extends Error {
   readonly code: string;
+  /** The id of the granted folder the refusal is about, as with `overlapping`; absent otherwise. */
+  readonly folder?: string;
 
-  constructor(code: string, message: string) {
+  constructor(code: string, message: string, folder?: string) {
     super(message);
     this.name = "TesselloError";
     this.code = code;
+    if (folder !== undefined) this.folder = folder;
   }
 }
 
@@ -69,8 +72,12 @@ export interface Folders {
   /**
    * Opens the Host's folder picker; resolves with the folder the User chose, or `null` when they cancel. Call it from
    * the User's click, before any `await`: the browser opens the picker only while it handles the click.
+   *
+   * `mustContain` refuses a folder that does not hold the given granted folder (`not_containing`). `mustNotOverlap`
+   * refuses a folder that is, lies inside, or holds any of the given granted folders (`overlapping`; the error's
+   * `folder` is the id of the first one it clashes with). Nothing is granted on a refusal.
    */
-  request(options?: { mustContain?: Folder }): Promise<Folder | null>;
+  request(options?: { mustContain?: Folder; mustNotOverlap?: Folder[] }): Promise<Folder | null>;
   /** The folders granted to the Module, and whether the browser lets the Host use each of them now. */
   list(): Promise<(Folder & { state: FolderState })[]>;
   /**
@@ -172,8 +179,14 @@ export async function connect(options: ConnectOptions = {}): Promise<ConnectedMo
     if (data.ok) {
       request.resolve(data.result);
     } else {
-      const error = (data.error ?? {}) as { code?: unknown; message?: unknown };
-      request.reject(new TesselloError(String(error.code ?? "internal"), String(error.message ?? "")));
+      const error = (data.error ?? {}) as { code?: unknown; message?: unknown; folder?: unknown };
+      request.reject(
+        new TesselloError(
+          String(error.code ?? "internal"),
+          String(error.message ?? ""),
+          typeof error.folder === "string" ? error.folder : undefined,
+        ),
+      );
     }
   });
 
@@ -206,8 +219,13 @@ export async function connect(options: ConnectOptions = {}): Promise<ConnectedMo
       keys: async () => (await request("storage.keys")).keys,
     },
     folders: {
-      request: async ({ mustContain } = {}) =>
-        (await request("folders.request", mustContain === undefined ? {} : { mustContain: mustContain.id })).folder,
+      request: async ({ mustContain, mustNotOverlap } = {}) =>
+        (
+          await request("folders.request", {
+            ...(mustContain === undefined ? {} : { mustContain: mustContain.id }),
+            ...(mustNotOverlap === undefined ? {} : { mustNotOverlap: mustNotOverlap.map((folder) => folder.id) }),
+          })
+        ).folder,
       list: async () => (await request("folders.list")).folders,
       reconnect: async (folder) => (await request("folders.reconnect", { folder: folder.id })).state,
       release: async (folder) => void (await request("folders.release", { folder: folder.id })),

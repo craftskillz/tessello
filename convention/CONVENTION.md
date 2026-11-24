@@ -203,6 +203,8 @@ A **request** is sent by the Module to the Host and expects exactly one **respon
   "error": { "code": "invalid_payload", "message": "key must be a string" } }
 ```
 
+An error may also carry a `folder`, the id of the granted folder the failure is about (`overlapping`, §6.5).
+
 Error codes:
 
 | Code | Meaning |
@@ -215,6 +217,7 @@ Error codes:
 | `not_found` | The folder is not granted to the Module, or there is nothing at this path (§6.5). |
 | `conflict` | The file is not at the version the Module expected, or the destination already exists (§6.5). |
 | `not_containing` | The folder the User chose does not contain the one it must contain (§6.5). |
+| `overlapping` | The folder the User chose is, lies inside, or holds a folder it must not overlap; the error's `folder` is that folder's id (§6.5). |
 | `unavailable` | The browser waits for the User to allow the folder again (§6.5). |
 | `internal` | Unexpected Host failure. |
 
@@ -334,7 +337,7 @@ A Module that declares the `folders` Permission (§3.1) MAY ask the User for **f
 
 | Request | Payload | Result |
 |---|---|---|
-| `folders.request` | `{ "mustContain"?: id }` | `{ "folder": { "id": string, "name": string } \| null }`: `null` when the User cancels |
+| `folders.request` | `{ "mustContain"?: id, "mustNotOverlap"?: id[] }` | `{ "folder": { "id": string, "name": string } \| null }`: `null` when the User cancels |
 | `folders.list` | `{}` | `{ "folders": [{ "id": string, "name": string, "state": "granted" \| "prompt" }] }` |
 | `folders.reconnect` | `{ "folder": id }` | `{ "state": "granted" \| "prompt" }` |
 | `folders.release` | `{ "folder": id }` | `{}` |
@@ -347,6 +350,7 @@ A Module that declares the `folders` Permission (§3.1) MAY ask the User for **f
 - **The User's gesture.** Browsers open the folder picker, and ask the User to allow a folder again, only while they handle the User's click. A Module MUST send `folders.request` and `folders.reconnect` directly from the click, before waiting for anything else.
 - **The same folder twice.** Choosing a folder already granted to the Module gives its existing id.
 - **A folder that contains another.** With `mustContain`, the id of a folder already granted, the Host refuses with `not_containing`, and grants nothing, a chosen folder that is neither that folder nor holds it (for instance a repository that must hold the documentation folder already granted).
+- **A folder that overlaps others.** With `mustNotOverlap`, the ids of folders already granted, the Host refuses with `overlapping`, and grants nothing, a chosen folder that is the same as, lies inside, or holds any of them; the error's `folder` is the id of the first one, in the order given, it clashes with. Every id must be a granted folder (`not_found` otherwise) and the Host checks them before opening the picker. It may be combined with `mustContain`. A Module that keeps its Projects apart lists them, and leaves out the folder that may hold them.
 - **Paths** are relative to the granted folder, with `/` between names. A path with an empty, `.` or `..` name, or with `\`, fails with `invalid_payload`: a Module cannot reach outside its folders.
 - **Versions.** Every file has a `version` that changes with each write, by the Module or by any other program (an editor, a coding agent, `git`). `files.write` with `ifVersion` fails with `conflict`, and writes nothing, unless the file is still at that version; with `ifVersion: null` it only creates a file that does not exist yet. Without `ifVersion` it writes in any case. The Host runs a Module's requests on one folder one after the other, but cannot stop another program from writing between two of them.
 - **Writing** creates the file and its missing folders. `files.read` gives text (UTF-8) by default, bytes with `as: "bytes"`.

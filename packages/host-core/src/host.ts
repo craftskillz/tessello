@@ -197,8 +197,13 @@ export function createHost(options: HostOptions): Host {
   const sendVisibility = (surface: Surface) => send(surface, { type: "visibility", payload: { visible: surface.visible } });
   const succeed = (surface: Surface, request: Request, result: unknown) =>
     send(surface, { type: "response", id: request.id, ok: true, result });
-  const fail = (surface: Surface, request: Request, code: string, message: string) =>
-    send(surface, { type: "response", id: request.id, ok: false, error: { code, message } });
+  const fail = (surface: Surface, request: Request, code: string, message: string, folder?: string) =>
+    send(surface, {
+      type: "response",
+      id: request.id,
+      ok: false,
+      error: folder === undefined ? { code, message } : { code, message, folder },
+    });
 
   return {
     readMarketplace: marketplace.readMarketplace,
@@ -279,7 +284,7 @@ export function createHost(options: HostOptions): Host {
         (result) => succeed(surface, request, result),
         (error: unknown) =>
           error instanceof ProtocolError
-            ? fail(surface, request, error.code, error.message)
+            ? fail(surface, request, error.code, error.message, error.folder)
             : fail(surface, request, "internal", "The Host failed to handle this request."),
       );
     },

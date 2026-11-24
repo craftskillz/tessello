@@ -141,6 +141,20 @@ describe("folders granted to a Module", () => {
     assert.equal((await send(page, "files.read", { folder: repository.id, path: "docs/a.md" })).content, "a");
   });
 
+  test("a folder overlapping a listed one is refused with overlapping", async () => {
+    const page = await withDocs();
+    await writeFolder(page, "project", { "docs/a.md": "a", "src/main.ts": "" });
+    await pick(page, "project/docs");
+    const { folder: docs } = await send(page, "folders.request");
+
+    await pick(page, "project");
+    const refused = await send(page, "folders.request", { mustNotOverlap: [docs.id] });
+
+    assert.equal(refused.code, "overlapping");
+    await pick(page, "project/src");
+    assert.equal((await send(page, "folders.request", { mustNotOverlap: [docs.id] })).folder.name, "src");
+  });
+
   test("the granted folders are kept when the Host is opened again", async () => {
     const page = await withDocs();
     await writeFolder(page, "docs", { "intro.md": "x" });
