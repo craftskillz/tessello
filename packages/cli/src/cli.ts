@@ -16,9 +16,12 @@ Commands:
                              at <URL> and open the pull request (run \`tessello publish\` for options).
   serve [--port <number>]    Run the Host on this computer, to reach your installed Modules
                              when its site cannot be reached (http://127.0.0.1:7355/ by default).
-  sync [--once] [folder]     Commit the changes of your Modules folder to its git repository
+  sync [--once] [--living-documentation <repository>]… [folder]
+                             Commit the changes of your Modules folder to its git repository
                              (the current folder by default), round after round until Ctrl+C,
                              or once with --once. One instance per folder (a lock file).
+                             --living-documentation also commits the Living Documentation
+                             Project folders of a repository (repeatable), never pushes them.
                              Exits with 1 on a problem.`;
 
 interface Output {
