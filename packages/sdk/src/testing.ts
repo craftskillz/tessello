@@ -5,7 +5,7 @@
 import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { extname, resolve, sep } from "node:path";
-import { createHost, createMemoryDrive, createMemoryPersistence, ProtocolError, THEMES, type MemoryFiles, type MemoryFolder } from "@tessello/host-core";
+import { createHost, createMemoryDrive, createMemoryPersistence, ProtocolError, THEMES, type MemoryFolder } from "@tessello/host-core";
 import type { Json, Permissions, Storage, Theme, Transport } from "./index.ts";
 
 /** One of the Host's two themes, or any theme. */
@@ -42,6 +42,9 @@ export interface MountedSurface extends TestSurface {
   transport: Transport;
 }
 
+/** The files of a folder: path → text or bytes. Its own type, not host-core's: the published declarations name no unpublished package. */
+export type TestFiles = Record<string, string | Uint8Array>;
+
 /** A folder on the Test Host's disk, which the User may choose in the picker. */
 export interface TestFolder {
   readonly name: string;
@@ -50,7 +53,7 @@ export interface TestFolder {
 /** The User's disk and folder picker, as the test drives them (ADR 0022). */
 export interface TestFolders {
   /** Creates a folder holding these files (path → text or bytes). */
-  create(name: string, files?: MemoryFiles): TestFolder;
+  create(name: string, files?: TestFiles): TestFolder;
   /** What the User picks the next time the Module asks for a folder: a folder, or `null` to cancel. */
   choose(folder: TestFolder | null): void;
   /** A file's text, or null when there is none. */

@@ -6,11 +6,11 @@
   "type": "module",
   "exports": "./src/index.ts",
   "dependencies": {
-    "@tessello/convention": "0.1.0",
-    "@tessello/marketplace": "0.1.0",
+    "@tessello/convention": "0.2.0",
+    "@tessello/marketplace": "0.1.1",
     "fflate": "^0.8.2"
   },
   "devDependencies": {
-    "@tessello/sdk": "0.2.0"
+    "@tessello/sdk": "0.3.0"
   }
 }
