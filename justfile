@@ -45,12 +45,20 @@ npm-publish:
     echo "Publishing as $who."
     npm run test:compiled --silent
     npm run test:packed --silent
+    on_npm() { [ -n "$(npm view "$1" version 2>/dev/null)" ]; }
     for name in sdk convention marketplace cli; do
         dist="packages/$name/dist"
         id=$(node -p "require('./$dist/package.json').name")
         version=$(node -p "require('./$dist/package.json').version")
-        if [ -n "$(npm view "$id@$version" version 2>/dev/null)" ]; then echo "$id $version is already on npm."; continue; fi
+        if on_npm "$id@$version"; then echo "$id $version is already on npm."; continue; fi
+        # A package whose @tessello dependency is not on npm could not be installed: publish nothing more.
+        for dependency in $(node -p "Object.entries(require('./$dist/package.json').dependencies ?? {}).filter(([d]) => d.startsWith('@tessello/')).map(([d, v]) => d + '@' + v).join(' ')"); do
+            if ! on_npm "$dependency"; then echo "$id $version needs $dependency, which is not on npm: publish it first (run this again)." >&2; exit 1; fi
+        done
         npm publish --access public "$dist"
+        # npm takes a few seconds to serve a new version; the packages after this one install it.
+        for attempt in $(seq 1 30); do on_npm "$id@$version" && break; sleep 2; done
+        if ! on_npm "$id@$version"; then echo "$id $version was sent but npm does not serve it after a minute: check https://www.npmjs.com/package/$id, then run this again." >&2; exit 1; fi
         echo "$id $version is published."
     done
 
