@@ -110,6 +110,7 @@ function addedPermissions(declared: Permissions = {}, granted: Permissions): Per
     const entries = (declared[name] ?? []).filter((entry) => !(granted[name] ?? []).includes(entry));
     if (entries.length > 0) added[name] = entries;
   }
+  if (declared.folders && !granted.folders) added.folders = true;
   return added;
 }
 
@@ -119,6 +120,7 @@ const union = (a: Permissions, b: Permissions): Permissions => {
     const entries = [...new Set([...(a[name] ?? []), ...(b[name] ?? [])])];
     if (entries.length > 0) merged[name] = entries;
   }
+  if (a.folders || b.folders) merged.folders = true;
   return merged;
 };
 

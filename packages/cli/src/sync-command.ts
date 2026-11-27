@@ -1,9 +1,10 @@
-import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, readFile, readdir, rename, stat, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { visibilityFor, type RemoteVisibility, type VisibilityFetch, type VisibilityMemo } from "./remote-visibility.ts";
+import { STATUS_FILE as LD_STATUS_FILE, STORAGE_DIR as LD_STORAGE_DIR, syncLivingDocumentation, type LivingDocumentationResult } from "./living-documentation-sync.ts";
+import { COMMIT_IDENTITY, QUIET_MS, runGit, shortened } from "./git.ts";
 import { acquireLock, type LockDeps } from "./sync-lock.ts";
 
 export type ProblemKind = "push-rejected" | "auth" | "remote-unreachable" | "git-missing" | "not-a-modules-folder" | "no-config";
@@ -44,7 +45,7 @@ interface Output {
   err: (text: string) => void;
 }
 
-const USAGE = "Usage: tessello sync [--once] [folder]";
+const USAGE = "Usage: tessello sync [--once] [--living-documentation <repository>]… [folder]";
 
 // The channel with the Git Integration Module is its storage (ADR 0020). The CLI cannot depend on the private host
 // package, so these names are the ones the Host's `keyFileName` gives to the keys `config` and `status`; a test
@@ -59,7 +60,6 @@ const STATUS_TMP = "status.tessello-sync-tmp";
 
 const SECTION_START = "# >>> tessello sync";
 const SECTION_END = "# <<< tessello sync";
-const COMMIT_IDENTITY = ["-c", "user.name=tessello sync", "-c", "user.email=sync@tessello.invalid"];
 
 interface Registry {
   modules: { id: string; folder: string }[];
@@ -83,8 +83,6 @@ export interface RoundResult {
 const DEFAULT_INTERVAL_SECONDS = 60;
 const MIN_INTERVAL_SECONDS = 10;
 const MAX_INTERVAL_SECONDS = 3600;
-/** A changed file younger than this is probably still being written: its commit waits for the next round. */
-const QUIET_MS = 10_000;
 
 /** The interval between rounds: the configured one brought within [10, 3600], 60 without a valid config. */
 export function intervalOf(config: SyncConfig | null): number {
@@ -177,9 +175,37 @@ export async function syncOnce(folder: string, deps: Partial<SyncDeps> = {}): Pr
   return pushStep(commit !== null);
 }
 
+/** What a round reports when it also syncs repositories. */
+export interface FullRoundResult {
+  /** The Modules-folder backup; null when it did not run (repositories given, Git Integration not configured). */
+  modules: RoundResult | null;
+  livingDocumentation: LivingDocumentationResult;
+  intervalSeconds: number;
+  /** The messages of all the problems. */
+  problems: string[];
+}
+
+/**
+ * One round. Without repositories it is `syncOnce`. With repositories, the Modules-folder backup runs only when Git
+ * Integration has saved a valid configuration (the Living Documentation sync alone must not turn a folder into a
+ * repository), then the repositories are synced.
+ */
+export async function syncRound(folder: string, repositories: string[], deps: Partial<SyncDeps> = {}): Promise<FullRoundResult> {
+  const root = resolve(folder);
+  const empty: LivingDocumentationResult = { lines: [], problems: [] };
+  if (repositories.length === 0) {
+    const modules = await syncOnce(root, deps);
+    return { modules, livingDocumentation: empty, intervalSeconds: modules.intervalSeconds, problems: modules.problem ? [modules.message ?? modules.problem] : [] };
+  }
+  const config = await readConfig(root);
+  const modules = config ? await syncOnce(root, deps) : null;
+  const livingDocumentation = await syncLivingDocumentation(root, repositories, { git: deps.git, now: deps.now });
+  const problems = [...(modules?.problem ? [modules.message ?? modules.problem] : []), ...livingDocumentation.problems];
+  return { modules, livingDocumentation, intervalSeconds: modules?.intervalSeconds ?? intervalOf(null), problems };
+}
+
 /** Time allowed to one push: a hung network must not stall the rounds. */
 const PUSH_TIMEOUT_MS = 120_000;
-const MAX_PUSH_MESSAGE = 500;
 
 /** Which problem a failed push is, from git's own output. A rejection is checked first: its text can mention the URL. */
 export function classifyPushFailure(output: string): "push-rejected" | "auth" | "remote-unreachable" {
@@ -193,13 +219,6 @@ export function classifyPushFailure(output: string): "push-rejected" | "auth" | 
   }
   // Network errors, a wrong URL or path, and anything git says that is not recognised.
   return "remote-unreachable";
-}
-
-/** git's stderr without its advice, shortened. */
-function shortened(output: string): string {
-  const lines = output.split("\n").map((l) => l.trim()).filter((l) => l && !l.startsWith("hint:"));
-  const text = lines.join("\n");
-  return text.length > MAX_PUSH_MESSAGE ? `${text.slice(0, MAX_PUSH_MESSAGE - 1)}…` : text;
 }
 
 /**
@@ -263,7 +282,7 @@ async function interruptibleSleep(ms: number, signal: AbortSignal): Promise<void
  * its status is written) before the loop stops. The interval comes from each round, hence a changed config applies
  * at the next wait.
  */
-export async function syncLoop(folder: string, signal: AbortSignal, deps: Partial<LoopDeps> = {}): Promise<void> {
+export async function syncLoop(folder: string, signal: AbortSignal, deps: Partial<LoopDeps> = {}, repositories: string[] = []): Promise<void> {
   const now = deps.now ?? (() => new Date());
   const sleep = deps.sleep ?? interruptibleSleep;
   const log = deps.log ?? (() => {});
@@ -272,12 +291,15 @@ export async function syncLoop(folder: string, signal: AbortSignal, deps: Partia
   while (!signal.aborted) {
     let seconds = DEFAULT_INTERVAL_SECONDS;
     try {
-      const result = await syncOnce(folder, { ...deps, visibility });
-      seconds = result.intervalSeconds;
-      const last = result.status?.lastCommit;
-      if (result.committed && last) log(`${now().toISOString()} Committed ${last.sha}: ${last.modules.join(", ") || "no Module data"}`);
-      if (result.pushed) log(`${now().toISOString()} Pushed to origin.`);
-      if (result.problem) log(`${now().toISOString()} ${result.message ?? result.problem}`);
+      const round = await syncRound(folder, repositories, { ...deps, visibility });
+      seconds = round.intervalSeconds;
+      const result = round.modules;
+      const last = result?.status?.lastCommit;
+      if (result?.committed && last) log(`${now().toISOString()} Committed ${last.sha}: ${last.modules.join(", ") || "no Module data"}`);
+      if (result?.pushed) log(`${now().toISOString()} Pushed to origin.`);
+      if (result?.problem) log(`${now().toISOString()} ${result.message ?? result.problem}`);
+      for (const line of round.livingDocumentation.lines) log(line);
+      for (const message of round.livingDocumentation.problems) log(`${now().toISOString()} ${message}`);
     } catch (error) {
       // An unexpected git failure must not end a backup that runs for days: say it and try again next round.
       log(`${now().toISOString()} Round failed: ${(error as Error).message}`);
@@ -295,14 +317,25 @@ export interface SyncCommandDeps extends LoopDeps {
 }
 
 /**
- * `tessello sync [--once] [folder]`: one round with `--once`, otherwise rounds in the foreground until Ctrl+C.
+ * `tessello sync [--once] [--living-documentation <repository>]… [folder]`: one round with `--once`, otherwise rounds in the foreground until Ctrl+C.
  * 0 when it ran (once: without problem), 1 on a problem or when another instance holds the folder (message on err),
  * 2 on a usage error.
  */
 export async function syncCommand(args: string[], output: Output, deps: Partial<SyncCommandDeps> = {}): Promise<number> {
-  const once = args.includes("--once");
-  const rest = args.filter((arg) => arg !== "--once");
-  if (rest.length > 1 || rest.some((arg) => arg.startsWith("-"))) {
+  let once = false;
+  const repositories: string[] = [];
+  const rest: string[] = [];
+  let usage = false;
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i]!;
+    if (arg === "--once") once = true;
+    else if (arg === "--living-documentation") {
+      const value = args[++i];
+      if (value === undefined || value.startsWith("--")) usage = true;
+      else repositories.push(value);
+    } else rest.push(arg);
+  }
+  if (usage || rest.length > 1 || rest.some((arg) => arg.startsWith("-"))) {
     output.err(USAGE);
     return 2;
   }
@@ -321,17 +354,27 @@ export async function syncCommand(args: string[], output: Output, deps: Partial<
   }
   try {
     if (once) {
-      const result = await syncOnce(root, deps);
-      if (result.problem) {
-        output.err(result.message ?? `Sync failed: ${result.problem}.`);
-        return 1;
+      const round = await syncRound(root, repositories, deps);
+      const result = round.modules;
+      for (const message of round.problems) output.err(message);
+      if (repositories.length === 0) {
+        if (result?.problem) return 1;
+        const last = result?.status?.lastCommit;
+        output.out(`${result?.committed && last ? `Committed ${last.sha}.` : "Nothing to commit."}${result?.pushed ? " Pushed." : ""}`);
+        return 0;
       }
-      const last = result.status?.lastCommit;
-      output.out(`${result.committed && last ? `Committed ${last.sha}.` : "Nothing to commit."}${result.pushed ? " Pushed." : ""}`);
-      return 0;
+      const last = result?.status?.lastCommit;
+      const lines = [
+        ...(result && (result.committed || result.pushed) ? [`${result.committed && last ? `Committed ${last.sha}.` : "Pushed."}${result.committed && result.pushed ? " Pushed." : ""}`] : []),
+        ...round.livingDocumentation.lines,
+      ];
+      if (lines.length === 0 && round.problems.length === 0) lines.push("Nothing to commit.");
+      for (const line of lines) output.out(line);
+      return round.problems.length > 0 ? 1 : 0;
     }
 
-    output.out(`Syncing "${root}" round after round. Press Ctrl+C to stop.`);
+    const also = repositories.length > 0 ? ` and the Living Documentation of ${repositories.map((r) => resolve(r)).join(", ")}` : "";
+    output.out(`Syncing "${root}"${also} round after round. Press Ctrl+C to stop.`);
     const controller = new AbortController();
     const stop = () => controller.abort();
     const external = deps.signal;
@@ -343,7 +386,7 @@ export async function syncCommand(args: string[], output: Output, deps: Partial<
       process.once("SIGTERM", stop);
     }
     try {
-      await syncLoop(root, controller.signal, { ...deps, log: deps.log ?? output.out });
+      await syncLoop(root, controller.signal, { ...deps, log: deps.log ?? output.out }, repositories);
     } finally {
       external?.removeEventListener("abort", stop);
       process.off("SIGINT", stop);
@@ -428,6 +471,8 @@ function ignoreRules(config: SyncConfig, ownRepositories: string[]): string[] {
     ...[...new Set(config.dataModules)].sort().map((id) => `!${data}/${id}/`),
     `!${own}/`,
     `${own}/${STATUS_FILE}`,
+    // What the command writes for Living Documentation, in that Module's storage.
+    `/${LD_STORAGE_DIR.join("/")}/${LD_STATUS_FILE}`,
     // The lock and the stale lock a takeover moves aside for an instant.
     "/.tessello/sync.lock*",
     "*.crswap",
@@ -517,23 +562,4 @@ async function writeStatus(root: string, status: SyncStatus): Promise<void> {
   await mkdir(dir, { recursive: true });
   await writeFile(join(dir, STATUS_TMP), JSON.stringify({ key: "status", value: status }, null, 2) + "\n");
   await rename(join(dir, STATUS_TMP), join(dir, STATUS_FILE));
-}
-
-interface GitResult {
-  code: number;
-  stdout: string;
-  stderr: string;
-  /** The binary could not be started. */
-  missing: boolean;
-  /** Killed because it ran past its timeout. */
-  timedOut: boolean;
-}
-
-function runGit(git: string, args: string[], cwd: string, options: { env?: NodeJS.ProcessEnv; timeout?: number } = {}): Promise<GitResult> {
-  return new Promise((done) => {
-    execFile(git, args, { cwd, encoding: "utf8", maxBuffer: 256 * 1024 * 1024, ...options }, (error, stdout, stderr) => {
-      const code = error ? (typeof error.code === "number" ? error.code : 1) : 0;
-      done({ code, stdout, stderr, missing: (error as NodeJS.ErrnoException | null)?.code === "ENOENT", timedOut: Boolean(error?.killed) });
-    });
-  });
 }

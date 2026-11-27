@@ -257,6 +257,24 @@ describe("updating a Module from a .zip", () => {
     assert.deepEqual(opening.permissions, { network: ["https://api.example.com", "https://sync.example.com"] });
   });
 
+  test("an update adding the folders Permission presents it; accepting grants it", async () => {
+    const persistence = createMemoryPersistence();
+    placeFolder(persistence, "notes", notesFiles({}));
+    const host = newHost(persistence);
+    const install = await host.inspectFolder("notes");
+    assert.ok(install.status === "valid");
+    await install.install();
+
+    const inspection = await host.inspectZip(zipOf(notesFiles({ version: "2.0.0", permissions: { folders: true } })));
+    assert.ok(inspection.status === "update");
+    assert.deepEqual(inspection.added, { folders: true });
+
+    await inspection.update();
+    const opening = await host.open("@craftskillz/notes");
+    assert.ok(opening.status === "ready");
+    assert.deepEqual(opening.permissions, { folders: true });
+  });
+
   test("declining an update leaves the installed version, its Permissions and its storage intact", async () => {
     const { persistence, host } = await withNotes();
     await persistence.storage.write("@craftskillz/notes", "notes", "[]");

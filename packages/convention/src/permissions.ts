@@ -1,10 +1,15 @@
 // Permissions (CONVENTION.md §3.1): parsing the declared origins and checking what they cover.
 
-export const PERMISSION_NAMES: readonly string[] = ["network", "localNetwork"];
+export const PERMISSION_NAMES: readonly string[] = ["network", "localNetwork", "folders"];
+
+/** The Permissions whose entries are origins. */
+export const ORIGIN_PERMISSION_NAMES = ["network", "localNetwork"] as const;
 
 export interface Permissions {
   network?: string[];
   localNetwork?: string[];
+  /** The Module may ask the User for folders to read and write (ADR 0022). No entries: only `true`. */
+  folders?: true;
 }
 
 interface OriginPattern {

@@ -2,10 +2,13 @@
 // Copyright (c) 2026 Medaghri-Alaoui Youssef. MIT License: https://opensource.org/licenses/MIT
 class TesselloError extends Error {
   code;
-  constructor(code, message) {
+  /** The id of the granted folder the refusal is about, as with `overlapping`; absent otherwise. */
+  folder;
+  constructor(code, message, folder) {
     super(message);
     this.name = "TesselloError";
     this.code = code;
+    if (folder !== void 0) this.folder = folder;
   }
 }
 async function connect(options = {}) {
@@ -27,7 +30,13 @@ async function connect(options = {}) {
       request2.resolve(data.result);
     } else {
       const error = data.error ?? {};
-      request2.reject(new TesselloError(String(error.code ?? "internal"), String(error.message ?? "")));
+      request2.reject(
+        new TesselloError(
+          String(error.code ?? "internal"),
+          String(error.message ?? ""),
+          typeof error.folder === "string" ? error.folder : void 0
+        )
+      );
     }
   });
   const request = (type, payload = {}) => new Promise((resolve, reject) => {
@@ -53,6 +62,22 @@ async function connect(options = {}) {
       set: async (key, value) => void await request("storage.set", { key, value }),
       delete: async (key) => void await request("storage.delete", { key }),
       keys: async () => (await request("storage.keys")).keys
+    },
+    folders: {
+      request: async ({ mustContain, mustNotOverlap } = {}) => (await request("folders.request", {
+        ...mustContain === void 0 ? {} : { mustContain: mustContain.id },
+        ...mustNotOverlap === void 0 ? {} : { mustNotOverlap: mustNotOverlap.map((folder) => folder.id) }
+      })).folder,
+      list: async () => (await request("folders.list")).folders,
+      reconnect: async (folder) => (await request("folders.reconnect", { folder: folder.id })).state,
+      release: async (folder) => void await request("folders.release", { folder: folder.id })
+    },
+    files: {
+      read: (folder, path, { as } = {}) => request("files.read", { folder: folder.id, path, ...as === void 0 ? {} : { as } }),
+      list: async (folder, path) => (await request("files.list", { folder: folder.id, ...path === void 0 ? {} : { path } })).entries,
+      move: async (folder, from, to) => void await request("files.move", { folder: folder.id, from, to }),
+      delete: async (folder, path) => void await request("files.delete", { folder: folder.id, path }),
+      write: (folder, path, content, { ifVersion } = {}) => request("files.write", { folder: folder.id, path, content, ...ifVersion === void 0 ? {} : { ifVersion } })
     },
     onThemeChange: (listener) => on("theme.changed", readTheme, listener),
     onVisibilityChange: (listener) => on("visibility", readVisible, listener),

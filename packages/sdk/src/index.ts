@@ -14,11 +14,14 @@ export interface Transport {
 /** A request the Host refused; `code` is one of the error codes of CONVENTION.md §5.1, such as "quota_exceeded". */
 export class TesselloError extends Error {
   readonly code: string;
+  /** The id of the granted folder the refusal is about, as with `overlapping`; absent otherwise. */
+  readonly folder?: string;
 
-  constructor(code: string, message: string) {
+  constructor(code: string, message: string, folder?: string) {
     super(message);
     this.name = "TesselloError";
     this.code = code;
+    if (folder !== undefined) this.folder = folder;
   }
 }
 
@@ -51,9 +54,89 @@ export interface Storage {
   keys(): Promise<string[]>;
 }
 
+/** The Permissions a Module declares in its Manifest (CONVENTION.md §3.1). */
+export interface Permissions {
+  network?: string[];
+  localNetwork?: string[];
+  folders?: true;
+}
+
+/** A folder the User granted the Module (CONVENTION.md §6.5): an opaque id and the folder's name, never its path. */
+export interface Folder {
+  id: string;
+  name: string;
+}
+
+/** The folders the User grants the Module, one at a time (CONVENTION.md §6.5). Needs the `folders` Permission. */
+export interface Folders {
+  /**
+   * Opens the Host's folder picker; resolves with the folder the User chose, or `null` when they cancel. Call it from
+   * the User's click, before any `await`: the browser opens the picker only while it handles the click.
+   *
+   * `mustContain` refuses a folder that does not hold the given granted folder (`not_containing`). `mustNotOverlap`
+   * refuses a folder that is, lies inside, or holds any of the given granted folders (`overlapping`; the error's
+   * `folder` is the id of the first one it clashes with). Nothing is granted on a refusal.
+   */
+  request(options?: { mustContain?: Folder; mustNotOverlap?: Folder[] }): Promise<Folder | null>;
+  /** The folders granted to the Module, and whether the browser lets the Host use each of them now. */
+  list(): Promise<(Folder & { state: FolderState })[]>;
+  /**
+   * Asks the User to allow a folder again, as after a browser restart; resolves with its state. Call it from the
+   * User's click, before any `await`.
+   */
+  reconnect(folder: Folder): Promise<FolderState>;
+  /** Gives a folder back: it is no longer granted. Its files stay on disk. */
+  release(folder: Folder): Promise<void>;
+}
+
+/**
+ * `granted`: the Module may use the folder. `prompt`: the browser waits for the User to allow it again (after a
+ * restart); every `files.*` request on it is refused with `unavailable` until `reconnect`.
+ */
+export type FolderState = "granted" | "prompt";
+
+/** A file read from a granted folder: its text, or its bytes when read `as: "bytes"`. */
+export interface FolderFile<Content = string> {
+  content: Content;
+  /** Changes with each write, by the Module or anyone else (an editor, an agent, git). */
+  version: string;
+}
+
+/**
+ * A file or a folder of a granted folder, its path from that folder. A file's `modified` is when it was last modified,
+ * in milliseconds since the Unix epoch (as `File.lastModified`); folders have none.
+ */
+export type FolderEntry = { kind: "file"; path: string; version: string; modified: number } | { kind: "folder"; path: string };
+
+/**
+ * The files of the folders the User granted (CONVENTION.md §6.5). Paths are relative to the granted folder, with `/`
+ * between names; `..`, `.` and empty names are refused with `invalid_payload`.
+ */
+export interface Files {
+  /** Refused with `not_found` when there is no such file. */
+  read(folder: Folder, path: string, options?: { as?: "text" }): Promise<FolderFile<string>>;
+  read(folder: Folder, path: string, options: { as: "bytes" }): Promise<FolderFile<Uint8Array>>;
+  /**
+   * Writes a file, creating it and its folders when needed, and resolves with its new version. With `ifVersion`, refused
+   * with `conflict` unless the file still has this version; `ifVersion: null` only creates a file that does not exist.
+   */
+  write(folder: Folder, path: string, content: string | Uint8Array, options?: { ifVersion?: string | null }): Promise<{ version: string }>;
+  /** Every file and folder under `path` (the whole folder by default), at any depth. `not_found` if it is no folder. */
+  list(folder: Folder, path?: string): Promise<FolderEntry[]>;
+  /**
+   * Moves a file or a folder; missing folders of the destination are created. Refused with `conflict` when the
+   * destination exists. A folder moves file by file: if the Host fails midway, both folders hold part of the files.
+   */
+  move(folder: Folder, from: string, to: string): Promise<void>;
+  /** Deletes a file, or a folder with everything in it. `not_found` when there is nothing at `path`. */
+  delete(folder: Folder, path: string): Promise<void>;
+}
+
 export interface ConnectedModule {
   context: Context;
   storage: Storage;
+  folders: Folders;
+  files: Files;
   /** Calls `listener` with the new theme each time the Host's theme changes; returns a function that stops it. */
   onThemeChange(listener: (theme: Theme) => void): () => void;
   /**
@@ -96,8 +179,14 @@ export async function connect(options: ConnectOptions = {}): Promise<ConnectedMo
     if (data.ok) {
       request.resolve(data.result);
     } else {
-      const error = (data.error ?? {}) as { code?: unknown; message?: unknown };
-      request.reject(new TesselloError(String(error.code ?? "internal"), String(error.message ?? "")));
+      const error = (data.error ?? {}) as { code?: unknown; message?: unknown; folder?: unknown };
+      request.reject(
+        new TesselloError(
+          String(error.code ?? "internal"),
+          String(error.message ?? ""),
+          typeof error.folder === "string" ? error.folder : undefined,
+        ),
+      );
     }
   });
 
@@ -128,6 +217,27 @@ export async function connect(options: ConnectOptions = {}): Promise<ConnectedMo
       set: async (key, value) => void (await request("storage.set", { key, value })),
       delete: async (key) => void (await request("storage.delete", { key })),
       keys: async () => (await request("storage.keys")).keys,
+    },
+    folders: {
+      request: async ({ mustContain, mustNotOverlap } = {}) =>
+        (
+          await request("folders.request", {
+            ...(mustContain === undefined ? {} : { mustContain: mustContain.id }),
+            ...(mustNotOverlap === undefined ? {} : { mustNotOverlap: mustNotOverlap.map((folder) => folder.id) }),
+          })
+        ).folder,
+      list: async () => (await request("folders.list")).folders,
+      reconnect: async (folder) => (await request("folders.reconnect", { folder: folder.id })).state,
+      release: async (folder) => void (await request("folders.release", { folder: folder.id })),
+    },
+    files: {
+      read: (folder: Folder, path: string, { as }: { as?: "text" | "bytes" } = {}) =>
+        request("files.read", { folder: folder.id, path, ...(as === undefined ? {} : { as }) }),
+      list: async (folder, path) => (await request("files.list", { folder: folder.id, ...(path === undefined ? {} : { path }) })).entries,
+      move: async (folder, from, to) => void (await request("files.move", { folder: folder.id, from, to })),
+      delete: async (folder, path) => void (await request("files.delete", { folder: folder.id, path })),
+      write: (folder, path, content, { ifVersion } = {}) =>
+        request("files.write", { folder: folder.id, path, content, ...(ifVersion === undefined ? {} : { ifVersion }) }),
     },
     onThemeChange: (listener) => on("theme.changed", readTheme, listener),
     onVisibilityChange: (listener) => on("visibility", readVisible, listener),

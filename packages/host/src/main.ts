@@ -19,6 +19,7 @@ import {
   type Persistence,
 } from "@tessello/host-core";
 import { PERMISSION_FILTERS, permissionFilter } from "@tessello/marketplace";
+import { createFolderDrive } from "./folder-drive.ts";
 import { copyModulesFolder, createFolderPersistence } from "./folder-persistence.ts";
 import { GUIDE_SANDBOX, guideDocument } from "./guide.ts";
 import { assetUrl, createHttpIndexSource, MARKETPLACE_INDEX_URL } from "./marketplace-index.ts";
@@ -323,6 +324,7 @@ async function start(folder: FileSystemDirectoryHandle) {
   persistence = createFolderPersistence(folder);
   host = createHost({
     persistence,
+    drive: createFolderDrive(),
     locale: language,
     theme,
     marketplace: { source: createHttpIndexSource(marketplaceIndexUrl) },
@@ -469,7 +471,8 @@ function permissionSummary(name: string, permissions: Permissions, title = t.wha
           ),
         ]
       : []),
-    el("p", { className: "limits" }, el("strong", {}, t.isolated), t.isolatedText(name)),
+    ...(permissions.folders ? [el("div", { className: "sensitive" }, el("p", {}, el("strong", {}, t.folders), t.foldersText(name)))] : []),
+    el("p", { className: "limits" }, el("strong", {}, t.isolated), (permissions.folders ? t.isolatedWithFoldersText : t.isolatedText)(name)),
     el("p", { className: "limits" }, el("strong", {}, t.notGuaranteed), t.notGuaranteedText(name)),
   );
 }
@@ -665,8 +668,38 @@ async function showAbout(entry: ModuleEntry) {
       : [el("p", {}, t.aboutFolderChanged(entry.name))]),
     el("p", {}, t.aboutPermissions),
     permissionSummary(entry.name, entry.permissions ?? {}),
+    ...(entry.permissions?.folders ? [await grantedFolders(entry)] : []),
     el("div", { className: "actions" }, button(t.uninstallEllipsis, () => confirmUninstall(entry), "danger")),
   );
+}
+
+/** The folders the User granted a Module (ADR 0022), each with a button to take it back; its files stay on disk. */
+async function grantedFolders(entry: ModuleEntry): Promise<HTMLElement> {
+  const id = `granted-folders-${entry.id}`;
+  const section = el("section", { className: "granted-folders", "aria-labelledby": id });
+  const render = async () => {
+    const folders = await host.grantedFolders(entry.id!);
+    section.replaceChildren(
+      el("h3", { id }, t.foldersGranted(entry.name)),
+      folders.length === 0
+        ? el("p", {}, t.noFolderGranted)
+        : el(
+            "ul",
+            {},
+            ...folders.map((folder) => {
+              const takeBack = el("button", { type: "button", "aria-label": t.takeBackFolder(folder.name) }, t.takeBack);
+              takeBack.addEventListener("click", async () => {
+                takeBack.disabled = true;
+                await host.revokeFolder(entry.id!, folder.id);
+                await render();
+              });
+              return el("li", {}, el("span", {}, folder.name), ...(folder.state === "granted" ? [] : [el("em", {}, ` (${t.folderWaiting})`)]), " ", takeBack);
+            }),
+          ),
+    );
+  };
+  await render();
+  return section;
 }
 
 /** A Module's User guide, in a wide dialog (CONVENTION.md §3.2): the Host renders it, and nothing of the Module runs. */

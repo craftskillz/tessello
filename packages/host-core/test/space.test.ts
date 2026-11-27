@@ -115,6 +115,15 @@ describe("export and import of the space", () => {
     });
   });
 
+  test("a Module granted the folders Permission keeps it through an export and an import", async () => {
+    const { host } = await withModules([["docs", "@test/docs", "Docs", { permissions: { folders: true } }]]);
+
+    const other = newHost();
+    await importInto(other, (await host.exportSpace()).file);
+
+    assert.deepEqual((await spaceOf(other)).modules.map((module) => module.permissions), [{ folders: true }]);
+  });
+
   test("before activating them, the import shows each Module with the Permissions the User had granted, and writes nothing", async () => {
     const { host } = await aSpace();
     const other = newHost();

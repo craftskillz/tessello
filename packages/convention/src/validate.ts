@@ -1,7 +1,7 @@
 import { unzipSync } from "fflate";
 import { GUIDE_IMAGE_EXTENSIONS, guideImagePath, guideImageSources } from "./guide.ts";
 import { LIMITS, SUPPORTED_CONVENTIONS, WIDGET_SIZES } from "./limits.ts";
-import { invalidEntryReason, isCovered, PERMISSION_NAMES, type Permissions } from "./permissions.ts";
+import { invalidEntryReason, isCovered, ORIGIN_PERMISSION_NAMES, PERMISSION_NAMES, type Permissions } from "./permissions.ts";
 import { pngSize } from "./png.ts";
 
 /** A Module package in memory: relative path → file content. */
@@ -222,6 +222,10 @@ function checkPermissions(permissions: unknown, issues: Issue[]): void {
       );
       continue;
     }
+    if (name === "folders") {
+      if (entries !== true) issues.push(error("permissions/invalid", `manifest.json: "permissions.folders" must be true, got ${show(entries)}.`, MANIFEST));
+      continue;
+    }
     if (!Array.isArray(entries) || !entries.every((entry) => typeof entry === "string")) {
       issues.push(error("permissions/invalid", `manifest.json: "permissions.${name}" must be an array of strings.`, MANIFEST));
       continue;
@@ -370,7 +374,7 @@ function checkSources(m: Record<string, unknown>, files: PackageFiles, issues: I
 /** Every well-formed entry of the known Permissions; invalid ones are reported elsewhere. */
 function declaredOrigins(permissions: unknown): string[] {
   if (!isObject(permissions)) return [];
-  return PERMISSION_NAMES.flatMap((name) => {
+  return ORIGIN_PERMISSION_NAMES.flatMap((name) => {
     const entries = permissions[name];
     return Array.isArray(entries) ? entries.filter((entry): entry is string => typeof entry === "string") : [];
   });
