@@ -1,0 +1,3 @@
+interface:
+  display_name: "Retrodoc"
+  short_description: "Plan and execute source-backed documentation tickets"

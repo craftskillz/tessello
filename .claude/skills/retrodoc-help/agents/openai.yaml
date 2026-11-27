@@ -1,0 +1,3 @@
+interface:
+  display_name: "Retrodoc Help"
+  short_description: "Choose a Retrodoc workflow without knowing the project"

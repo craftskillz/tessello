@@ -1,0 +1,3 @@
+interface:
+  display_name: "Retrodoc Architecture"
+  short_description: "Inspect dependency cycles and responsibility concentration"

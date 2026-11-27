@@ -1,0 +1,3 @@
+interface:
+  display_name: "Retrodoc Feature"
+  short_description: "Document a feature functionally, then enrich it from source"
