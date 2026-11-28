@@ -37,6 +37,34 @@ Without `gh`, or with `--dry-run`, the listing is written to `tessello-listing/m
 
 It exits with 0 when done, 1 when a check or a step fails, and 2 on a usage error.
 
+## Releasing a Module
+
+In a Module's repository made from the templates (a `manifest.json`, a `release.yml` workflow that publishes `<version>.zip` on the GitHub Pages of the repository), on an up-to-date `main` with everything committed:
+
+```sh
+npx tessello release minor      # or major, patch, fix (a patch)
+```
+
+It shows each step as it goes, with how long it took:
+
+1. `git pull --ff-only`, then `npm ci`;
+2. the scripts of `package.json` it finds: `typecheck`, `test`, then `test:browser` (which builds the package) or `build`. The browser tests are skipped, and the package only built, when `main` is pushed as it is and its `ci.yml` workflow already passed on that commit;
+3. `dist/` validated as `tessello validate` does;
+4. the version raised in `package.json` and `package-lock.json` (by `npm version`) and in `manifest.json`, a commit "Release <version>", the tag `v<version>`, and a push of both;
+5. it waits for the `release.yml` workflow of the tag;
+6. it asks whether you accept [PUBLISHING.md](https://github.com/craftskillz/tessello-marketplace/blob/main/PUBLISHING.md), then lists the version as `tessello publish` does below. `--no-list` stops before.
+
+A failing step shows what it wrote and stops; nothing is raised, tagged or pushed until every check has passed. It needs the [GitHub CLI](https://cli.github.com) logged in to follow the workflow and open the pull request.
+
+To list the version of `manifest.json` later, or again after a failure:
+
+```sh
+npx tessello publish              # asks for the terms, then opens the pull request
+npx tessello publish --dry-run    # only checks
+```
+
+Without a package, `tessello publish` downloads `https://<owner>.github.io/<repository>/<version>.zip` (from the remote `origin`), waiting up to five minutes for GitHub Pages to serve it, and lists those bytes. It takes the options below; with `--accept-terms` it does not ask.
+
 ## Running the Host on your computer
 
 If https://tessello.pages.dev/ is filtered or stopped, your installed Modules are still in your Modules folder. To reach them:

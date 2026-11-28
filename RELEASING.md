@@ -19,13 +19,17 @@ None of this needs the Host running. You need [just](https://github.com/casey/ju
    just publish minor    # or major, patch, fix
    ```
 
-   It installs the locked dependencies, checks types and tests, builds and validates the package, raises the version in `package.json`, `package-lock.json` and `manifest.json`, commits "Release <version>", tags `v<version>` and pushes. The Release workflow of the repository (GitHub, *Actions → Release*) then publishes `<version>.zip` on GitHub Pages; it refuses a version that is already published, since a published version never changes. `just publish` waits for that workflow.
+   The recipe runs `npx tessello release minor`, the [CLI](packages/cli/README.md#releasing-a-module)'s command, and shows each step as it goes, with how long it took. It installs the locked dependencies, checks types and unit tests, runs the browser tests (which build the package), validates the package, raises the version in `package.json`, `package-lock.json` and `manifest.json`, commits "Release <version>", tags `v<version>` and pushes. A failing step shows what it wrote and stops before the version is raised. The browser tests are the longest step: when `main` was pushed as it is and its CI already passed, they are not run again, and the package is only built. The Release workflow of the repository (GitHub, *Actions → Release*) then publishes `<version>.zip` on GitHub Pages; it refuses a version that is already published, since a published version never changes. The command waits for that workflow.
 
 2. It then asks whether to list the version on the Marketplace, which means accepting [PUBLISHING.md](https://github.com/craftskillz/tessello-marketplace/blob/main/PUBLISHING.md). Answer `y`: it downloads the published `.zip` (never a local build: the listing pins the SHA-256 of the published bytes), then runs `tessello publish`, which checks it as the Marketplace CI will and opens the pull request. A new version is merged automatically once the CI passes, and the Marketplace site is rebuilt a few minutes later.
 
 3. Optionally, refresh the copy the Host's browser tests use: `just fixture watch-later <version>` in `tessello`, then commit it.
 
-If you answered no, or the listing failed, `just marketplace` in the Module's repository lists its current version (`--dry-run` only checks). From `tessello`, `just marketplace <name>` does the same for one Module, and `just marketplace` with no name for all five; a Module already listed at its published version is reported as "already listed" (and among the "Not done" at the end), and nothing is opened for it.
+If you answered no, or the listing failed, `just marketplace` in the Module's repository (`npx tessello publish`, without a package) lists its current version (`--dry-run` only checks). From `tessello`, `just marketplace <name>` does the same for one Module, and `just marketplace` with no name for all five; a Module already listed at its published version is reported as "already listed" (and among the "Not done" at the end), and nothing is opened for it.
+
+### Changing how a Module is released
+
+`just publish` and `just marketplace` of a Module, and of the templates, only call `npx tessello release` and `npx tessello publish`: the steps live in the CLI, in `packages/cli/src/release-command.ts`. To change them, change the CLI, publish it on npm (below), then raise the exact version of `tessello` in the `devDependencies` of each Module and of both templates (`npm install --save-dev --save-exact tessello@<version>`). The recipes themselves stay as they are.
 
 ## A new @craftskillz Module
 

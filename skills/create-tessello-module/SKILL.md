@@ -130,4 +130,4 @@ The `.zip` must also validate with zero errors. Done: hand the Creator the `.zip
 Stop at the validated `.zip`; publishing is the Creator's call. When they ask about it, point them to:
 
 - **Hosting**: the `.zip` must be served over `https:` with `Access-Control-Allow-Origin` (§8). GitHub Pages does this; publish one URL per version and never overwrite a published version. GitHub Release assets and "Download ZIP" do not work.
-- **The Marketplace**: read and accept https://github.com/craftskillz/tessello-marketplace/blob/main/PUBLISHING.md, then run `npx tessello publish <package>.zip --url <its URL> --accept-terms`. The Module ID's namespace must be the publishing GitHub account.
+- **The Marketplace**: read and accept https://github.com/craftskillz/tessello-marketplace/blob/main/PUBLISHING.md, then run `npx tessello publish <package>.zip --url <its URL> --accept-terms`. The Module ID's namespace must be the publishing GitHub account. In a repository made from the templates, `npx tessello release minor` (the `just publish minor` recipe) does the whole release instead: checks, version, tag, the Release workflow to GitHub Pages, then that listing.

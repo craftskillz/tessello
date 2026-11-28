@@ -87,10 +87,26 @@ describe("tessello publish through run", () => {
     assert.match((await cli("--help")).out, /publish <package\.zip> --url <URL>/);
   });
 
-  test("publish without arguments is a usage error", async () => {
-    const result = await cli("publish");
+  test("publish without arguments outside a Module's repository is a usage error that points to the package form", async () => {
+    const before = process.cwd();
+    process.chdir(tmpdir());
+    try {
+      const result = await cli("publish");
+      assert.equal(result.code, 2);
+      assert.match(result.err, /tessello publish <package\.zip> --url <URL>/);
+    } finally {
+      process.chdir(before);
+    }
+  });
+
+  test("publish --help shows the options of the package form", async () => {
+    const result = await cli("publish", "--help");
     assert.equal(result.code, 2);
     assert.match(result.err, /Usage: tessello publish/);
+  });
+
+  test("the help lists release", async () => {
+    assert.match((await cli("--help")).out, /release <major\|minor\|patch\|fix>/);
   });
 
   test("publish hands its dependencies over: without --accept-terms nothing is called", async () => {
